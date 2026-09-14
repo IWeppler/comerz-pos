@@ -129,6 +129,8 @@ interface SettingsManagerProps {
   pagos: any[];
   categorias?: any[];
   isAdmin: boolean;
+  /** Para que la lista de empleados no ofrezca quitarse a uno mismo. */
+  usuarioActualId?: string | null;
   empleados: PerfilConRol[];
   roles: Rol[];
   permisos: Permiso[];
@@ -145,6 +147,7 @@ export function SettingsManager({
   pagos,
   categorias,
   isAdmin,
+  usuarioActualId = null,
   empleados,
   roles,
   permisos,
@@ -217,6 +220,7 @@ export function SettingsManager({
         return (
           <EmpleadosPanel
             isAdmin={isAdmin}
+            usuarioActualId={usuarioActualId}
             empleados={empleados}
             roles={roles}
             permisos={permisos}

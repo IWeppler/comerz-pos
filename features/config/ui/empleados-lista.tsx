@@ -3,7 +3,9 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Users } from "lucide-react";
+import { Pencil, Users } from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { EditarEmpleadoModal } from "./editar-empleado-modal";
 import {
   Table,
   TableBody,
@@ -25,12 +27,16 @@ import type { PerfilConRol, Rol } from "@/entities/roles/types";
 interface EmpleadosListaProps {
   empleados: PerfilConRol[];
   roles: Rol[];
+  usuarioActualId?: string | null;
 }
 
 export function EmpleadosLista({
   empleados,
   roles,
+  usuarioActualId = null,
 }: Readonly<EmpleadosListaProps>) {
+  // UN modal para toda la tabla, montado abajo con el empleado elegido.
+  const [editando, setEditando] = useState<PerfilConRol | null>(null);
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [empleadosLocal, setEmpleadosLocal] = useState(empleados);
@@ -80,6 +86,7 @@ export function EmpleadosLista({
               <TableHead>Nombre</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Rol</TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -122,12 +129,37 @@ export function EmpleadosLista({
                       </SelectContent>
                     </Select>
                   </TableCell>
+                  <TableCell>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 text-muted-foreground"
+                      onClick={() => setEditando(empleado)}
+                      aria-label={`Editar a ${empleado.nombre}`}
+                      title="Editar nombre, correo, contraseña o quitar"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
       </div>
+
+      {editando && (
+        <EditarEmpleadoModal
+          key={editando.id}
+          empleado={editando}
+          roles={roles}
+          esUnicoAdmin={editando.rol_id === rolAdmin?.id && cantidadAdmins <= 1}
+          esUnoMismo={editando.id === usuarioActualId}
+          open
+          onOpenChange={(abierto) => !abierto && setEditando(null)}
+        />
+      )}
     </div>
   );
 }

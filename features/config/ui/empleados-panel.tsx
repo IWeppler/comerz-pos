@@ -19,6 +19,7 @@ import { CobroCentralizado } from "@/features/pedidos/ui/cobro-centralizado";
 
 interface EmpleadosPanelProps {
   isAdmin: boolean;
+  usuarioActualId?: string | null;
   empleados: PerfilConRol[];
   roles: Rol[];
   permisos: Permiso[];
@@ -32,6 +33,7 @@ interface EmpleadosPanelProps {
 
 export function EmpleadosPanel({
   isAdmin,
+  usuarioActualId = null,
   empleados,
   roles,
   permisos,
@@ -74,7 +76,11 @@ export function EmpleadosPanel({
 
   return (
     <div className="space-y-10 animate-in fade-in-50 duration-300">
-      <EmpleadosLista empleados={empleados} roles={roles} />
+      <EmpleadosLista
+        empleados={empleados}
+        roles={roles}
+        usuarioActualId={usuarioActualId}
+      />
       <InvitacionesPanel
         roles={roles}
         invitaciones={invitaciones}

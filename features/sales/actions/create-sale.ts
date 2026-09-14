@@ -144,10 +144,11 @@ export async function registrarVentaAction(
 
   // --- PEDIDO POR COBRAR (varios puntos, una caja) ---
   //
-  // Con `pedidos_a_caja` prendido, cobrar exige `ventas.cobrar`: la
-  // vendedora sin permiso arma el pedido y lo manda a la caja, no cobra. El
-  // botón escondido no es control de acceso. Offline no se chequea: esa venta
-  // ya se cobró en el mostrador y solo se está subiendo.
+  // Cobrar exige `ventas.cobrar` SIEMPRE, no solo con pedidos a caja: el
+  // permiso lo decide la matriz de Empleados y Permisos, y si el server lo
+  // ignorara según una opción de caja, sacárselo a una vendedora no
+  // serviría de nada. El botón escondido no es control de acceso. Offline no
+  // se chequea: esa venta ya se cobró en el mostrador y solo se está subiendo.
   //
   // Si viene `pedido_id`, la venta queda a nombre de quien ARMÓ el pedido
   // (`vendedor_id`), no de la cajera: las comisiones y el rendimiento por
@@ -155,13 +156,13 @@ export async function registrarVentaAction(
   // `pedidos.cobrado_por`.
   const pedidoId = (formData.get("pedido_id") as string | null)?.trim() || null;
   let vendedorId = user.id;
-  if (configVenta?.pedidos_a_caja && !esVentaOffline) {
-    if (!(await tienePermiso(supabase, PERMISOS.VENTAS_COBRAR))) {
-      return {
-        error: "No podés cobrar desde este puesto: enviá el pedido a la caja.",
-        success: false,
-      };
-    }
+  if (!esVentaOffline && !(await tienePermiso(supabase, PERMISOS.VENTAS_COBRAR))) {
+    return {
+      error: configVenta?.pedidos_a_caja
+        ? "No podés cobrar desde este puesto: enviá el pedido a la caja."
+        : "No tenés permiso para cobrar (Empleados y Permisos → Cobrar en el mostrador).",
+      success: false,
+    };
   }
   if (pedidoId) {
     const { data: pedido } = await supabase

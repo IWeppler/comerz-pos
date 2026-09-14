@@ -28,8 +28,12 @@ export default async function ConfiguracionPage() {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const { data: esAdmin } = await supabase.rpc("is_admin");
+  const [{ data: esAdmin }, { data: { user } }] = await Promise.all([
+    supabase.rpc("is_admin"),
+    supabase.auth.getUser(),
+  ]);
   const isAdmin = Boolean(esAdmin);
+  const usuarioActualId = user?.id ?? null;
 
   // Datos de Empleados y Permisos: solo se cargan si el usuario es
   // admin. RLS ya bloquea la lectura para cualquier otro caso, pero
@@ -177,6 +181,7 @@ export default async function ConfiguracionPage() {
           pagos={pagos || []}
           categorias={categorias || []}
           isAdmin={isAdmin}
+          usuarioActualId={usuarioActualId}
           empleados={empleados}
           roles={roles}
           permisos={permisos}

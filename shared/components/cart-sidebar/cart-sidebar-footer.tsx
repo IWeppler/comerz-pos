@@ -221,6 +221,16 @@ export function CartSidebarFooter({
               </>
             )}
           </Button>
+        ) : isPOSMode && !puedeCobrar ? (
+          // Sin permiso de cobrar y sin pedidos a caja: no hay a dónde
+          // mandar la venta. Se dice, en vez de dejar un botón que rebota.
+          <Button
+            disabled
+            className="w-full h-12 flex items-center justify-center gap-2 shadow-none"
+            variant="outline"
+          >
+            Sin permiso para cobrar
+          </Button>
         ) : isPOSMode ? (
           <Button
             onClick={handleCobrar}
