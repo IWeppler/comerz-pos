@@ -138,7 +138,7 @@ export async function registrarVentaAction(
     .select(
       // `modo_caja` y `requiere_caja_abierta` son para el turno; el resto para
       // los pagos y para el comprobante del paso 11. Misma fila, una consulta.
-      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto, pedidos_a_caja",
+      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto, pedidos_a_caja, arca_recargos_iva, arca_ri_a_monotributo, arca_tope_consumidor_final",
     )
     .single();
 
@@ -1029,6 +1029,7 @@ export async function registrarVentaAction(
         condicionIvaReceptor: receptor?.receptor_condicion_iva,
         comprobanteDefecto: configVenta?.comprobante_defecto,
         arcaConectado,
+        riAMonotributo: configVenta?.arca_ri_a_monotributo,
       })
     : {
         tipo: "TICKET" as const,
@@ -1427,6 +1428,10 @@ export async function registrarVentaAction(
           tratamientoIva: i.tratamientoIva,
         })),
         recargos: recargoCCServer + recargoMetodoTotal,
+        tratamientoRecargos: configVenta?.arca_recargos_iva,
+        topeConsumidorFinal: configVenta?.arca_tope_consumidor_final
+          ? Number(configVenta.arca_tope_consumidor_final)
+          : null,
         total: totalConRecargoMetodo,
         receptor: receptor
           ? {

@@ -66,7 +66,7 @@ export async function facturarVentaAction(ventaId: string): Promise<
       supabase
         .from("configuracion_pos")
         .select(
-          "modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit",
+          "modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, arca_recargos_iva, arca_ri_a_monotributo, arca_tope_consumidor_final",
         )
         .single(),
     ]);
@@ -137,6 +137,7 @@ export async function facturarVentaAction(ventaId: string): Promise<
     condicionIvaReceptor: receptor?.receptor_condicion_iva,
     comprobanteDefecto: config.comprobante_defecto,
     arcaConectado,
+    riAMonotributo: config.arca_ri_a_monotributo,
   });
   if (decision.tipo === "TICKET") {
     return { success: false, error: `No se puede facturar: ${decision.motivo}` };
@@ -172,6 +173,10 @@ export async function facturarVentaAction(ventaId: string): Promise<
       puntoVenta,
       renglones,
       recargos,
+      tratamientoRecargos: config.arca_recargos_iva,
+      topeConsumidorFinal: config.arca_tope_consumidor_final
+        ? Number(config.arca_tope_consumidor_final)
+        : null,
       total: Number(venta.total),
       receptor: receptor
         ? {

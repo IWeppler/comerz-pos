@@ -83,7 +83,8 @@ export default async function DashboardLayout({
   const userRole = rolActual || "VENDEDOR";
   const negocioActivoId = cookieStore.get(COOKIE_NEGOCIO_ACTIVO)?.value;
   // Modo dios: el super admin mirando el negocio de un cliente.
-  const impersonando = Boolean(cookieStore.get(COOKIE_IMPERSONATE)?.value);
+  const impersonadoId = cookieStore.get(COOKIE_IMPERSONATE)?.value ?? null;
+  const impersonando = Boolean(impersonadoId);
 
   const settings = config;
 
@@ -108,13 +109,29 @@ export default async function DashboardLayout({
     negocios.find((n) => n.negocio_id === negocioActivoId) ??
     (negocios.length === 1 ? negocios[0] : null);
 
+  // En modo dios el negocio activo NO está entre las membresías del super
+  // admin, así que salía null — y todo lo que se cuelga de
+  // `useNegocioActivo()` (la cola de pedidos por cobrar, el carrito por
+  // negocio, los links al catálogo) quedaba apagado justo cuando se está
+  // revisando el negocio de un cliente. Se resuelve desde `negocios` por el
+  // id de la cookie; `current_negocio_id()` ya lo honra por su cuenta.
+  let negocioImpersonado: { id: string; slug: string; nombre: string } | null = null;
+  if (impersonadoId && !membresiaActiva) {
+    const { data } = await supabase
+      .from("negocios")
+      .select("id, slug, nombre")
+      .eq("id", impersonadoId)
+      .maybeSingle();
+    negocioImpersonado = data ?? null;
+  }
+
   const negocioActivo = membresiaActiva
     ? {
         id: membresiaActiva.negocio_id,
         slug: membresiaActiva.slug,
         nombre: membresiaActiva.nombre,
       }
-    : null;
+    : negocioImpersonado;
 
   return (
     <NegocioActivoProvider negocio={negocioActivo}>
@@ -176,6 +193,7 @@ export default async function DashboardLayout({
           <PaletaComandos
             puedeCobrarCuentaCorriente={puedeCobrarCc}
             esAdmin={userRole === "ADMIN"}
+            puedeOperarCaja={puedeOperarCajaEsta}
           />
 
           {/* Sube las ventas cobradas sin señal. Montado UNA vez, como la

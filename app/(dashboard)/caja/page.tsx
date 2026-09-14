@@ -7,6 +7,7 @@ import { VistaGerencial } from "@/features/caja/ui/vista-gerencial";
 import { CajaVistas } from "@/features/caja/ui/caja-vistas";
 import { CajaHistoryTable } from "@/features/caja/ui/caja-history-table";
 import { puedeVerVistaGerencialAction } from "@/features/caja/actions/permisos-caja";
+import { puedeOperarCaja } from "@/features/caja/lib/puede-operar-caja";
 import {
   getDetalleMediosPagoAction,
   getResumenGerencialAction,
@@ -39,6 +40,16 @@ export default async function CajaPage() {
   // 1. Verificación de permisos y perfil
   const { user } = await getUsuarioActual();
   if (!user) redirect(RUTA_SALIR);
+
+  // Quien no opera caja ni tiene la vista gerencial no tiene nada que hacer
+  // acá: es la vendedora de "varios puestos, una caja", o cualquiera a quien
+  // le sacaron "Operar la caja" desde Empleados y Permisos. El link del
+  // sidebar ya no se muestra; esto es lo que impide entrar tipeando /caja.
+  const [operaCaja, veGerencial] = await Promise.all([
+    puedeOperarCaja(),
+    puedeVerVistaGerencialAction(),
+  ]);
+  if (!operaCaja && !veGerencial) redirect("/pos");
 
   // El rol es por negocio (usuarios_negocios), el nombre es del perfil global.
   const [{ data: perfil }, rolActual] = await Promise.all([

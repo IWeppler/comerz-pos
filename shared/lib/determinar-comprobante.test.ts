@@ -253,3 +253,21 @@ describe("devoluciones", () => {
     expect(r.tipo).toBe("TICKET");
   });
 });
+
+describe("RI → Monotributo configurable", () => {
+  it("por defecto B; el comercio puede pedir A", () => {
+    const base = {
+      modoFacturacion: "ARCA",
+      condicionIvaEmisor: "Responsable Inscripto",
+      condicionIvaReceptor: "Monotributo",
+    };
+    expect(determinarComprobanteFiscal(base).tipo).toBe("FACTURA_B");
+    expect(
+      determinarComprobanteFiscal({ ...base, riAMonotributo: "FACTURA_A" }).tipo,
+    ).toBe("FACTURA_A");
+    // Basura cae al default.
+    expect(
+      determinarComprobanteFiscal({ ...base, riAMonotributo: "FACTURA_C" }).tipo,
+    ).toBe("FACTURA_B");
+  });
+});

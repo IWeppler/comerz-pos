@@ -54,6 +54,8 @@ type PaletaComandosProps = {
   puedeCobrarCuentaCorriente?: boolean;
   /** Mismo criterio que el sidebar: Panel y Reportes son de ADMIN. */
   esAdmin?: boolean;
+  /** Permiso `caja.operar`: sin él no se ofrece "Caja y movimientos". */
+  puedeOperarCaja?: boolean;
 };
 
 type Destino = {
@@ -241,6 +243,7 @@ const ATAJOS: {
 export function PaletaComandos({
   puedeCobrarCuentaCorriente = false,
   esAdmin = false,
+  puedeOperarCaja = true,
 }: Readonly<PaletaComandosProps>) {
   const router = useRouter();
   const abierta = usePaletaStore((s) => s.abierta);
@@ -363,9 +366,10 @@ export function PaletaComandos({
     () =>
       [...DESTINOS, ...SECCIONES_CONFIG]
         .filter((d) => (d.soloAdmin ? esAdmin : true))
+        .filter((d) => (d.clave === "caja" ? esAdmin || puedeOperarCaja : true))
         .filter((d) => coincide(d.etiqueta)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [esAdmin, patronNormalizado],
+    [esAdmin, puedeOperarCaja, patronNormalizado],
   );
 
   const acciones = [

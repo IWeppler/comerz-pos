@@ -245,3 +245,29 @@ describe("armarFactura — desglose fijo (nota de crédito)", () => {
     ).toThrowError(/no coincide/);
   });
 });
+
+describe("armarFactura — criterios configurables", () => {
+  it("el tratamiento de los recargos lo fija el comercio", () => {
+    const { solicitud } = armarFactura({
+      ...base,
+      renglones: [{ precioFinal: 1000, cantidad: 1, tratamientoIva: "EXENTO" }],
+      recargos: 100,
+      total: 1100,
+      tratamientoRecargos: "EXENTO",
+    });
+    expect(solicitud.impOpEx).toBe(1100);
+    expect(solicitud.iva).toEqual([]);
+  });
+
+  it("el tope de consumidor final lo fija el comercio; vacío = el del sistema", () => {
+    const grande = {
+      ...base,
+      renglones: [{ precioFinal: 500_000, cantidad: 1, tratamientoIva: "GRAVADO_21" }],
+      total: 500_000,
+    };
+    expect(() => armarFactura({ ...grande, topeConsumidorFinal: 400_000 })).toThrowError(
+      /identificar/,
+    );
+    expect(() => armarFactura({ ...grande, topeConsumidorFinal: null })).not.toThrow();
+  });
+});

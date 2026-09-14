@@ -52,6 +52,8 @@ export interface EntradaDeterminacion {
    * sale ticket.
    */
   arcaConectado?: boolean;
+  /** `configuracion_pos.arca_ri_a_monotributo`. Ausente = el default. */
+  riAMonotributo?: unknown;
 }
 
 export interface ResultadoDeterminacion {
@@ -82,10 +84,15 @@ export type NotaCredito =
  * Monotributo. Acá está puesta en B, que es lo que se desprende del criterio
  * de fondo (un monotributista no computa crédito fiscal, así que no necesita
  * la A). Es la única celda de la matriz donde el criterio y la costumbre
- * pueden no coincidir, y está aislada en una constante justamente para que
- * cambiarla sea una línea y no una cacería.
+ * pueden no coincidir, y por eso es CONFIGURABLE por comercio
+ * (`configuracion_pos.arca_ri_a_monotributo`, ver `riAMonotributo` en la
+ * entrada): cada contador la fija. Este es el default.
  */
 export const RI_A_MONOTRIBUTO: "FACTURA_A" | "FACTURA_B" = "FACTURA_B";
+
+export function normalizarRiAMonotributo(valor: unknown): "FACTURA_A" | "FACTURA_B" {
+  return valor === "FACTURA_A" ? "FACTURA_A" : RI_A_MONOTRIBUTO;
+}
 
 const MATRIZ: Record<
   "Responsable Inscripto" | "Monotributo" | "Exento",
@@ -193,7 +200,10 @@ export function determinarComprobanteFiscal(
     ? (entrada.condicionIvaReceptor as CondicionIva)
     : "SIN_DATOS";
 
-  const letra = MATRIZ[entrada.condicionIvaEmisor][receptor];
+  const letra =
+    entrada.condicionIvaEmisor === "Responsable Inscripto" && receptor === "Monotributo"
+      ? normalizarRiAMonotributo(entrada.riAMonotributo)
+      : MATRIZ[entrada.condicionIvaEmisor][receptor];
 
   // El comprobante por defecto es una PREFERENCIA del comercio, no una orden:
   // solo se respeta si la matriz lo habilita para este receptor. Un comercio

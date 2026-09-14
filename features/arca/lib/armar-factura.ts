@@ -41,11 +41,12 @@ import {
  * exento emiten C con `ImpNeto = total` e `ImpIVA = 0`, sin array de IVA —
  * es lo que ARCA espera para la C y lo que dice el papel.
  *
- * LOS RECARGOS (por método de pago y por cuenta corriente) van GRAVADOS AL
- * 21% en las facturas A y B. Es la lectura estándar para un recargo
- * financiero facturado junto con la venta, pero es una decisión fiscal y hay
- * que confirmarla con el contador antes de facturar en PRODUCCION. Está
- * aislada en `TRATAMIENTO_IVA_RECARGOS` para que cambiarla sea una línea.
+ * LOS RECARGOS (por método de pago y por cuenta corriente) van por defecto
+ * GRAVADOS AL 21% en las facturas A y B — la lectura estándar para un
+ * recargo financiero facturado con la venta—, pero es una decisión fiscal de
+ * cada contador: se configura por comercio (`arca_recargos_iva`) y llega en
+ * `tratamientoRecargos`. Lo mismo el tope de consumidor final sin
+ * identificar (`topeConsumidorFinal`), que lo fija ARCA por resolución.
  */
 
 export const TRATAMIENTO_IVA_RECARGOS = "GRAVADO_21" as const;
@@ -95,6 +96,10 @@ export interface EntradaFactura {
   fecha: Date;
   /** Solo notas de crédito: la factura que compensan. */
   comprobantesAsociados?: ComprobanteAsociado[];
+  /** Tratamiento de IVA de los recargos. Ausente = `TRATAMIENTO_IVA_RECARGOS`. */
+  tratamientoRecargos?: unknown;
+  /** Tope para consumidor final sin DNI/CUIT. Ausente = el del sistema. */
+  topeConsumidorFinal?: number | null;
   /**
    * Desglose YA CALCULADO, para una nota de crédito que anula una factura
    * entera: se copian los importes congelados de la factura original en vez
@@ -183,6 +188,7 @@ function resolverReceptor(
   tipo: TipoFiscal,
   receptor: ReceptorFiscal | null,
   total: number,
+  tope: number,
 ): { docTipo: number; docNro: string; condicionIvaReceptorId: number } {
   const cuit = soloDigitos(receptor?.cuit ?? null);
   const dni = soloDigitos(receptor?.dni ?? null);
@@ -207,13 +213,10 @@ function resolverReceptor(
     docNro = dni;
   }
 
-  if (
-    docTipo === DOC_TIPO.CONSUMIDOR_FINAL &&
-    total > TOPE_CONSUMIDOR_FINAL_SIN_IDENTIFICAR
-  ) {
+  if (docTipo === DOC_TIPO.CONSUMIDOR_FINAL && total > tope) {
     throw new ErrorFactura(
       "RECEPTOR_NO_IDENTIFICADO",
-      `Una venta de más de $${TOPE_CONSUMIDOR_FINAL_SIN_IDENTIFICAR.toLocaleString("es-AR")} necesita identificar al cliente con DNI o CUIT.`,
+      `Una venta de más de ${tope.toLocaleString("es-AR")} necesita identificar al cliente con DNI o CUIT.`,
     );
   }
 
@@ -241,7 +244,11 @@ export function armarFactura(entrada: EntradaFactura): {
   }
 
   const total = redondear(entrada.total);
-  const receptor = resolverReceptor(entrada.tipo, entrada.receptor, total);
+  const tope =
+    entrada.topeConsumidorFinal && entrada.topeConsumidorFinal > 0
+      ? entrada.topeConsumidorFinal
+      : TOPE_CONSUMIDOR_FINAL_SIN_IDENTIFICAR;
+  const receptor = resolverReceptor(entrada.tipo, entrada.receptor, total, tope);
 
   let impTotConc = 0;
   let impOpEx = 0;
@@ -289,7 +296,7 @@ export function armarFactura(entrada: EntradaFactura): {
       sumar(r.tratamientoIva, r.precioFinal * r.cantidad);
     }
     if (entrada.recargos > 0) {
-      sumar(TRATAMIENTO_IVA_RECARGOS, entrada.recargos);
+      sumar(entrada.tratamientoRecargos ?? TRATAMIENTO_IVA_RECARGOS, entrada.recargos);
     }
 
     impOpEx = redondear(impOpEx);

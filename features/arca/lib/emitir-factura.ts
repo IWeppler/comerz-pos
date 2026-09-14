@@ -60,6 +60,8 @@ export interface EntradaEmision {
   comprobantesAsociados?: ComprobanteAsociado[];
   /** Ver `EntradaFactura.desgloseFijo`: para la nota de crédito. */
   desgloseFijo?: EntradaFactura["desgloseFijo"];
+  tratamientoRecargos?: unknown;
+  topeConsumidorFinal?: number | null;
 }
 
 export interface FacturaEmitida {
@@ -154,6 +156,8 @@ export async function emitirFacturaArca(
         fecha: entrada.fecha,
         comprobantesAsociados: entrada.comprobantesAsociados,
         desgloseFijo: entrada.desgloseFijo,
+        tratamientoRecargos: entrada.tratamientoRecargos,
+        topeConsumidorFinal: entrada.topeConsumidorFinal,
       });
     } catch (e) {
       if (e instanceof ErrorFactura) {

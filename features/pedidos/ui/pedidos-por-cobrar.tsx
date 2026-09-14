@@ -45,12 +45,19 @@ export function PedidosPorCobrar({
   negocioId,
   puedeCobrar,
   onCargar,
+  variante = "header",
 }: Readonly<{
   negocioId: string | null;
   puedeCobrar: boolean;
   /** El panel carga el pedido al ticket con TODO su contexto (cliente,
    * pago, promo, factura) y abre el paso de pago. */
   onCargar: (pedido: PedidoPorCobrar) => void;
+  /**
+   * "flotante": botón fijo abajo a la derecha, para tablet y celular, donde
+   * el header del ticket vive adentro de un panel que solo se abre con
+   * productos en el carrito — la cajera con el carrito vacío no lo veía.
+   */
+  variante?: "header" | "flotante";
 }>) {
   const [abierto, setAbierto] = useState(false);
   const [cancelando, setCancelando] = useState<string | null>(null);
@@ -98,13 +105,25 @@ export function PedidosPorCobrar({
       <button
         type="button"
         onClick={() => setAbierto(true)}
-        className="relative -my-2 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+        className={
+          variante === "flotante"
+            ? `fixed right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold shadow-lg cursor-pointer transition-colors ${
+                pedidos.length > 0
+                  ? "bg-primary text-white hover:bg-primary/90"
+                  : "bg-sidebar text-muted-foreground hover:text-foreground"
+              } bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6`
+            : "relative -my-2 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+        }
         aria-label="Pedidos por cobrar"
       >
-        <ClipboardList className="h-4 w-4" />
+        <ClipboardList className={variante === "flotante" ? "h-5 w-5" : "h-4 w-4"} />
         Por cobrar
         {pedidos.length > 0 && (
-          <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[11px] font-bold text-white">
+          <span
+            className={`ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
+              variante === "flotante" ? "bg-white text-primary" : "bg-primary text-white"
+            }`}
+          >
             {pedidos.length}
           </span>
         )}

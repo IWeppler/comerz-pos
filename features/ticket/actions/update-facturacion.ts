@@ -4,6 +4,8 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+import { normalizarTratamientoIva } from "@/shared/lib/fiscal-producto";
+import { normalizarRiAMonotributo } from "@/shared/lib/determinar-comprobante";
 import {
   comprobanteDefectoEsValido,
   ETIQUETA_COMPROBANTE,
@@ -63,6 +65,34 @@ export async function updateFacturacionAction(
   const facturarCrudo = formData.get("facturar_por_defecto");
   const facturar_por_defecto =
     facturarCrudo === null ? undefined : facturarCrudo === "true";
+
+  // Criterios del contador. Solo se montan con modo ARCA; fail-closed a los
+  // defaults ante cualquier valor raro. El tope vacío es NULL (= sistema).
+  const recargosCrudo = formData.get("arca_recargos_iva");
+  const arca_recargos_iva =
+    recargosCrudo === null
+      ? undefined
+      : normalizarTratamientoIva(recargosCrudo);
+  const riCrudo = formData.get("arca_ri_a_monotributo");
+  const arca_ri_a_monotributo =
+    riCrudo === null ? undefined : normalizarRiAMonotributo(riCrudo);
+  const topeCrudo = formData.get("arca_tope_consumidor_final");
+  let arca_tope_consumidor_final: number | null | undefined = undefined;
+  if (topeCrudo !== null) {
+    const limpio = String(topeCrudo).replaceAll(/[.\s$]/g, "").replace(",", ".").trim();
+    if (limpio === "") {
+      arca_tope_consumidor_final = null;
+    } else {
+      const n = Number(limpio);
+      if (!Number.isFinite(n) || n <= 0) {
+        return {
+          error: "El tope a consumidor final tiene que ser un importe mayor a 0, o vacío.",
+          success: false,
+        };
+      }
+      arca_tope_consumidor_final = n;
+    }
+  }
   const punto_venta = parsePuntoVenta(puntoVentaCrudo);
 
   // parsePuntoVenta devuelve null tanto para "vacío" (legítimo) como para
@@ -126,6 +156,9 @@ export async function updateFacturacionAction(
       comprobante_defecto,
       punto_venta,
       ...(facturar_por_defecto === undefined ? {} : { facturar_por_defecto }),
+      ...(arca_recargos_iva === undefined ? {} : { arca_recargos_iva }),
+      ...(arca_ri_a_monotributo === undefined ? {} : { arca_ri_a_monotributo }),
+      ...(arca_tope_consumidor_final === undefined ? {} : { arca_tope_consumidor_final }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);

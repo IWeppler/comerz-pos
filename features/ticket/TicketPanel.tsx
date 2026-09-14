@@ -36,6 +36,11 @@ import {
   normalizarTipoComprobante,
 } from "@/shared/lib/facturacion";
 import { updateFacturacionAction } from "./actions/update-facturacion";
+import {
+  DEFINICION_TRATAMIENTO_IVA,
+  TRATAMIENTOS_IVA,
+} from "@/shared/lib/fiscal-producto";
+import { TOPE_CONSUMIDOR_FINAL_SIN_IDENTIFICAR } from "@/features/arca/lib/codigos-arca";
 import { ArcaConexion } from "@/features/arca/ui/arca-conexion";
 
 interface TicketPanelProps {
@@ -56,6 +61,12 @@ export function TicketPanel({ config, puedeEditar }: Readonly<TicketPanelProps>)
   );
   const [facturarPorDefecto, setFacturarPorDefecto] = useState(
     config?.facturar_por_defecto ?? true,
+  );
+  const [recargosIva, setRecargosIva] = useState(
+    config?.arca_recargos_iva ?? "GRAVADO_21",
+  );
+  const [riAMonotributo, setRiAMonotributo] = useState<string>(
+    config?.arca_ri_a_monotributo ?? "FACTURA_B",
   );
 
   const permitidos = comprobantesPermitidos(modo, config?.condicion_iva);
@@ -221,6 +232,100 @@ export function TicketPanel({ config, puedeEditar }: Readonly<TicketPanelProps>)
               </p>
             </div>
           </div>
+
+          {/* === 2ter. CRITERIOS DEL CONTADOR === */}
+          {modo === "ARCA" && (
+            <div className="rounded-xl border border-border p-4 space-y-4">
+              <div>
+                <Label className="text-sm font-semibold">Criterios fiscales</Label>
+                <p className="text-xs text-muted-foreground">
+                  Tres decisiones que dependen de cada contador o de la
+                  resolución vigente de ARCA. Los valores por defecto son los
+                  más habituales; confirmalos antes de facturar en producción.
+                </p>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="arca_recargos_iva">
+                    IVA de los recargos (tarjeta, cuenta corriente)
+                  </Label>
+                  <input type="hidden" name="arca_recargos_iva" value={recargosIva} />
+                  <Select
+                    value={recargosIva}
+                    onValueChange={setRecargosIva}
+                    disabled={!puedeEditar}
+                  >
+                    <SelectTrigger id="arca_recargos_iva">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {TRATAMIENTOS_IVA.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {DEFINICION_TRATAMIENTO_IVA[t].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Cómo se declara en la factura A/B el recargo que se le
+                    cobra al cliente. Lo habitual es 21%.
+                  </p>
+                </div>
+
+                {config?.condicion_iva === "Responsable Inscripto" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="arca_ri_a_monotributo">
+                      Cuando le vendés a un monotributista
+                    </Label>
+                    <input
+                      type="hidden"
+                      name="arca_ri_a_monotributo"
+                      value={riAMonotributo}
+                    />
+                    <Select
+                      value={riAMonotributo}
+                      onValueChange={setRiAMonotributo}
+                      disabled={!puedeEditar}
+                    >
+                      <SelectTrigger id="arca_ri_a_monotributo">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="FACTURA_B">Factura B</SelectItem>
+                        <SelectItem value="FACTURA_A">Factura A</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      El monotributista no computa crédito fiscal, por eso el
+                      default es B. Algunos contadores piden A.
+                    </p>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <Label htmlFor="arca_tope_consumidor_final">
+                    Tope a consumidor final sin DNI
+                  </Label>
+                  <Input
+                    id="arca_tope_consumidor_final"
+                    name="arca_tope_consumidor_final"
+                    inputMode="numeric"
+                    placeholder={TOPE_CONSUMIDOR_FINAL_SIN_IDENTIFICAR.toLocaleString("es-AR")}
+                    defaultValue={config?.arca_tope_consumidor_final ?? ""}
+                    disabled={!puedeEditar}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Por encima de este importe ARCA exige DNI o CUIT del
+                    cliente. Vacío = el valor del sistema (
+                    {TOPE_CONSUMIDOR_FINAL_SIN_IDENTIFICAR.toLocaleString("es-AR")}
+                    ), que se actualiza con cada resolución.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* === 2bis. FACTURAR POR DEFECTO === */}
           {modo === "ARCA" && (

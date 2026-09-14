@@ -136,4 +136,8 @@ export interface ConfiguracionPOS {
   arca_ambiente?: "HOMOLOGACION" | "PRODUCCION";
   /** Varios puestos, una caja: el POS ofrece "Enviar a caja". */
   pedidos_a_caja?: boolean;
+  /** Criterios fiscales que confirma el contador (solo con modo ARCA). */
+  arca_recargos_iva?: string;
+  arca_ri_a_monotributo?: "FACTURA_A" | "FACTURA_B";
+  arca_tope_consumidor_final?: number | null;
 }

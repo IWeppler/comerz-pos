@@ -949,7 +949,9 @@ export function CartPanelAdmin({
     setFacturarElegido(ctx.facturar ?? null);
     setPedidoActivo({ id: p.id, numero: p.numero, vendedor: p.vendedor_nombre });
     setCheckoutStep("PAYMENT");
+    // Abre el ticket en el layout que sea: sheet en tablet, drawer en celular.
     setIsOpen(true);
+    setPhoneCartOpen(true);
   };
 
   const handleConfirmarVentaPOS = (
@@ -1395,8 +1397,9 @@ export function CartPanelAdmin({
             : undefined
         }
         accion={
-          // La cola es de la caja: quien no cobra no la ve, solo manda.
-          pedidosACaja && puedeCobrar ? (
+          // La cola es de la caja: quien no cobra no la ve, solo manda. En
+          // tablet/celular va como botón flotante (ver más abajo).
+          pedidosACaja && puedeCobrar && !isMobileLayout ? (
             <PedidosPorCobrar
               negocioId={negocioId}
               puedeCobrar={puedeCobrar}
@@ -1556,6 +1559,20 @@ export function CartPanelAdmin({
           {CartContent}
         </SheetContent>
       </Sheet>
+
+      {/* Tablet y celular: la cola de la caja como botón flotante. Adentro
+          del sheet/drawer no se ve hasta abrir el ticket, y con el carrito
+          vacío no hay nada que abrir: la cajera no se enteraba de los
+          pedidos. Una sola instancia por layout: en escritorio va en el
+          header del ticket. */}
+      {isMobileLayout && pedidosACaja && puedeCobrar && (
+        <PedidosPorCobrar
+          negocioId={negocioId}
+          puedeCobrar={puedeCobrar}
+          onCargar={cargarPedido}
+          variante="flotante"
+        />
+      )}
 
       {/* Celular (<640px): barra fija inferior con total + contador —
           agregar un producto solo actualiza esta barra, nunca abre el

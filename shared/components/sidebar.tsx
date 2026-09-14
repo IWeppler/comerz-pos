@@ -125,10 +125,12 @@ export function Sidebar({
       ...group,
       items: group.items.filter((item) => {
         if (item.adminOnly && userRole !== "ADMIN") return false;
+        // Caja solo para quien la opera. El corte real está en la página.
+        if (item.href === "/caja" && !puedeOperarCaja && userRole !== "ADMIN") return false;
         return true;
       }),
     })).filter((group) => group.items.length > 0);
-  }, [userRole]);
+  }, [userRole, puedeOperarCaja]);
 
   // En móvil el menú tapa la pantalla: al entrar a un módulo tiene que cerrarse
   // solo. Se hace por cambio de ruta y no con un onClick por link para que
