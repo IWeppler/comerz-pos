@@ -20,11 +20,17 @@ export async function actualizarRolEmpleadoAction(
     return { error: "No tenés permisos para gestionar empleados.", success: false };
   }
 
-  const { data: roles, error: rolesError } = await supabase
-    .from("roles")
-    .select("id, nombre");
+  const [{ data: roles, error: rolesError }, { data: negocioActual }] =
+    await Promise.all([
+      supabase.from("roles").select("id, nombre"),
+      supabase.rpc("negocio_actual"),
+    ]);
   if (rolesError || !roles) {
     return { error: "No se pudo cargar el catálogo de roles.", success: false };
+  }
+  const negocioId = (negocioActual as string | null) ?? null;
+  if (!negocioId) {
+    return { error: "No hay negocio activo.", success: false };
   }
 
   const rolAdmin = roles.find((r) => r.nombre === "ADMIN");
@@ -35,10 +41,15 @@ export async function actualizarRolEmpleadoAction(
 
   // El rol vive en la membresía: el mismo usuario puede ser ADMIN acá y
   // VENDEDOR en otro negocio, así que se edita la fila de ESTE negocio.
+  // Filtrado por negocio a mano: `usuarios_negocios` no tiene la policy
+  // restrictiva de aislamiento y el super admin la ve entera. Sin esto, en
+  // modo dios un usuario con dos negocios devolvía dos filas y el `.single()`
+  // fallaba — o peor, editaba la membresía del otro negocio.
   const { data: membresiaActual, error: membresiaError } = await supabase
     .from("usuarios_negocios")
     .select("id, rol_id")
     .eq("usuario_id", perfilId)
+    .eq("negocio_id", negocioId)
     .single();
   if (membresiaError || !membresiaActual) {
     return { error: "No se encontró el empleado a modificar.", success: false };
@@ -52,7 +63,8 @@ export async function actualizarRolEmpleadoAction(
     const { count: cantidadAdmins } = await supabase
       .from("usuarios_negocios")
       .select("id", { count: "exact", head: true })
-      .eq("rol_id", rolAdmin.id);
+      .eq("rol_id", rolAdmin.id)
+      .eq("negocio_id", negocioId);
 
     if ((cantidadAdmins ?? 0) <= 1) {
       return {

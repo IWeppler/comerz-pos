@@ -45,7 +45,17 @@ export default async function ConfiguracionPage() {
   let uso: UsoDelPlan | null = null;
 
   if (isAdmin) {
-    uso = await getUsoDelPlanAction();
+    // `usuarios_negocios` NO tiene la policy restrictiva de aislamiento (es
+    // la tabla de membresías: el selector de negocio la lee entera) y el
+    // super admin la ve toda por policy propia. Sin el filtro explícito, en
+    // modo dios esta pantalla listaba a TODOS los usuarios del SaaS como
+    // empleados del negocio. El id sale de la base, no de la cookie.
+    const [{ data: negocioActual }, usoRes] = await Promise.all([
+      supabase.rpc("negocio_actual"),
+      getUsoDelPlanAction(),
+    ]);
+    uso = usoRes;
+    const negocioId = (negocioActual as string | null) ?? null;
     const [
       empleadosRes,
       rolesRes,
@@ -58,6 +68,7 @@ export default async function ConfiguracionPage() {
         supabase
           .from("usuarios_negocios")
           .select("usuario_id, rol_id, perfiles(nombre, email), roles(nombre)")
+          .eq("negocio_id", negocioId ?? "00000000-0000-0000-0000-000000000000")
           .order("created_at", { ascending: true }),
         supabase.from("roles").select("id, nombre, es_sistema"),
         supabase
