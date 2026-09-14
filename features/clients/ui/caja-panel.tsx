@@ -193,6 +193,7 @@ export function CajaConfigPanel({ config }: Readonly<CajaConfigPanelProps>) {
                 className="mt-1"
               />
             </div>
+
           </div>
         </div>
       </div>

@@ -125,8 +125,8 @@ describe("parsePuntoVenta", () => {
 
 describe("formatearNumeroComprobante", () => {
   it("usa el formato que se lee en cualquier factura", () => {
-    expect(formatearNumeroComprobante(1, 123)).toBe("0001-00000123");
-    expect(formatearNumeroComprobante(4, 1)).toBe("0004-00000001");
+    expect(formatearNumeroComprobante(1, 123)).toBe("00001-00000123");
+    expect(formatearNumeroComprobante(4, 1)).toBe("00004-00000001");
   });
 
   it("no recorta un punto de venta de 5 dígitos", () => {

@@ -69,13 +69,17 @@ const ImportarPedidoModal = dynamic(
 import type { Rubro } from "@/entities/config/types";
 const CrearProductoSheet = dynamic(
   () =>
-    import("@/features/stock/ui/create-sheet").then((m) => m.CrearProductoSheet),
+    import("@/features/stock/ui/create-sheet").then(
+      (m) => m.CrearProductoSheet,
+    ),
   { ssr: false },
 );
 
 const IngresarMercaderiaModal = dynamic(
   () =>
-    import("./ingresar-mercaderia-modal").then((m) => m.IngresarMercaderiaModal),
+    import("./ingresar-mercaderia-modal").then(
+      (m) => m.IngresarMercaderiaModal,
+    ),
   { ssr: false },
 );
 
@@ -88,11 +92,13 @@ const UpdatePricesModal = dynamic(
 );
 import { PriceHistoryModal } from "./price-history-modal";
 import { ShareButton } from "@/shared/components/share-button";
-import {
-  construirUrlCategoria,
-} from "@/shared/utils/compartir-catalogo";
+import { construirUrlCategoria } from "@/shared/utils/compartir-catalogo";
 
-export type CategoriaToolbarHijo = { nombre: string; value: string; count: number };
+export type CategoriaToolbarHijo = {
+  nombre: string;
+  value: string;
+  count: number;
+};
 
 export type CategoriaToolbar = CategoriaToolbarHijo & {
   /** Presente y no-vacío = esta categoría es un "padre" — al seleccionarla
@@ -406,9 +412,7 @@ export function StockFiltersToolbar({
               size="sm"
               onClick={onCargaRapida}
               className={`hidden sm:flex h-10 w-10 sm:w-auto p-0 sm:px-3 shrink-0 ${
-                cargaRapidaActiva
-                  ? ""
-                  : "border-border/60 bg-background"
+                cargaRapidaActiva ? "" : "border-border/60 bg-background"
               }`}
               title="Cargar mercadería sin salir de la venta"
             >
@@ -627,146 +631,156 @@ export function StockFiltersToolbar({
           {filaSecundaria}
         </div>
       ) : (
-      (() => {
-        const padreEnVista = categoriasDisponibles.find((c) => {
-          if (!c.hijos || c.hijos.length === 0) return false;
-          if (c.value === categoriaActiva) return true;
-          return c.hijos.some((h) => h.value === categoriaActiva);
-        });
+        (() => {
+          const padreEnVista = categoriasDisponibles.find((c) => {
+            if (!c.hijos || c.hijos.length === 0) return false;
+            if (c.value === categoriaActiva) return true;
+            return c.hijos.some((h) => h.value === categoriaActiva);
+          });
 
-        return (
-          <div className="flex w-full min-w-0 items-start gap-2 overflow-hidden mt-4 md:mt-2 px-2">
-            <div
-              ref={filaCategoriasRef}
-              {...dragCategorias}
-              // `touch-pan-x` deja el pan táctil en manos del navegador (con
-              // su inercia) y solo evita que el gesto horizontal se lo robe
-              // el scroll vertical de la página.
-              className="flex min-w-0 flex-1 gap-2 overflow-x-auto touch-pan-x pb-2 scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-1 sm:px-0"
-            >
-              {padreEnVista ? (
-                <>
-                  {/* La pill de volver es STICKY, así que las subcategorías le
+          return (
+            <div className="flex w-full min-w-0 items-start gap-2 overflow-hidden mt-4 md:mt-2 px-2">
+              <div
+                ref={filaCategoriasRef}
+                {...dragCategorias}
+                // `touch-pan-x` deja el pan táctil en manos del navegador (con
+                // su inercia) y solo evita que el gesto horizontal se lo robe
+                // el scroll vertical de la página.
+                className="flex min-w-0 flex-1 gap-2 overflow-x-auto touch-pan-x pb-2 scrollbar-hide [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] px-1 sm:px-0"
+              >
+                {padreEnVista ? (
+                  <>
+                    {/* La pill de volver es STICKY, así que las subcategorías le
                       pasan por debajo: su fondo tiene que ser 100% opaco. El
                       `dark:` es obligatorio — la variante outline trae
                       `dark:bg-input/30` y twMerge NO lo pisa con un
                       `bg-background` sin modificador, así que en modo oscuro
                       quedaba al 30% y el texto se volvía ilegible al deslizar. */}
-                  <Button
-                    variant="outline"
-                    className="rounded-full h-10 px-4 text-xs font-semibold shrink-0 shadow-none border-border/60 sticky left-0 z-10 bg-background dark:bg-background hover:bg-muted dark:hover:bg-muted gap-1.5 text-muted-foreground hover:text-foreground"
-                    onClick={() => onCategoriaChange("todos")}
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5" />
-                    {padreEnVista.nombre}
-                  </Button>
+                    <Button
+                      variant="outline"
+                      className="rounded-full h-10 px-4 text-xs font-semibold shrink-0 shadow-none border-border/60 sticky left-0 z-10 bg-background dark:bg-background hover:bg-muted dark:hover:bg-muted gap-1.5 text-muted-foreground hover:text-foreground"
+                      onClick={() => onCategoriaChange("todos")}
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      {padreEnVista.nombre}
+                    </Button>
 
-                  {padreEnVista.hijos!.map((hijo) => {
-                    const isActive = categoriaActiva === hijo.value;
-                    return (
-                      <Button
-                        key={hijo.value}
-                        variant={isActive ? "default" : "outline"}
-                        className={`rounded-full bg-blue-500 h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
-                          isActive
-                            ? "bg-foreground text-background border-transparent"
-                            : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                        }`}
-                        onClick={() => onCategoriaChange(hijo.value)}
-                      >
-                        {hijo.nombre} ({hijo.count})
-                      </Button>
-                    );
-                  })}
-
-                  <Button
-                    variant={categoriaActiva === padreEnVista.value ? "default" : "outline"}
-                    className={`rounded-full bg-red-500 h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
-                      categoriaActiva === padreEnVista.value
-                        ? "bg-foreground text-background border-transparent"
-                        : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                    onClick={() => onCategoriaChange(padreEnVista.value)}
-                  >
-                    Todo {padreEnVista.nombre}
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant={categoriaActiva === "todos" ? "default" : "outline"}
-                    className={`rounded-full bg-green-500 h-10 px-4 text-xs font-semibold shrink-0 shadow-none border-border/60 ${
-                      categoriaActiva === "todos"
-                        ? "bg-foreground text-background border-transparent"
-                        : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                    onClick={() => onCategoriaChange("todos")}
-                  >
-                    {totalProductos === undefined ? "Todas" : `Todas (${totalProductos})`}
-                  </Button>
-
-                  {categoriasDisponibles.map((categoria) => {
-                    const esPadre = (categoria.hijos?.length ?? 0) > 0;
-                    const isActive =
-                      categoriaActiva.toLowerCase() === categoria.value.toLowerCase();
-
-                    return (
-                      <Button
-                        key={categoria.value}
-                        variant="outline"
-                        className={`rounded-full h-10 px-4 text-xs font-semibold bg-blue-500 shrink-0 transition-colors shadow-none gap-1.5 ${
-                          esPadre
-                            ? "border-primary/30 bg-background text-foreground font-bold hover:bg-primary/10"
-                            : isActive
+                    {padreEnVista.hijos!.map((hijo) => {
+                      const isActive = categoriaActiva === hijo.value;
+                      return (
+                        <Button
+                          key={hijo.value}
+                          variant={isActive ? "default" : "outline"}
+                          className={`rounded-full bg-primary h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
+                            isActive
                               ? "bg-foreground text-background border-transparent"
-                              : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground border-border/60"
-                        }`}
-                        onClick={() => onCategoriaChange(categoria.value)}
-                      >
-                        {/* {esPadre && <FolderOpen className="w-3.5 h-3.5 text-primary" />} */}
-                        {categoria.nombre} ({categoria.count})
-                      </Button>
-                    );
-                  })}
-                </>
+                              : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                          }`}
+                          onClick={() => onCategoriaChange(hijo.value)}
+                        >
+                          {hijo.nombre} ({hijo.count})
+                        </Button>
+                      );
+                    })}
+
+                    <Button
+                      variant={
+                        categoriaActiva === padreEnVista.value
+                          ? "default"
+                          : "outline"
+                      }
+                      className={`rounded-full bg-red-500 h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
+                        categoriaActiva === padreEnVista.value
+                          ? "bg-foreground text-background border-transparent"
+                          : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                      onClick={() => onCategoriaChange(padreEnVista.value)}
+                    >
+                      Todo {padreEnVista.nombre}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      variant={
+                        categoriaActiva === "todos" ? "default" : "outline"
+                      }
+                      className={`rounded-full bg-green-500 h-10 px-4 text-xs font-semibold shrink-0 shadow-none border-border/60 ${
+                        categoriaActiva === "todos"
+                          ? "bg-foreground text-background border-transparent"
+                          : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                      }`}
+                      onClick={() => onCategoriaChange("todos")}
+                    >
+                      {totalProductos === undefined
+                        ? "Todas"
+                        : `Todas (${totalProductos})`}
+                    </Button>
+
+                    {categoriasDisponibles.map((categoria) => {
+                      const esPadre = (categoria.hijos?.length ?? 0) > 0;
+                      const isActive =
+                        categoriaActiva.toLowerCase() ===
+                        categoria.value.toLowerCase();
+
+                      return (
+                        <Button
+                          key={categoria.value}
+                          variant="outline"
+                          className={`rounded-full h-10 px-4 text-xs font-semibold bg-primary shrink-0 transition-colors shadow-none gap-1.5 ${
+                            esPadre
+                              ? "border-primary/30 bg-background text-foreground font-bold hover:bg-primary/10"
+                              : isActive
+                                ? "bg-foreground text-background border-transparent"
+                                : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground border-border/60"
+                          }`}
+                          onClick={() => onCategoriaChange(categoria.value)}
+                        >
+                          {/* {esPadre && <FolderOpen className="w-3.5 h-3.5 text-primary" />} */}
+                          {categoria.nombre} ({categoria.count})
+                        </Button>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              {resultadosFueraDeCategoria > 0 &&
+                categoriaActiva !== "todos" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onCategoriaChange("todos")}
+                    className="h-8 mt-0 text-xs font-semibold text-muted-foreground hover:text-foreground shrink-0 hidden sm:flex items-center"
+                  >
+                    Ver {resultadosFueraDeCategoria} más
+                  </Button>
+                )}
+
+              {slugCategoriaActiva && (
+                <ShareButton
+                  url={construirUrlCategoria(slugNegocio, slugCategoriaActiva)}
+                  label="Compartir esta categoría"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 mt-0 text-xs font-bold shrink-0 hidden sm:flex items-center bg-background"
+                />
+              )}
+
+              {/* Botón de limpiar filtros si están activos */}
+              {hayFiltrosActivos && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onLimpiarFiltros}
+                  className="h-8 mt-0 text-xs font-bold text-muted-foreground hover:text-foreground shrink-0 hidden sm:flex items-center"
+                >
+                  <FilterX className="w-3.5 h-3.5 mr-1.5" /> Limpiar
+                </Button>
               )}
             </div>
-
-            {resultadosFueraDeCategoria > 0 && categoriaActiva !== "todos" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onCategoriaChange("todos")}
-                className="h-8 mt-0 text-xs font-semibold text-muted-foreground hover:text-foreground shrink-0 hidden sm:flex items-center"
-              >
-                Ver {resultadosFueraDeCategoria} más
-              </Button>
-            )}
-
-            {slugCategoriaActiva && (
-              <ShareButton
-                url={construirUrlCategoria(slugNegocio, slugCategoriaActiva)}
-                label="Compartir esta categoría"
-                variant="outline"
-                size="sm"
-                className="h-8 mt-0 text-xs font-bold shrink-0 hidden sm:flex items-center bg-background"
-              />
-            )}
-
-            {/* Botón de limpiar filtros si están activos */}
-            {hayFiltrosActivos && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={onLimpiarFiltros}
-                className="h-8 mt-0 text-xs font-bold text-muted-foreground hover:text-foreground shrink-0 hidden sm:flex items-center"
-              >
-                <FilterX className="w-3.5 h-3.5 mr-1.5" /> Limpiar
-              </Button>
-            )}
-          </div>
-        );
-      })()
+          );
+        })()
       )}
     </>
   );

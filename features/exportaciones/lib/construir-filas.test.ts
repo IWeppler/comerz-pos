@@ -78,7 +78,7 @@ describe("filasVentas", () => {
 
   it("imprime el número de comprobante con su formato", () => {
     const [f] = filasVentas([venta]);
-    expect(f.Comprobante).toBe("0001-00000042");
+    expect(f.Comprobante).toBe("00001-00000042");
     expect(f["Tipo comprobante"]).toBe("TICKET");
   });
 
@@ -138,7 +138,7 @@ describe("filasComprobantes", () => {
 
     expect(f.CAE).toBe("");
     expect(f["Vencimiento CAE"]).toBe("");
-    expect(f.Número).toBe("0001-00000007");
+    expect(f.Número).toBe("00001-00000007");
     expect(f.Receptor).toBe("Consumidor final");
     expect(f.Total).toBe(5000);
   });

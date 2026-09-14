@@ -138,9 +138,45 @@ export async function registrarVentaAction(
     .select(
       // `modo_caja` y `requiere_caja_abierta` son para el turno; el resto para
       // los pagos y para el comprobante del paso 11. Misma fila, una consulta.
-      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto",
+      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto, pedidos_a_caja",
     )
     .single();
+
+  // --- PEDIDO POR COBRAR (varios puntos, una caja) ---
+  //
+  // Con `pedidos_a_caja` prendido, cobrar exige `ventas.cobrar`: la
+  // vendedora sin permiso arma el pedido y lo manda a la caja, no cobra. El
+  // botón escondido no es control de acceso. Offline no se chequea: esa venta
+  // ya se cobró en el mostrador y solo se está subiendo.
+  //
+  // Si viene `pedido_id`, la venta queda a nombre de quien ARMÓ el pedido
+  // (`vendedor_id`), no de la cajera: las comisiones y el rendimiento por
+  // vendedora tienen que seguir diciendo quién vendió. La cajera queda en
+  // `pedidos.cobrado_por`.
+  const pedidoId = (formData.get("pedido_id") as string | null)?.trim() || null;
+  let vendedorId = user.id;
+  if (configVenta?.pedidos_a_caja && !esVentaOffline) {
+    if (!(await tienePermiso(supabase, PERMISOS.VENTAS_COBRAR))) {
+      return {
+        error: "No podés cobrar desde este puesto: enviá el pedido a la caja.",
+        success: false,
+      };
+    }
+  }
+  if (pedidoId) {
+    const { data: pedido } = await supabase
+      .from("pedidos")
+      .select("id, estado, vendedor_id")
+      .eq("id", pedidoId)
+      .maybeSingle();
+    if (!pedido || pedido.estado !== "POR_COBRAR") {
+      return {
+        error: "Ese pedido ya fue cobrado o cancelado. Revisá la lista de pedidos por cobrar.",
+        success: false,
+      };
+    }
+    vendedorId = pedido.vendedor_id;
+  }
 
   // --- PREÁMBULO DE LA VENTA, EN PARALELO ---
   //
@@ -1254,7 +1290,7 @@ export async function registrarVentaAction(
     // serializadas más arriba. Sin esto no habría forma de atar el aparato
     // a la venta antes de que la venta exista.
     id: ventaId,
-    vendedor_id: user.id,
+    vendedor_id: vendedorId,
     cliente_id: clienteId || null,
     turno_caja_id: turnoAbiertoId,
     estado_operacion: "CONFIRMADA",
@@ -1572,6 +1608,24 @@ export async function registrarVentaAction(
           }
         : null,
     };
+  }
+
+  // El pedido queda COBRADO con su venta. UPDATE condicional en la RPC: si
+  // otra caja lo cobró en el medio devuelve false, y la venta de acá igual
+  // existe — se loguea para que se vea el doble cobro, que es lo que la
+  // lista de pedidos existe para evitar.
+  if (pedidoId) {
+    const { data: marcado, error: errorPedido } = await supabase.rpc("cobrar_pedido", {
+      p_pedido_id: pedidoId,
+      p_venta_id: nuevaVenta.venta_id,
+    });
+    if (errorPedido || marcado !== true) {
+      console.error("[PEDIDOS] La venta se registró pero el pedido no quedó COBRADO", {
+        pedidoId,
+        ventaId: nuevaVenta.venta_id,
+        error: errorPedido,
+      });
+    }
   }
 
   // --- 11. EMITIR EL TICKET INTERNO ---

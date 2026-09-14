@@ -6,6 +6,9 @@ import { revalidatePath } from "next/cache";
 import { CajaActionState } from "@/entities/caja/types";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { normalizarTipoEgreso } from "@/features/caja/lib/tipo-egreso";
+import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+
+const SIN_PERMISO_CAJA = "No tenés permiso para operar la caja.";
 
 // ============================================================================
 // 2. ABRIR TURNO SEGÚN MODO
@@ -27,6 +30,11 @@ export async function abrirTurnoAction(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "No autorizado.", success: false };
+
+  // Un server action es un endpoint: el botón escondido no es control.
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_OPERAR))) {
+    return { error: SIN_PERMISO_CAJA, success: false };
+  }
 
   const { turnoId: turnoColisionId, modoCaja } = await resolverTurnoActivo(
     supabase,
@@ -83,6 +91,10 @@ export async function cerrarTurnoAction(
   } = await supabase.auth.getUser();
 
   if (!user) return { error: "No autorizado.", success: false };
+
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_OPERAR))) {
+    return { error: SIN_PERMISO_CAJA, success: false };
+  }
 
   const { data: turno, error: turnoError } = await supabase
     .from("turnos_caja")
@@ -287,6 +299,10 @@ export async function registrarEgresoAction(
 
   if (!user) {
     return { error: "No autorizado.", success: false };
+  }
+
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_OPERAR))) {
+    return { error: SIN_PERMISO_CAJA, success: false };
   }
 
   const { turnoId, requiereCajaAbierta } = await resolverTurnoActivo(

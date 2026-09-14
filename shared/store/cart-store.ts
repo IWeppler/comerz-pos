@@ -17,6 +17,13 @@ interface CartState {
    * y el ticket para mostrarla, re-preciar y mandarla con la venta.
    */
   listaPrecioId: string | null;
+  /**
+   * El pedido que la caja cargó al carrito para cobrar. Viaja con la venta
+   * (`pedido_id`) para que quede COBRADO y a nombre de quien lo armó. Se
+   * vacía con el carrito.
+   */
+  pedidoActivo: { id: string; numero: number; vendedor: string | null } | null;
+  setPedidoActivo: (pedido: CartState["pedidoActivo"]) => void;
 
   addItem: (item: CartItemStore) => void;
   removeItem: (productoId: string, variante: string) => void;
@@ -46,6 +53,8 @@ export const useCartStore = create<CartState>()(
       isOpen: false,
       negocioId: null,
       listaPrecioId: null,
+      pedidoActivo: null,
+      setPedidoActivo: (pedidoActivo) => set({ pedidoActivo }),
 
       addItem: (newItem) => {
         set((state) => {
@@ -119,7 +128,7 @@ export const useCartStore = create<CartState>()(
         }));
       },
 
-      clearCart: () => set({ items: [] }),
+      clearCart: () => set({ items: [], pedidoActivo: null }),
 
       /**
        * Cambia la lista Y los precios de las líneas EN LA MISMA ESCRITURA.

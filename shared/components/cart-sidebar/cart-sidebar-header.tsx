@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ArrowLeft, ShoppingBag, X } from "lucide-react";
 
 interface CartSidebarHeaderProps {
@@ -11,12 +12,15 @@ interface CartSidebarHeaderProps {
    * ninguna flecha, así que el carrito público no cambia.
    */
   onBack?: () => void;
+  /** Un control extra a la derecha del título (el POS pone "Por cobrar"). */
+  accion?: ReactNode;
 }
 
 export function CartSidebarHeader({
   isPOSMode,
   onClose,
   onBack,
+  accion,
 }: Readonly<CartSidebarHeaderProps>) {
   return (
     <div className="shrink-0 flex items-center justify-between p-4 border-b border-border">
@@ -46,6 +50,7 @@ export function CartSidebarHeader({
         )}
         <span className="truncate">{isPOSMode ? "Ticket" : "Tu Carrito"}</span>
       </h2>
+      {accion}
       <button
         type="button"
         onClick={onClose}

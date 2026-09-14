@@ -382,7 +382,7 @@ export function VentasTable({
       //
       // El `#` se ignora para que se pueda pegar el número tal como está
       // impreso, y el match es por `includes`: tipear "417" encuentra
-      // "0001-00000417" sin obligar a escribir los ceros.
+      // "00001-00000417" sin obligar a escribir los ceros.
       const busqueda = filtroNombre.toLowerCase().replace(/#/g, "").trim();
       const coincideBusqueda =
         busqueda === "" ||

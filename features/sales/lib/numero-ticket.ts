@@ -17,7 +17,7 @@ type VentaConComprobante = {
  *
  * La columna "Ticket" del historial mostraba el prefijo del UUID de la venta
  * (`#75DF84C3`) y el recibo impreso mostraba el número del comprobante
- * (`#0001-00000417`). Son la misma venta con dos nombres distintos y sin
+ * (`#00001-00000417`). Son la misma venta con dos nombres distintos y sin
  * ninguna relación entre ellos: con el papel en la mano era IMPOSIBLE
  * encontrar la fila, y al revés también. En un mostrador eso es no poder
  * contestar "¿me cambiás esto que compré ayer?".

@@ -97,6 +97,8 @@ interface SidebarProps {
   /** Permiso `clientes.cobrar_cc`. Solo viaja hasta el modal de caja, que es
    * donde vive uno de los dos accesos al cobro. */
   puedeCobrarCuentaCorriente?: boolean;
+  /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
+  puedeOperarCaja?: boolean;
 }
 
 export function Sidebar({
@@ -108,6 +110,7 @@ export function Sidebar({
   negocios = [],
   negocioActivoId,
   puedeCobrarCuentaCorriente = false,
+  puedeOperarCaja = true,
 }: Readonly<SidebarProps>) {
   const pathname = usePathname();
   const contextoPlan = useContextoPlan();
@@ -199,12 +202,14 @@ export function Sidebar({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          <CajaStatusButton
-            modoCaja={branding.modo_caja || "UNICA"}
-            userId={userId}
-            className="mr-1"
-            puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
-          />
+          {puedeOperarCaja && (
+            <CajaStatusButton
+              modoCaja={branding.modo_caja || "UNICA"}
+              userId={userId}
+              className="mr-1"
+              puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
+            />
+          )}
           <span className="hidden sm:block">
             <CartButton />
           </span>

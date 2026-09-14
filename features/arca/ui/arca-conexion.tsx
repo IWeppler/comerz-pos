@@ -18,6 +18,16 @@ import { Badge } from "@/shared/ui/badge";
 import { Label } from "@/shared/ui/label";
 import { Textarea } from "@/shared/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import type { AmbienteArca } from "../lib/codigos-arca";
 import type { EstadoCredenciales } from "../lib/credenciales";
 import { estadoCertificado } from "../lib/estado-certificado";
@@ -189,20 +199,19 @@ function TarjetaAmbiente({
   const [certificado, setCertificado] = useState("");
   const [pendiente, startTransition] = useTransition();
   const [prueba, setPrueba] = useState<string | null>(null);
+  /** Qué confirmación está abierta. Diálogo de la app, no `window.confirm`. */
+  const [confirmando, setConfirmando] = useState<"regenerar" | "borrar" | null>(null);
 
   const conectado = estado.tieneCertificado && !estado.certificadoVencido;
   const vencimiento = estadoCertificado(estado.certificadoVencimiento);
   const porVencer = vencimiento?.estado === "por_vencer";
 
   const generarCsr = () => {
-    if (
-      estado.tieneCertificado &&
-      !window.confirm(
-        "Generar un CSR nuevo invalida el certificado actual: vas a tener que pedir otro en ARCA. ¿Seguir?",
-      )
-    ) {
+    if (estado.tieneCertificado && confirmando !== "regenerar") {
+      setConfirmando("regenerar");
       return;
     }
+    setConfirmando(null);
     startTransition(async () => {
       const r = await generarCsrArcaAction(ambiente);
       if (r.ok) {
@@ -250,13 +259,11 @@ function TarjetaAmbiente({
   };
 
   const borrar = () => {
-    if (
-      !window.confirm(
-        `¿Borrar la clave y el certificado de ${ETIQUETA[ambiente].toLowerCase()}?`,
-      )
-    ) {
+    if (confirmando !== "borrar") {
+      setConfirmando("borrar");
       return;
     }
+    setConfirmando(null);
     startTransition(async () => {
       const r = await borrarCredencialesArcaAction(ambiente);
       if (r.ok) {
@@ -274,6 +281,34 @@ function TarjetaAmbiente({
         activo ? "border-primary/60" : "border-border"
       }`}
     >
+      <AlertDialog
+        open={confirmando !== null}
+        onOpenChange={(open) => !open && setConfirmando(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {confirmando === "borrar"
+                ? `¿Borrar las credenciales de ${ETIQUETA[ambiente].toLowerCase()}?`
+                : "¿Generar un CSR nuevo?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmando === "borrar"
+                ? "Se borran la clave privada y el certificado. Para volver a facturar hay que generar un CSR y pedir otro certificado en ARCA."
+                : "Un CSR nuevo invalida el certificado actual: vas a tener que pedir otro en ARCA y cargarlo. Hasta entonces la caja emite ticket interno."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => (confirmando === "borrar" ? borrar() : generarCsr())}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {confirmando === "borrar" ? "Borrar" : "Generar de nuevo"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2">
           <h4 className="font-semibold">{ETIQUETA[ambiente]}</h4>

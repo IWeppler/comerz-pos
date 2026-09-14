@@ -35,5 +35,7 @@ export const PERMISOS = {
   CONFIGURACION_FACTURACION: "configuracion.facturacion",
   VENTAS_ELEGIR_COMPROBANTE: "ventas.elegir_comprobante",
   VENTAS_ANULAR: "ventas.anular",
+  VENTAS_COBRAR: "ventas.cobrar",
+  CAJA_OPERAR: "caja.operar",
   REPORTES_VER_MODULO: "reportes.ver_modulo",
 } as const;

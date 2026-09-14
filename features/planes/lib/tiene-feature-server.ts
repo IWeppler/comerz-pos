@@ -39,4 +39,5 @@ export const FEATURES = {
   MULTICAJA: "multicaja",
   ROLES: "roles",
   AUDITORIA: "auditoria",
+  PEDIDOS_A_CAJA: "pedidos_a_caja",
 } as const;

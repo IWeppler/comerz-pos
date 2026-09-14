@@ -10,7 +10,7 @@ describe("numeroTicketVenta", () => {
         id: ID,
         comprobantes: [{ punto_venta: 1, numero: 417 }],
       }),
-    ).toBe("0001-00000417");
+    ).toBe("00001-00000417");
   });
 
   it("cae al prefijo del UUID cuando la venta no tiene comprobante", () => {
@@ -29,7 +29,7 @@ describe("numeroTicketVenta", () => {
           { punto_venta: 1, numero: 998 },
         ],
       }),
-    ).toBe("0001-00000417");
+    ).toBe("00001-00000417");
   });
 
   it("tolera el embed sin array, que es como lo devuelve un to-one", () => {
@@ -38,7 +38,7 @@ describe("numeroTicketVenta", () => {
         id: ID,
         comprobantes: { punto_venta: 3, numero: 12 },
       }),
-    ).toBe("0003-00000012");
+    ).toBe("00003-00000012");
   });
 
   it("cae al respaldo si el comprobante está a medio cargar", () => {

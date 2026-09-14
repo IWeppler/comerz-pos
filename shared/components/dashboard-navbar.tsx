@@ -13,12 +13,15 @@ interface DashboardNavbarProps {
   /** Permiso `clientes.cobrar_cc`, para el acceso al cobro desde el modal de
    * caja. Ver CajaQuickModal. */
   puedeCobrarCuentaCorriente?: boolean;
+  /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
+  puedeOperarCaja?: boolean;
 }
 
 export function DashboardNavbar({
   modoCaja,
   userId,
   puedeCobrarCuentaCorriente = false,
+  puedeOperarCaja = true,
 }: Readonly<DashboardNavbarProps>) {
   const { toggleSidebar } = useSidebarStore();
   const pathname = usePathname();
@@ -128,11 +131,13 @@ export function DashboardNavbar({
           {esMac ? "⌘" : "Ctrl"} + K
         </kbd>
       </button>
-      <CajaStatusButton
-        modoCaja={modoCaja}
-        userId={userId}
-        puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
-      />
+      {puedeOperarCaja && (
+        <CajaStatusButton
+          modoCaja={modoCaja}
+          userId={userId}
+          puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
+        />
+      )}
     </header>
   );
 }

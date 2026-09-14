@@ -33,7 +33,7 @@ describe("comprobante fiscal en el ticket", () => {
     expect(tituloComprobante("NOTA_CREDITO_B")).toBe("NOTA DE CRÉDITO B");
     expect(codigoArcaComprobante("FACTURA_B")).toBe("006");
     expect(codigoArcaComprobante("FACTURA_A")).toBe("001");
-    expect(numeroComprobanteFiscal(base)).toBe("0001-00000012");
+    expect(numeroComprobanteFiscal(base)).toBe("00001-00000012");
   });
 
   it("solo la A discrimina IVA en el papel", () => {

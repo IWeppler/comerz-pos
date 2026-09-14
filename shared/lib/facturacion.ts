@@ -220,18 +220,20 @@ export function formatearPuntoVenta(valor: number | null | undefined): string {
 
 /**
  * Número de comprobante como se imprime: punto de venta y número separados
- * por guión, "0001-00000123". Es el formato que la gente reconoce de
- * cualquier factura, y el mismo que se usa para buscar un comprobante en
- * ARCA — vale la pena respetarlo incluso en el ticket interno.
+ * por guión, "00001-00000123". Es el formato oficial de ARCA —5 dígitos de
+ * punto de venta y 8 de número—, el que va en cualquier factura, en el
+ * libro de IVA y el que espera el contador. Se usa también en el ticket
+ * interno para que todo se vea igual.
  *
- * El punto de venta se rellena a 4 dígitos, que es el ancho clásico, pero no
- * se recorta: ARCA admite hasta 99999 y un punto de venta de 5 dígitos tiene
- * que imprimirse entero, no truncado.
+ * Hasta el 14/9/2026 el punto de venta iba a 4 dígitos ("0001-…"), que es
+ * el ancho de las facturas viejas de talonario. Con la facturación
+ * electrónica el ancho es 5 (`formatearPuntoVenta` ya lo decía). El número
+ * guardado no cambió: es solo el papel.
  */
 export function formatearNumeroComprobante(
   puntoVenta: number | null | undefined,
   numero: number | null | undefined,
 ): string | null {
   if (puntoVenta == null || numero == null) return null;
-  return `${String(puntoVenta).padStart(4, "0")}-${String(numero).padStart(8, "0")}`;
+  return `${String(puntoVenta).padStart(5, "0")}-${String(numero).padStart(8, "0")}`;
 }

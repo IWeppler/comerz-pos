@@ -16,6 +16,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { toast } from "sonner";
 import { registrarVentaAction } from "@/features/sales/actions/create-sale";
+import {
+  crearPedidoAction,
+  type PedidoPorCobrar,
+} from "@/features/pedidos/actions/pedidos";
+import { PedidosPorCobrar } from "@/features/pedidos/ui/pedidos-por-cobrar";
 import { encolarVenta } from "@/features/sales/lib/outbox-ventas";
 import { useVentasPendientesStore } from "@/shared/store/ventas-pendientes-store";
 import { esErrorDeRed } from "@/shared/lib/error-de-red";
@@ -71,8 +76,12 @@ export function CartPanelAdmin({
   numeroWhatsApp,
   rubro,
   puedeElegirComprobante = false,
+  puedeCobrar = true,
 }: Readonly<{
   numeroWhatsApp?: string;
+  /** Permiso `ventas.cobrar`. Solo importa con `pedidos_a_caja`: sin él,
+   * el único botón del ticket es "Enviar a caja". */
+  puedeCobrar?: boolean;
   /** Permiso `ventas.elegir_comprobante`. Solo decide si se muestra el
    * selector Factura / Ticket; el server vuelve a chequearlo. */
   puedeElegirComprobante?: boolean;
@@ -90,6 +99,9 @@ export function CartPanelAdmin({
     getTotalItems,
     clearCart,
     sincronizarNegocio,
+    pedidoActivo,
+    setPedidoActivo,
+    addItem,
   } = useCartStore(
     useShallow((state) => ({
       items: state.items,
@@ -101,6 +113,9 @@ export function CartPanelAdmin({
       getTotalItems: state.getTotalItems,
       clearCart: state.clearCart,
       sincronizarNegocio: state.sincronizarNegocio,
+      pedidoActivo: state.pedidoActivo,
+      setPedidoActivo: state.setPedidoActivo,
+      addItem: state.addItem,
     })),
   );
 
@@ -830,6 +845,113 @@ export function CartPanelAdmin({
     }, 1000);
   };
 
+  /**
+   * Varios puestos, una caja: el carrito se guarda como pedido con un número
+   * corto y se vacía. La caja lo ve en "Por cobrar". No toca stock ni caja:
+   * eso pasa recién al cobrar.
+   */
+  const pedidosACaja = Boolean(branding?.pedidos_a_caja);
+  const handleEnviarACaja = () => {
+    if (!items.length) {
+      toast.error("El carrito está vacío.");
+      return;
+    }
+    startTransition(async () => {
+      const r = await crearPedidoAction({
+        items,
+        clienteId: clienteSeleccionado?.id ?? null,
+        // Todo lo que ya se le preguntó al cliente viaja con el pedido: la
+        // caja no vuelve a preguntar nada, solo cobra.
+        contexto: {
+          isCuentaCorriente,
+          ccSinRecargo,
+          cliente: clienteSeleccionado
+            ? {
+                id: clienteSeleccionado.id,
+                nombre: clienteSeleccionado.nombre,
+                telefono: clienteSeleccionado.telefono ?? null,
+                exceptuado_entrega_minima:
+                  clienteSeleccionado.exceptuado_entrega_minima,
+                lista_precio_id: clienteSeleccionado.lista_precio_id ?? null,
+              }
+            : null,
+          pagos: pagosSincronizados,
+          modoMixto,
+          promocionId: promocionActivaId,
+          listaPrecioId: listaActiva?.id ?? null,
+          facturar: facturacionActiva ? facturar : null,
+        },
+      });
+      if (!r.success) {
+        toast.error(r.error);
+        return;
+      }
+      clearCartAndResetStep();
+      setClienteSeleccionado(null);
+      toast.success(`Pedido #${r.numero} enviado a la caja`, {
+        description: "Decile el número al cliente: con eso lo cobran en caja.",
+        duration: 10000,
+      });
+    });
+  };
+
+  /**
+   * La caja carga un pedido: renglones + el paso de cobro tal como lo dejó
+   * la vendedora, y se abre directo en PAYMENT. Lo que el pedido no trae
+   * (pedido viejo, o mandado sin pasar por el cobro) queda en el default.
+   */
+  const cargarPedido = (p: PedidoPorCobrar) => {
+    const ctx = p.contexto ?? {};
+    clearCart();
+    for (const i of p.items) {
+      addItem({
+        productoId: i.productoId,
+        nombre: i.nombre,
+        tipo: i.tipo,
+        variante: i.variante,
+        varianteId: i.varianteId,
+        precio: i.precio,
+        precioBase: i.precioBase,
+        cantidad: i.cantidad,
+        unidadMedida: i.unidadMedida ?? null,
+        imagenUrl: i.imagenUrl ?? null,
+        // El stock real lo valida el server al cobrar (UPDATE atómico); acá
+        // no hay catálogo a mano y un tope inventado bloquearía la línea.
+        stockMaximo: Number.MAX_SAFE_INTEGER,
+      });
+    }
+    // La lista con la que se precio el pedido, sin re-preciar: los renglones
+    // ya traen el precio de esa lista y su base.
+    const preciosDelPedido: Record<string, { precio: number; precioBase: number }> = {};
+    for (const i of p.items) {
+      preciosDelPedido[`${i.productoId}|${i.variante}`] = {
+        precio: i.precio,
+        precioBase: i.precioBase ?? i.precio,
+      };
+    }
+    setListaPrecio(ctx.listaPrecioId ?? null, preciosDelPedido);
+
+    setClienteSeleccionado(
+      ctx.cliente ??
+        (p.cliente_id ? { id: p.cliente_id, nombre: p.cliente_nombre ?? "Cliente" } : null),
+    );
+    setIsCuentaCorriente(Boolean(ctx.isCuentaCorriente));
+    setCcSinRecargo(Boolean(ctx.isCuentaCorriente && ctx.ccSinRecargo));
+    setIsReserva(false);
+    setModoMixto(Boolean(ctx.modoMixto));
+    // Solo métodos que existen en este comercio HOY; uno borrado se cae y
+    // el paso de cobro vuelve a su default.
+    const pagosValidos = (ctx.pagos ?? []).filter((pg) =>
+      metodosPagoDB.some((m) => m.id === pg.metodoPagoId),
+    );
+    setPagos(pagosValidos);
+    setPromocionId(ctx.promocionId ?? "ninguna");
+    setFacturarElegido(ctx.facturar ?? null);
+    setPedidoActivo({ id: p.id, numero: p.numero, vendedor: p.vendedor_nombre });
+    setCheckoutStep("PAYMENT");
+    setIsOpen(true);
+  };
+
   const handleConfirmarVentaPOS = (
     montoAnticipoModal?: number,
     // La selección del modal llega por argumento y no por estado: al salir
@@ -931,6 +1053,11 @@ export function CartPanelAdmin({
         formData.append("pagos", JSON.stringify(pagosToSubmit));
         formData.append("metodo_pago_id", pagosToSubmit[0]?.metodoPagoId || "");
         formData.append("is_cuenta_corriente", String(isCuentaCorriente));
+        // El pedido que se está cobrando: queda COBRADO y la venta a nombre
+        // de quien lo armó.
+        if (pedidoActivo) {
+          formData.append("pedido_id", pedidoActivo.id);
+        }
         if (facturacionActiva) {
           formData.append("facturar", String(facturar));
           if (opciones?.sinFacturaPorArcaCaido) {
@@ -1267,7 +1394,33 @@ export function CartPanelAdmin({
             ? () => setCheckoutStep("CART")
             : undefined
         }
+        accion={
+          // La cola es de la caja: quien no cobra no la ve, solo manda.
+          pedidosACaja && puedeCobrar ? (
+            <PedidosPorCobrar
+              negocioId={negocioId}
+              puedeCobrar={puedeCobrar}
+              onCargar={cargarPedido}
+            />
+          ) : undefined
+        }
       />
+
+      {pedidoActivo && (
+        <div className="shrink-0 flex items-center justify-between gap-2 border-b border-primary/20 bg-primary/5 px-4 py-2 text-xs">
+          <span>
+            Cobrando el <span className="font-bold">pedido #{pedidoActivo.numero}</span>
+            {pedidoActivo.vendedor ? ` de ${pedidoActivo.vendedor}` : ""}
+          </span>
+          <button
+            type="button"
+            onClick={clearCartAndResetStep}
+            className="font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+          >
+            Soltar
+          </button>
+        </div>
+      )}
 
       {effectiveCheckoutStep === "CART" ? (
         <CartStepItems
@@ -1356,6 +1509,10 @@ export function CartPanelAdmin({
               onConfirmarVentaPOS={handleConfirmarVentaPOS}
               onEnviarPedidoWhatsApp={handleEnviarPedidoWhatsApp}
               onClearCart={clearCartAndResetStep}
+              onEnviarACaja={
+                pedidosACaja && !puedeCobrar ? handleEnviarACaja : undefined
+              }
+              puedeCobrar={puedeCobrar}
             />
           ) : null}
         </CartStepCheckout>

@@ -134,4 +134,6 @@ export interface ConfiguracionPOS {
    * Ausente = true (es lo que hacía la caja antes de que existiera). */
   facturar_por_defecto?: boolean;
   arca_ambiente?: "HOMOLOGACION" | "PRODUCCION";
+  /** Varios puestos, una caja: el POS ofrece "Enviar a caja". */
+  pedidos_a_caja?: boolean;
 }

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { Button } from "@/shared/ui/button";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, Send } from "lucide-react";
 import { PaymentModal } from "./payment-modal";
 import { ClienteBasico } from "./client-selector";
 import Link from "next/link";
@@ -48,6 +48,14 @@ interface CartSidebarFooterProps {
   onConfirmarVentaPOS: (montoAnticipo?: number) => void;
   onEnviarPedidoWhatsApp: () => void;
   onClearCart: () => void;
+  /**
+   * Varios puestos, una caja. Ausente = el comercio no lo usa y el footer es
+   * el de siempre. Presente y `puedeCobrar` false: el ÚNICO botón es "Enviar
+   * a caja" — esa vendedora no cobra. Quien SÍ cobra ve el footer de siempre:
+   * su puesto es la caja, no manda pedidos.
+   */
+  onEnviarACaja?: () => void;
+  puedeCobrar?: boolean;
 }
 
 const formatCurrency = (amount: number) =>
@@ -79,6 +87,8 @@ export function CartSidebarFooter({
   onConfirmarVentaPOS,
   onEnviarPedidoWhatsApp,
   onClearCart,
+  onEnviarACaja,
+  puedeCobrar = true,
 }: Readonly<CartSidebarFooterProps>) {
   const [modalAbierto, setModalAbierto] = useState(false);
 
@@ -196,7 +206,22 @@ export function CartSidebarFooter({
           </div>
         </div>
 
-        {isPOSMode ? (
+        {isPOSMode && onEnviarACaja && !puedeCobrar ? (
+          <Button
+            onClick={onEnviarACaja}
+            disabled={isPending || totalCarrito <= 0}
+            className="w-full h-12 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white transition-colors shadow-none cursor-pointer"
+          >
+            {isPending ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              <>
+                <Send className="w-5 h-5" />
+                Enviar a caja
+              </>
+            )}
+          </Button>
+        ) : isPOSMode ? (
           <Button
             onClick={handleCobrar}
             disabled={isPrimaryDisabled}
