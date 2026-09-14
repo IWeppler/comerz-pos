@@ -1,4 +1,5 @@
 import { UpdatePasswordForm } from "@/features/auth/ui/update-password-form";
+import { SesionDesdeHash } from "@/features/auth/ui/sesion-desde-hash";
 import Image from "next/image";
 import { Suspense } from "react";
 import { Metadata } from "next";
@@ -38,9 +39,13 @@ export default function UpdatePasswordPage() {
           </div>
 
           {/* El form lee ?invitacion= de la URL, así que necesita Suspense. */}
-          <Suspense fallback={null}>
-            <UpdatePasswordForm />
-          </Suspense>
+          {/* Links de mail viejos traen la sesión en el hash; ver
+              sesion-desde-hash.tsx. Los nuevos llegan con cookies. */}
+          <SesionDesdeHash>
+            <Suspense fallback={null}>
+              <UpdatePasswordForm />
+            </Suspense>
+          </SesionDesdeHash>
         </div>
 
         <p className="absolute bottom-8 left-0 right-0 text-xs font-medium text-muted-foreground text-center">

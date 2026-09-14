@@ -44,6 +44,21 @@ export default async function OnboardingPage() {
       .eq("usuario_id", user.id);
 
     if ((count ?? 0) > 0) redirect("/");
+
+    // Sin negocio pero con una invitación PENDIENTE a su mail: no es alguien
+    // que viene a crear un comercio, es un empleado al que el link del mail
+    // dejó acá (hasta el 14/9/2026 la sesión llegaba en el hash y nadie la
+    // leía). Se acepta por email y adentro. La cookie del negocio activo y el
+    // claim no se pueden escribir desde un Server Component; con una sola
+    // membresía el middleware la elige solo al pasar por `/`.
+    const { data: negocioInvitado, error: errorInvitacion } = await supabase.rpc(
+      "aceptar_invitaciones_pendientes",
+    );
+    if (errorInvitacion) {
+      console.error("[ONBOARDING] aceptar invitaciones pendientes:", errorInvitacion);
+    } else if (negocioInvitado) {
+      redirect("/");
+    }
   }
 
   return (

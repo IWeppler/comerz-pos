@@ -141,23 +141,32 @@ export async function registrarseAction(
 export async function destinoSinNegocio(
   supabase: ReturnType<typeof createClient>,
   email: string | undefined,
-): Promise<{ destino: string; error: string }> {
-  if (!email) return { destino: "/onboarding", error: "" };
+): Promise<{ destino: string; error: string; negocioId: string | null }> {
+  if (!email) return { destino: "/onboarding", error: "", negocioId: null };
 
-  const { data: invitacion } = await supabase
-    .from("invitaciones")
-    .select("id")
-    .eq("email", email.toLowerCase())
-    .eq("estado", "PENDIENTE")
-    .maybeSingle();
+  // La invitación pendiente se ACEPTA acá mismo, no se le pide que vuelva al
+  // mail. El link del mail estuvo roto hasta el 14/9/2026 (la sesión llegaba
+  // en el hash y nadie la leía), y aun arreglado, mandar a alguien logueado
+  // a buscar un link es la puerta cerrada que este helper existe para evitar.
+  // El mail verificado de la sesión es la credencial: `aceptar_invitaciones_
+  // pendientes` solo toca invitaciones dirigidas a ese mail.
+  const { data: negocioId, error } = await supabase.rpc(
+    "aceptar_invitaciones_pendientes",
+  );
 
-  if (invitacion) {
+  if (error) {
+    console.error("[ACEPTAR INVITACIONES PENDIENTES]", error);
     return {
       destino: "",
       error:
-        "Tenés una invitación pendiente: abrí el link que te llegó por mail para entrar al negocio que te invitó.",
+        "Tenés una invitación pendiente pero no se pudo aceptar. Probá de nuevo en un rato o pedile a tu encargada que te invite otra vez.",
+      negocioId: null,
     };
   }
 
-  return { destino: "/onboarding", error: "" };
+  if (negocioId) {
+    return { destino: "/", error: "", negocioId: negocioId as string };
+  }
+
+  return { destino: "/onboarding", error: "", negocioId: null };
 }

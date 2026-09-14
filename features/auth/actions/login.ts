@@ -7,6 +7,7 @@ import {
   COOKIE_NEGOCIO_MAX_AGE,
 } from "@/shared/lib/negocio-activo";
 import { destinoSinNegocio } from "./registro";
+import { refrescarClaimDeMembresias } from "../lib/refrescar-claim";
 
 export interface LoginState {
   error: string;
@@ -63,14 +64,29 @@ export async function loginAction(
     // llegó a crearlo. `destinoSinNegocio` separa los dos casos por la
     // invitación pendiente.
     cookieStore.delete(COOKIE_NEGOCIO_ACTIVO);
-    const { destino, error: aviso } = await destinoSinNegocio(
-      supabase,
-      sesion.user.email,
-    );
+    const {
+      destino,
+      error: aviso,
+      negocioId,
+    } = await destinoSinNegocio(supabase, sesion.user.email);
+
+    if (negocioId) {
+      // Acaba de entrar al negocio que lo invitó: misma salida que con una
+      // membresía de siempre, más el refresh del claim, que se emitió en el
+      // login con cero negocios.
+      cookieStore.set(COOKIE_NEGOCIO_ACTIVO, negocioId, {
+        path: "/",
+        maxAge: COOKIE_NEGOCIO_MAX_AGE,
+        sameSite: "lax",
+        httpOnly: false,
+      });
+      await refrescarClaimDeMembresias(supabase, "aceptar invitación (login)");
+      return { error: "", success: true, destino: "/" };
+    }
 
     if (!destino) {
-      // Invitación pendiente: la sesión no le sirve para nada hasta que use el
-      // link, así que se cierra igual que antes.
+      // Había invitación pendiente y aceptarla falló (error de base): sin
+      // negocio la sesión no sirve para nada, así que se cierra y se avisa.
       //
       // `local`, no el default `global`: lo que hay que deshacer es el login que
       // se acaba de hacer EN ESTE navegador. Con el default, alguien que entra
