@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  ARCA_EMISION_DISPONIBLE,
   comprobanteDefectoEsValido,
   comprobantesPermitidos,
   emiteComprobanteFiscal,
@@ -121,15 +120,6 @@ describe("parsePuntoVenta", () => {
     expect(parsePuntoVenta("-1")).toBeNull();
     expect(parsePuntoVenta("1.5")).toBeNull();
     expect(parsePuntoVenta("PV 1")).toBeNull();
-  });
-});
-
-describe("ARCA_EMISION_DISPONIBLE", () => {
-  it("está apagado: todavía nada emite comprobantes fiscales", () => {
-    // Qué comprobante corresponde ya NO se decide en este módulo: lo decide
-    // determinar-comprobante.ts cruzando emisor, receptor, operación y
-    // configuración, y ahí están sus tests.
-    expect(ARCA_EMISION_DISPONIBLE).toBe(false);
   });
 });
 

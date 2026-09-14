@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filasComprobantes,
+  filasLibroIvaVentas,
   filasMovimientosCaja,
   filasMovimientosGenerales,
   filasVentas,
@@ -274,5 +275,72 @@ describe("filasVentas con devolución parcial", () => {
     expect(f["Costo de lo devuelto"]).toBe(0);
     expect(f["Venta neta de devoluciones"]).toBe(10000);
     expect(f["Costo neto de devoluciones"]).toBe(5000);
+  });
+});
+
+describe("filasLibroIvaVentas", () => {
+  const factura = {
+    id: "f1",
+    tipo: "FACTURA_A",
+    punto_venta: 1,
+    numero: 7,
+    fecha_comprobante: "2026-09-14",
+    total: 4325,
+    neto: 3000,
+    iva_monto: 525,
+    exento: 500,
+    no_gravado: 300,
+    cae: "123",
+    receptor_razon_social: "Cliente SA",
+    receptor_doc_tipo: 80,
+    receptor_doc_nro: "30712345678",
+    receptor_condicion_iva: "Responsable Inscripto",
+    arca_ambiente: "PRODUCCION",
+    comprobantes_iva: [
+      { alicuota_id: 5, base_imponible: 2000, importe: 420 },
+      { alicuota_id: 4, base_imponible: 1000, importe: 105 },
+    ],
+  };
+
+  it("abre el IVA por alícuota y respeta exento / no gravado", () => {
+    const [fila] = filasLibroIvaVentas([factura]);
+    expect(fila["Neto gravado 21%"]).toBe(2000);
+    expect(fila["IVA 21%"]).toBe(420);
+    expect(fila["Neto gravado 10,5%"]).toBe(1000);
+    expect(fila["IVA 10,5%"]).toBe(105);
+    expect(fila["Neto gravado 27%"]).toBe(0);
+    expect(fila.Exento).toBe(500);
+    expect(fila["No gravado"]).toBe(300);
+    expect(fila.Total).toBe(4325);
+    expect(fila["Código ARCA"]).toBe("001");
+    expect(fila["Tipo doc."]).toBe("CUIT");
+    expect(fila.Fecha).toBe("2026-09-14");
+  });
+
+  it("las notas de crédito van en negativo", () => {
+    const [fila] = filasLibroIvaVentas([
+      { ...factura, id: "n1", tipo: "NOTA_CREDITO_A", anula_comprobante_id: "f1" },
+    ]);
+    expect(fila.Total).toBe(-4325);
+    expect(fila["IVA 21%"]).toBe(-420);
+    expect(fila["Anula a"]).toBe("f1");
+  });
+
+  it("homologación y filas sin CAE quedan afuera del libro", () => {
+    expect(
+      filasLibroIvaVentas([
+        { ...factura, arca_ambiente: "HOMOLOGACION" },
+        { ...factura, cae: null },
+      ]),
+    ).toHaveLength(0);
+  });
+
+  it("consumidor final sin documento no inventa un número", () => {
+    const [fila] = filasLibroIvaVentas([
+      { ...factura, receptor_razon_social: null, receptor_doc_tipo: 99, receptor_doc_nro: "0", receptor_condicion_iva: null },
+    ]);
+    expect(fila.Receptor).toBe("Consumidor final");
+    expect(fila["Nro. doc."]).toBe("");
+    expect(fila["Condición IVA"]).toBe("Consumidor Final");
   });
 });

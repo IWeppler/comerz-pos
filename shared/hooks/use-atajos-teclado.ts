@@ -68,7 +68,9 @@ function coincide(evento: KeyboardEvent, teclas: string): boolean {
   if (esperaShift !== evento.shiftKey) return false;
   if (esperaAlt !== evento.altKey) return false;
 
-  return evento.key.toLowerCase() === tecla.toLowerCase();
+  // `key` undefined en keydown sintéticos (autocompletado de Chrome,
+  // extensiones); ver paleta-comandos.tsx.
+  return evento.key?.toLowerCase() === tecla.toLowerCase();
 }
 
 /** Una tecla F o cualquier combinación con modificador no se confunde con

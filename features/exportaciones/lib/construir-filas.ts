@@ -164,6 +164,7 @@ export interface ComprobanteExport {
   receptor_razon_social?: string | null;
   receptor_cuit?: string | null;
   receptor_condicion_iva?: string | null;
+  arca_ambiente?: string | null;
   venta_id: string;
 }
 
@@ -185,6 +186,13 @@ export function filasComprobantes(
     "Vencimiento CAE": c.cae_vencimiento
       ? formatearFechaExport(c.cae_vencimiento)
       : "",
+    // Que un CAE de homologación se vea como lo que es: una prueba.
+    Ambiente:
+      c.arca_ambiente === "PRODUCCION"
+        ? "Producción"
+        : c.arca_ambiente === "HOMOLOGACION"
+          ? "Homologación (prueba)"
+          : "",
     "ID venta": c.venta_id,
   }));
 }
@@ -314,4 +322,108 @@ export function filasMovimientosGenerales(
   return [...filasPagos, ...filasEgresos].sort((a, b) =>
     String(a.Fecha).localeCompare(String(b.Fecha)),
   );
+}
+
+// ------------------------------------------------------------ Libro IVA Ventas
+
+export interface ComprobanteFiscalExport {
+  id: string;
+  tipo: string;
+  punto_venta: number;
+  numero: number;
+  /** yyyy-mm-dd: CbteFch. El libro va por fecha fiscal, no por `emitido_en`. */
+  fecha_comprobante: string | null;
+  total?: number | null;
+  neto?: number | null;
+  iva_monto?: number | null;
+  exento?: number | null;
+  no_gravado?: number | null;
+  cae?: string | null;
+  receptor_razon_social?: string | null;
+  receptor_doc_tipo?: number | null;
+  receptor_doc_nro?: string | null;
+  receptor_condicion_iva?: string | null;
+  arca_ambiente?: string | null;
+  anula_comprobante_id?: string | null;
+  comprobantes_iva?: { alicuota_id: number; base_imponible: number; importe: number }[];
+}
+
+const CODIGO_ARCA_EXPORT: Record<string, string> = {
+  FACTURA_A: "001",
+  FACTURA_B: "006",
+  FACTURA_C: "011",
+  NOTA_CREDITO_A: "003",
+  NOTA_CREDITO_B: "008",
+  NOTA_CREDITO_C: "013",
+};
+
+const TIPO_LEGIBLE: Record<string, string> = {
+  FACTURA_A: "Factura A",
+  FACTURA_B: "Factura B",
+  FACTURA_C: "Factura C",
+  NOTA_CREDITO_A: "Nota de crédito A",
+  NOTA_CREDITO_B: "Nota de crédito B",
+  NOTA_CREDITO_C: "Nota de crédito C",
+};
+
+const DOC_LEGIBLE: Record<number, string> = { 80: "CUIT", 96: "DNI", 99: "" };
+
+/**
+ * Una fila por comprobante fiscal, con el neto y el IVA ABIERTOS por alícuota
+ * (21 / 10,5 / 27), que es como lo pide cualquier libro de IVA ventas y como
+ * lo carga el contador. Las notas de crédito van en NEGATIVO: restan del
+ * débito fiscal del período, y una planilla que las suma en positivo da un
+ * IVA a pagar más alto que el real.
+ *
+ * Solo entra lo de PRODUCCIÓN: quien llama ya filtró `arca_ambiente`, y acá
+ * se vuelve a filtrar por si acaso — un CAE de homologación en el libro es un
+ * comprobante que no existe declarado como si existiera.
+ */
+export function filasLibroIvaVentas(
+  comprobantes: readonly ComprobanteFiscalExport[],
+): Fila[] {
+  return comprobantes
+    .filter((c) => c.arca_ambiente === "PRODUCCION" && c.cae)
+    .map((c) => {
+      const signo = c.tipo.startsWith("NOTA_CREDITO") ? -1 : 1;
+      const porAlicuota = (id: number) => {
+        const a = (c.comprobantes_iva ?? []).find((x) => x.alicuota_id === id);
+        return {
+          base: a ? signo * num(a.base_imponible) : 0,
+          iva: a ? signo * num(a.importe) : 0,
+        };
+      };
+      const a21 = porAlicuota(5);
+      const a105 = porAlicuota(4);
+      const a27 = porAlicuota(6);
+      const docTipo = c.receptor_doc_tipo ?? 99;
+
+      return {
+        Fecha: c.fecha_comprobante ?? "",
+        Tipo: TIPO_LEGIBLE[c.tipo] ?? c.tipo,
+        "Código ARCA": CODIGO_ARCA_EXPORT[c.tipo] ?? "",
+        "Punto de venta": c.punto_venta,
+        Número: c.numero,
+        Comprobante: formatearNumeroComprobante(c.punto_venta, c.numero) ?? "",
+        Receptor: c.receptor_razon_social ?? "Consumidor final",
+        "Tipo doc.": DOC_LEGIBLE[docTipo] ?? String(docTipo),
+        "Nro. doc.": docTipo === 99 ? "" : (c.receptor_doc_nro ?? ""),
+        "Condición IVA": c.receptor_condicion_iva ?? "Consumidor Final",
+        "Neto gravado 21%": a21.base,
+        "IVA 21%": a21.iva,
+        "Neto gravado 10,5%": a105.base,
+        "IVA 10,5%": a105.iva,
+        "Neto gravado 27%": a27.base,
+        "IVA 27%": a27.iva,
+        // Total neto e IVA de la cabecera: en la C (sin discriminar) es lo
+        // único que hay, y en la A/B tiene que coincidir con la suma de arriba.
+        "Neto total": signo * num(c.neto),
+        "IVA total": signo * num(c.iva_monto),
+        Exento: signo * num(c.exento),
+        "No gravado": signo * num(c.no_gravado),
+        Total: signo * num(c.total),
+        CAE: c.cae ?? "",
+        "Anula a": c.anula_comprobante_id ?? "",
+      };
+    });
 }

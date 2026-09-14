@@ -58,6 +58,11 @@ export async function updateFacturacionAction(
   );
 
   const puntoVentaCrudo = ((formData.get("punto_venta") as string) ?? "").trim();
+  // El hidden solo se monta con modo ARCA; en los otros modos no hay switch
+  // y el valor guardado no importa, así que se deja como está.
+  const facturarCrudo = formData.get("facturar_por_defecto");
+  const facturar_por_defecto =
+    facturarCrudo === null ? undefined : facturarCrudo === "true";
   const punto_venta = parsePuntoVenta(puntoVentaCrudo);
 
   // parsePuntoVenta devuelve null tanto para "vacío" (legítimo) como para
@@ -120,6 +125,7 @@ export async function updateFacturacionAction(
       modo_facturacion,
       comprobante_defecto,
       punto_venta,
+      ...(facturar_por_defecto === undefined ? {} : { facturar_por_defecto }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);

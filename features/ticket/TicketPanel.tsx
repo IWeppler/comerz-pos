@@ -8,6 +8,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
+import { Switch } from "@/shared/ui/switch";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui/card";
-import { Badge } from "@/shared/ui/badge";
 import { Receipt, Save, Loader2, AlertCircle, Info } from "lucide-react";
 import type { ConfiguracionPOS } from "@/entities/config/types";
 import {
@@ -36,6 +36,7 @@ import {
   normalizarTipoComprobante,
 } from "@/shared/lib/facturacion";
 import { updateFacturacionAction } from "./actions/update-facturacion";
+import { ArcaConexion } from "@/features/arca/ui/arca-conexion";
 
 interface TicketPanelProps {
   config: ConfiguracionPOS;
@@ -52,6 +53,9 @@ export function TicketPanel({ config, puedeEditar }: Readonly<TicketPanelProps>)
   );
   const [comprobante, setComprobante] = useState(
     normalizarTipoComprobante(config?.comprobante_defecto),
+  );
+  const [facturarPorDefecto, setFacturarPorDefecto] = useState(
+    config?.facturar_por_defecto ?? true,
   );
 
   const permitidos = comprobantesPermitidos(modo, config?.condicion_iva);
@@ -218,6 +222,35 @@ export function TicketPanel({ config, puedeEditar }: Readonly<TicketPanelProps>)
             </div>
           </div>
 
+          {/* === 2bis. FACTURAR POR DEFECTO === */}
+          {modo === "ARCA" && (
+            <div className="flex items-start justify-between gap-4 rounded-xl border border-border p-4">
+              <div className="space-y-1">
+                <Label htmlFor="facturar_por_defecto" className="text-sm font-semibold">
+                  Facturar por defecto
+                </Label>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Con qué arranca el selector Factura / Ticket interno en la
+                  caja. Quien tenga el permiso &quot;Elegir comprobante&quot;
+                  lo cambia en cada venta; quien no, vende siempre con esto.
+                </p>
+              </div>
+              {/* El valor viaja en un hidden: un Switch apagado no manda nada
+                  y la action no podría distinguir "no" de "no vino". */}
+              <input
+                type="hidden"
+                name="facturar_por_defecto"
+                value={facturarPorDefecto ? "true" : "false"}
+              />
+              <Switch
+                id="facturar_por_defecto"
+                checked={facturarPorDefecto}
+                onCheckedChange={setFacturarPorDefecto}
+                disabled={!puedeEditar}
+              />
+            </div>
+          )}
+
           {/* === 3. ESTADO DE LA CONEXIÓN CON ARCA === */}
           {modo === "ARCA" && (
             <div className="pt-6 border-t border-border/50 animate-in fade-in slide-in-from-top-2">
@@ -236,37 +269,22 @@ export function TicketPanel({ config, puedeEditar }: Readonly<TicketPanelProps>)
                       <h3 className="font-bold text-foreground">
                         Conexión con ARCA
                       </h3>
-                      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mt-0.5">
-                        <span className="w-2 h-2 rounded-full bg-warning" />
-                        Emisión automática todavía no disponible
-                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Certificado, ticket de acceso y prueba contra ARCA.
+                      </p>
                     </div>
                   </div>
-                  <Badge variant="secondary">En desarrollo</Badge>
                 </div>
 
-                {/*
-                  Acá vivía un wizard que "generaba" un CSR de texto fijo y
-                  avisaba "certificado .p12 generado y guardado en el servidor"
-                  sin subir nada. Se saca en vez de dejarlo escondido: una
-                  pantalla que dice que quedaste conectado a ARCA cuando no lo
-                  estás es peor que no tener la pantalla — el comercio deja de
-                  facturar por otro lado creyendo que esto lo hace.
-                */}
-                <div className="p-4 space-y-3">
+                <div className="p-4 space-y-4">
                   <div className="flex items-start gap-2 text-sm text-muted-foreground bg-background border border-border rounded-lg p-3">
                     <Info className="w-4 h-4 shrink-0 mt-0.5 text-primary" />
-                    <div className="space-y-1">
-                      <p className="text-foreground font-medium">
-                        Podés dejar esta configuración guardada desde ahora.
-                      </p>
-                      <p className="text-xs leading-relaxed">
-                        Las ventas ya quedan registradas con su comprobante y
-                        sus datos fiscales. Falta la carga del certificado y el
-                        pedido de CAE: hasta entonces la caja sigue imprimiendo
-                        ticket interno, aunque acá elijas factura.
-                      </p>
-                    </div>
+                    <p className="text-xs leading-relaxed">
+                      La caja emite factura con CAE solo cuando el ambiente
+                      activo tiene un certificado vigente. Mientras tanto, o
+                      si ARCA no responde, sigue saliendo ticket interno y el
+                      motivo queda en el registro de la venta.
+                    </p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-1 text-sm">
@@ -279,8 +297,12 @@ export function TicketPanel({ config, puedeEditar }: Readonly<TicketPanelProps>)
                       label="Punto de venta"
                       valor={formatearPuntoVenta(config?.punto_venta)}
                     />
-                    <EstadoFila label="Certificado" valor="Sin cargar" />
                   </div>
+
+                  {/* Vive FUERA del <form> de arriba en cuanto a envío: sus
+                      botones son type="button" y llaman a sus propias actions.
+                      Guardar el form no toca las credenciales. */}
+                  <ArcaConexion puedeEditar={puedeEditar} />
                 </div>
               </div>
             </div>

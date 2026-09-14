@@ -36,16 +36,20 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { AnularVentaModal } from "./cancel-sale-modal";
+import { FacturarVentaModal } from "./facturar-venta-modal";
 import { CorregirPagoModal } from "./corregir-pago-modal";
 import { DevolucionModal } from "./devolucion-modal";
 import { Button } from "@/shared/ui/button";
 import { TicketSheet } from "./ticket-sheet";
 import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
+import { fiscalDesdeComprobante } from "../lib/comprobante-fiscal-desde-venta";
+import { letraComprobante } from "@/shared/lib/comprobante-fiscal-ticket";
 import { numeroTicketVenta } from "@/features/sales/lib/numero-ticket";
 import { SaleTableHeader } from "./sale-table-header";
 import {
   ESTADO_TODOS,
   METODO_TODOS,
+  COMPROBANTE_TODOS,
   type EstadoVentaFiltro,
 } from "./sale-table-filtros";
 
@@ -54,6 +58,23 @@ const ITEMS_POR_PAGINA = 10;
 /** Lo devuelto de una venta, debajo del total. No se dibuja nada si no hubo
  * devolución: un renglón vacío en cada fila del historial es ruido permanente
  * a cambio de una alineación que nadie mira. */
+/** "FC" al lado del número cuando la venta salió con factura. Una letra
+ * chica y no el título entero: la columna es angosta y lo que importa es
+ * distinguir de un vistazo qué tiene CAE y qué no. */
+function BadgeComprobante({ venta }: Readonly<{ venta: Venta }>) {
+  const fiscal = fiscalDesdeComprobante(venta.comprobantes);
+  if (!fiscal) return null;
+  return (
+    <Badge
+      variant={fiscal.ambiente === "HOMOLOGACION" ? "outline" : "secondary"}
+      className="ml-1.5 px-1 py-0 text-[9px] font-bold tracking-wider align-middle"
+      title={fiscal.ambiente === "HOMOLOGACION" ? "Factura de prueba (homologación)" : "Factura con CAE"}
+    >
+      F{letraComprobante(fiscal.tipo)}
+    </Badge>
+  );
+}
+
 function MontoDevuelto({ venta }: Readonly<{ venta: Venta }>) {
   const devuelto = Number(venta.monto_devuelto || 0);
   if (devuelto <= 0) return null;
@@ -82,6 +103,9 @@ interface VentasTableProps {
    * renglón con el ticket adelante es la operación del mostrador; anular la
    * venta entera es otra cosa. */
   puedeDevolver?: boolean;
+  /** Permiso `ventas.elegir_comprobante`. Junto con el modo ARCA del
+   * comercio, decide si el menú ofrece "Facturar esta venta". */
+  puedeFacturar?: boolean;
 }
 
 export function VentasTable({
@@ -90,11 +114,14 @@ export function VentasTable({
   puedeAnular,
   puedeCorregirPago = false,
   puedeDevolver = false,
+  puedeFacturar = false,
 }: Readonly<VentasTableProps>) {
   const [filtroNombre, setFiltroNombre] = useState("");
   const [filtroEstado, setFiltroEstado] =
     useState<EstadoVentaFiltro>(ESTADO_TODOS);
   const [filtroMetodo, setFiltroMetodo] = useState<string>(METODO_TODOS);
+  const [filtroComprobante, setFiltroComprobante] =
+    useState<string>(COMPROBANTE_TODOS);
   const [orden, setOrden] = useState("recientes");
   const [paginaActual, setPaginaActual] = useState(1);
 
@@ -114,7 +141,7 @@ export function VentasTable({
    */
   const [accionAbierta, setAccionAbierta] = useState<{
     venta: Venta;
-    accion: "devolver" | "corregir" | "anular";
+    accion: "devolver" | "corregir" | "anular" | "facturar";
   } | null>(null);
 
   const cerrarAccion = () => setAccionAbierta(null);
@@ -238,8 +265,25 @@ export function VentasTable({
     const puedeDevolverEsta = puedeDevolver && esDevolvible(venta);
     const puedeCorregirEsta = puedeCorregirPago && !!cobroCorregible(venta);
     const puedeAnularEsta = puedeAnular && !isAnulada;
+    // La NC existe solo en una venta facturada y anulada. Imprimirla no
+    // necesita permiso: es el papel que el cliente se lleva con la plata.
+    const tieneNotaCredito =
+      fiscalDesdeComprobante(venta.comprobantes, "NOTA_CREDITO") !== null;
+    // Facturar después: venta viva, sin factura, comercio en modo ARCA y
+    // permiso. Que ARCA esté conectado lo verifica la action.
+    const puedeFacturarEsta =
+      puedeFacturar &&
+      !isAnulada &&
+      branding?.modo_facturacion === "ARCA" &&
+      fiscalDesdeComprobante(venta.comprobantes) === null;
 
-    if (!puedeDevolverEsta && !puedeCorregirEsta && !puedeAnularEsta) {
+    if (
+      !puedeDevolverEsta &&
+      !puedeCorregirEsta &&
+      !puedeAnularEsta &&
+      !tieneNotaCredito &&
+      !puedeFacturarEsta
+    ) {
       return null;
     }
 
@@ -258,6 +302,20 @@ export function VentasTable({
         </DropdownMenuTrigger>
 
         <DropdownMenuContent align="end" className="rounded-xl">
+          {puedeFacturarEsta && (
+            <DropdownMenuItem
+              onSelect={() => setAccionAbierta({ venta, accion: "facturar" })}
+            >
+              <Receipt className="mr-2 h-4 w-4 text-muted-foreground" />
+              Facturar esta venta
+            </DropdownMenuItem>
+          )}
+          {tieneNotaCredito && (
+            <DropdownMenuItem onSelect={() => abrirTicket(venta, "NOTA_CREDITO")}>
+              <Receipt className="mr-2 h-4 w-4 text-muted-foreground" />
+              Ver nota de crédito
+            </DropdownMenuItem>
+          )}
           {puedeDevolverEsta && (
             <DropdownMenuItem
               onSelect={() => setAccionAbierta({ venta, accion: "devolver" })}
@@ -341,6 +399,12 @@ export function VentasTable({
         if (getPagoLabel(venta) !== filtroMetodo) return false;
       }
 
+      if (filtroComprobante !== COMPROBANTE_TODOS) {
+        const facturada = fiscalDesdeComprobante(venta.comprobantes) !== null;
+        if (filtroComprobante === "facturadas" && !facturada) return false;
+        if (filtroComprobante === "sin_facturar" && facturada) return false;
+      }
+
       return true;
     });
 
@@ -382,7 +446,13 @@ export function VentasTable({
     });
 
     return resultado;
-  }, [ventas, filtroNombre, filtroEstado, filtroMetodo, orden]);
+  }, [ventas, filtroNombre, filtroEstado, filtroMetodo, filtroComprobante, orden]);
+
+  // El filtro de comprobante se ofrece solo si hay algo que filtrar.
+  const hayFacturas = useMemo(
+    () => ventas.some((v) => fiscalDesdeComprobante(v.comprobantes) !== null),
+    [ventas],
+  );
 
   const totalPaginas = Math.ceil(
     ventasFiltradasYOrdenadas.length / ITEMS_POR_PAGINA,
@@ -420,7 +490,15 @@ export function VentasTable({
     setPaginaActual(1);
   };
 
-  const abrirTicket = (venta: Venta) => {
+  /**
+   * Abre el ticket de la venta. Con `clase = "NOTA_CREDITO"` abre el mismo
+   * papel pero como NC: mismos renglones y total, encabezado, número, CAE y
+   * QR de la nota. Es el comprobante que el cliente se lleva al devolver.
+   */
+  const abrirTicket = (
+    venta: Venta,
+    clase: "FACTURA" | "NOTA_CREDITO" = "FACTURA",
+  ) => {
     // Obtenemos el descuento de la cabecera si existe
     const descuento =
       venta.ventas_descuentos && venta.ventas_descuentos.length > 0
@@ -490,6 +568,9 @@ export function VentasTable({
       // venta, igual que siempre. Se toma el comprobante de emisión (el
       // primero), no una nota de crédito posterior.
       nroRecibo: numeroTicketVenta(venta),
+      // Si la venta salió con factura, el papel reimpreso es LA factura: con
+      // CAE, QR y letra. Sale de la fila congelada, no de la config de hoy.
+      fiscal: fiscalDesdeComprobante(venta.comprobantes, clase),
       fecha: formatearFechaHora(venta.fecha_venta),
       vendedor: getSupabaseRelation(venta.perfiles)?.nombre || "Administrador",
       descuentoMonto: descuento
@@ -558,6 +639,51 @@ export function VentasTable({
           );
         })()}
 
+      {accionAbierta?.accion === "facturar" && (
+        <FacturarVentaModal
+          ventaId={accionAbierta.venta.id}
+          total={Number(accionAbierta.venta.total)}
+          clienteNombre={
+            getClienteNombre(accionAbierta.venta) === "Consumidor final"
+              ? null
+              : getClienteNombre(accionAbierta.venta)
+          }
+          open
+          onOpenChange={(abierto) => !abierto && cerrarAccion()}
+          onFacturada={(fiscal) => {
+            // El ticket se abre YA como factura, con el dato recién emitido:
+            // la fila de la tabla se actualiza con el refresh, pero el papel
+            // no tiene por qué esperarlo.
+            const venta = accionAbierta.venta;
+            abrirTicket({
+              ...venta,
+              comprobantes: [
+                ...(venta.comprobantes ?? []),
+                {
+                  tipo: fiscal.tipo,
+                  punto_venta: fiscal.puntoVenta,
+                  numero: fiscal.numero,
+                  cae: fiscal.cae,
+                  cae_vencimiento: fiscal.caeVencimiento,
+                  fecha_comprobante: fiscal.fechaComprobante,
+                  neto: fiscal.neto,
+                  iva_monto: fiscal.ivaMonto,
+                  exento: fiscal.exento,
+                  no_gravado: fiscal.noGravado,
+                  total: fiscal.total,
+                  receptor_razon_social: fiscal.receptor.razonSocial,
+                  receptor_doc_tipo: fiscal.receptor.docTipo,
+                  receptor_doc_nro: fiscal.receptor.docNro,
+                  receptor_condicion_iva: fiscal.receptor.condicionIva,
+                  arca_ambiente: fiscal.ambiente,
+                  comprobantes_iva: [],
+                },
+              ],
+            });
+          }}
+        />
+      )}
+
       {accionAbierta?.accion === "anular" &&
         (() => {
           const items = accionAbierta.venta.ventas_items || [];
@@ -599,6 +725,15 @@ export function VentasTable({
         metodoValue={filtroMetodo}
         onMetodoChange={handleMetodoChange}
         metodosOptions={metodosPresentes}
+        comprobanteValue={hayFacturas ? filtroComprobante : undefined}
+        onComprobanteChange={
+          hayFacturas
+            ? (v) => {
+                setFiltroComprobante(v);
+                setPaginaActual(1);
+              }
+            : undefined
+        }
       />
 
       {/* TABLA O EMPTY STATE */}
@@ -662,6 +797,7 @@ export function VentasTable({
                               había forma de encontrar la fila. */}
                           <TableCell className="font-mono font-medium tracking-wider text-muted-foreground text-xs pl-4 sm:pl-6">
                             #{numeroTicketVenta(venta)}
+                            <BadgeComprobante venta={venta} />
                           </TableCell>
 
                           <TableCell
@@ -878,6 +1014,7 @@ export function VentasTable({
                     <div className="flex items-center justify-between pt-3 border-t border-border/50">
                       <span className="text-xs font-medium text-muted-foreground truncate pr-2">
                         Ticket #{numeroTicketVenta(venta)}
+                        <BadgeComprobante venta={venta} />
                       </span>
                       <div
                         className="flex items-center gap-2"

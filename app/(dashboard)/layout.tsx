@@ -16,6 +16,7 @@ import { BannerImpersonation } from "@/features/admin/ui/banner-impersonation";
 import { VigilanteSesion } from "@/shared/components/vigilante-sesion";
 import { NegocioActivoProvider } from "@/shared/components/negocio-activo-provider";
 import { BannerVerificacionEmail } from "@/features/auth/ui/banner-verificacion";
+import { BannerCertificadoArca } from "@/features/arca/ui/banner-certificado";
 import { PlanProvider } from "@/features/planes/ui/plan-provider";
 import { getContextoPlanAction } from "@/features/planes/actions/contexto-plan";
 import { leerConfigPos } from "@/entities/config/lib/leer-config-pos";
@@ -147,6 +148,10 @@ export default async function DashboardLayout({
             emailConfirmado={Boolean(user.email_confirmed_at)}
             creadoEn={user.created_at ?? null}
           />
+
+          {/* Certificado de ARCA por vencer o vencido. Solo lo puede resolver
+              un ADMIN, así que solo a ese rol se le muestra. */}
+          {userRole === "ADMIN" && <BannerCertificadoArca />}
 
           <DashboardNavbar
             modoCaja={systemBranding.modo_caja || "UNICA"}

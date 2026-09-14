@@ -33,5 +33,7 @@ export const PERMISOS = {
   STOCK_INGRESAR_REMITO: "stock.ingresar_remito",
   CLIENTES_COBRAR_CC: "clientes.cobrar_cc",
   CONFIGURACION_FACTURACION: "configuracion.facturacion",
+  VENTAS_ELEGIR_COMPROBANTE: "ventas.elegir_comprobante",
+  VENTAS_ANULAR: "ventas.anular",
   REPORTES_VER_MODULO: "reportes.ver_modulo",
 } as const;

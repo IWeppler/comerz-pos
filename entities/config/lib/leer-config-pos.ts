@@ -16,6 +16,10 @@ export interface ConfigPosDeLaRequest {
    * solo por esta columna. Viaja acá porque la lectura ya se está pagando.
    * Se normaliza en el consumidor con `normalizarRubro`, que es fail-closed. */
   rubro: ConfiguracionPOS["rubro"];
+  /** Para el aviso de vencimiento del certificado de ARCA (layout): solo
+   * con modo ARCA vale la pena ir a mirar las credenciales. */
+  modo_facturacion: ConfiguracionPOS["modo_facturacion"];
+  arca_ambiente: ConfiguracionPOS["arca_ambiente"];
 }
 
 /**
@@ -94,7 +98,7 @@ export const leerConfigPos = cache(
     const supabase = createClient(cookieStore);
     const { data, error } = await supabase
       .from("configuracion_pos")
-      .select("id, posName, posLogo, modo_caja, rubro")
+      .select("id, posName, posLogo, modo_caja, rubro, modo_facturacion, arca_ambiente")
       .limit(1)
       .maybeSingle();
 

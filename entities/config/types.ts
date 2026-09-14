@@ -130,4 +130,8 @@ export interface ConfiguracionPOS {
   comprobante_defecto?: TipoComprobante;
   /** Punto de venta de ARCA. null = todavía no dado de alta. */
   punto_venta?: number | null;
+  /** Con modo ARCA: si el switch Factura/Ticket del POS arranca en factura.
+   * Ausente = true (es lo que hacía la caja antes de que existiera). */
+  facturar_por_defecto?: boolean;
+  arca_ambiente?: "HOMOLOGACION" | "PRODUCCION";
 }

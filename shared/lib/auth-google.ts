@@ -37,7 +37,7 @@
  * ─────────────────────────────────────────────────────────────────────────
  * EL FLAG. Default APAGADO, y solo el literal "on" lo prende: cualquier otro
  * valor —vacío, "true", "1", un typo— deja el botón invisible. Fail-closed,
- * mismo criterio que `ARCA_EMISION_DISPONIBLE`.
+ * mismo criterio que `normalizarAmbiente` de ARCA.
  *
  * Vive en una env var y no en una constante del código porque prenderlo
  * depende de algo que NO está en el repo: las credenciales de OAuth cargadas

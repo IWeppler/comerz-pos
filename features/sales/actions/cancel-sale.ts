@@ -6,6 +6,15 @@ import { revalidatePath } from "next/cache";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { requiereNotaCredito } from "@/shared/lib/facturacion";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
+import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+import type { VentaComprobante } from "@/entities/ventas/types";
+import { negocioActualId } from "@/features/arca/lib/credenciales";
+import {
+  emitirNotaCreditoArca,
+  facturaACompensar,
+} from "@/features/arca/lib/emitir-nota-credito";
+import type { FacturaEmitida } from "@/features/arca/lib/emitir-factura";
+import { formatearNumeroComprobante } from "@/shared/lib/facturacion";
 
 export async function anularVentaAction(
   ventaId: string,
@@ -37,7 +46,13 @@ export async function anularVentaAction(
         monto_pendiente,
         cliente_id,
         ventas_items ( producto_id, variante, variante_id, cantidad ),
-        comprobantes ( tipo )
+        comprobantes (
+          id, tipo, punto_venta, numero, cae, cae_vencimiento, fecha_comprobante,
+          neto, iva_monto, exento, no_gravado, total,
+          receptor_razon_social, receptor_doc_tipo, receptor_doc_nro,
+          receptor_condicion_iva, arca_ambiente,
+          comprobantes_iva ( alicuota_id, base_imponible, importe )
+        )
       `,
       )
       .eq("id", ventaId)
@@ -53,23 +68,25 @@ export async function anularVentaAction(
     }
 
     // Una FACTURA emitida no se anula marcando la venta: se compensa con una
-    // nota de crédito, que es un comprobante propio y necesita su CAE. Como la
-    // emisión con ARCA todavía no existe, no hay forma de hacerlo bien — y
-    // dejar pasar la anulación dejaría una factura viva en ARCA contra una
-    // venta que el sistema da por anulada. Fail-closed: se frena.
-    //
-    // Con TICKET interno esto NUNCA se activa (requiereNotaCredito da false),
-    // así que para los negocios de hoy anular sigue funcionando igual. Es la
-    // red para el día que se prenda ARCA: quien implemente la emisión de la
-    // nota de crédito va a encontrar este freno y lo va a reemplazar por ella.
-    if (requiereNotaCredito(venta.comprobantes)) {
-      console.error("[ANULACION] Venta con factura emitida", {
+    // nota de crédito, que es un comprobante propio con su CAE. Acá solo se
+    // decide SI hace falta; se emite más abajo, después de los chequeos que
+    // pueden frenar la anulación (caja, permiso), para no pedirle a ARCA una
+    // NC que después no se registra. Con TICKET interno esto es null y anular
+    // sigue funcionando igual que siempre.
+    const comprobantes = (venta.comprobantes ?? []) as VentaComprobante[];
+    const facturaOriginal = requiereNotaCredito(comprobantes)
+      ? facturaACompensar(comprobantes)
+      : null;
+    if (requiereNotaCredito(comprobantes) && !facturaOriginal) {
+      // Hay factura pero no se puede reconstruir (fila vieja sin datos): no
+      // se inventa una NC.
+      console.error("[ANULACION] Factura sin datos para la nota de crédito", {
         ventaId,
-        comprobantes: venta.comprobantes,
+        comprobantes,
       });
       return {
         error:
-          "Esta venta tiene una factura emitida: hay que hacerle una nota de crédito en ARCA antes de anularla en el sistema.",
+          "Esta venta tiene una factura emitida y no se puede armar la nota de crédito automáticamente. Hacela en ARCA y avisá para anular a mano.",
         success: false,
       };
     }
@@ -93,6 +110,56 @@ export async function anularVentaAction(
       turnoDevolucionId = turnoId;
     }
 
+    // 2ter. LA NOTA DE CRÉDITO, ANTES DE ANULAR
+    //
+    // Mismo orden que la factura en la venta: el CAE se pide primero y la
+    // fila entra en la misma transacción que la anulación
+    // (`anular_venta_facturada`). Si ARCA rechaza o no responde, la venta NO
+    // se anula y el error llega a la pantalla. El permiso de anular se
+    // chequea acá, antes de ir a ARCA: la RPC lo volvería a frenar, pero ya
+    // con una NC emitida que nadie registró.
+    let notaCredito: FacturaEmitida | null = null;
+    if (facturaOriginal) {
+      if (!(await tienePermiso(supabase, PERMISOS.VENTAS_ANULAR))) {
+        return { error: "No tenés permiso para anular ventas.", success: false };
+      }
+
+      const [negocioId, { data: config }] = await Promise.all([
+        negocioActualId(supabase),
+        supabase
+          .from("configuracion_pos")
+          .select("cuit, condicion_iva, punto_venta")
+          .single(),
+      ]);
+      if (!negocioId || !config?.cuit || !config.condicion_iva || !config.punto_venta) {
+        return {
+          error:
+            "Para emitir la nota de crédito faltan el CUIT, la condición de IVA o el punto de venta del comercio.",
+          success: false,
+        };
+      }
+
+      try {
+        notaCredito = await emitirNotaCreditoArca({
+          negocioId,
+          cuitEmisor: config.cuit,
+          condicionIvaEmisor: config.condicion_iva,
+          puntoVenta: config.punto_venta,
+          factura: facturaOriginal,
+        });
+      } catch (e) {
+        console.error("[ARCA] No se pudo emitir la nota de crédito; la venta no se anula", {
+          ventaId,
+          factura: facturaOriginal.id,
+          error: e,
+        });
+        return {
+          error: `No se pudo emitir la nota de crédito: ${(e as Error).message}`,
+          success: false,
+        };
+      }
+    }
+
     // 2bis. TODO EL MOVIMIENTO DE PLATA, EN UNA TRANSACCIÓN
     //
     // Estado de la venta, marcado de los cobros, egreso de caja y crédito de
@@ -109,21 +176,66 @@ export async function anularVentaAction(
     // El guard de permiso sigue siendo el mismo y sigue yendo primero: la RPC
     // hace el UPDATE condicional y, si la RLS lo niega o la venta ya estaba
     // anulada, lanza sin haber tocado plata ni stock.
+    const argumentosAnulacion = {
+      p_venta_id: ventaId,
+      p_motivo: motivoDevolucion,
+      p_turno_id: turnoDevolucionId,
+      // Fail-closed: un código que este código no conoce NO se manda. Que la
+      // columna quede en null es la verdad ("no se sabe"); un valor
+      // inventado ensucia la única medición que justifica el campo — cuántas
+      // anulaciones son en realidad una venta mal cargada.
+      p_motivo_codigo: normalizarMotivoAnulacion(motivoCodigo),
+      p_motivo_detalle: motivoDetalle?.trim() || null,
+    };
+
     const { data: resultadoAnulacion, error: anulacionError } =
-      await supabase.rpc("anular_venta", {
-        p_venta_id: ventaId,
-        p_motivo: motivoDevolucion,
-        p_turno_id: turnoDevolucionId,
-        // Fail-closed: un código que este código no conoce NO se manda. Que la
-        // columna quede en null es la verdad ("no se sabe"); un valor
-        // inventado ensucia la única medición que justifica el campo — cuántas
-        // anulaciones son en realidad una venta mal cargada.
-        p_motivo_codigo: normalizarMotivoAnulacion(motivoCodigo),
-        p_motivo_detalle: motivoDetalle?.trim() || null,
-      });
+      notaCredito && facturaOriginal
+        ? await supabase.rpc("anular_venta_facturada", {
+            ...argumentosAnulacion,
+            p_comprobante: {
+              tipo: notaCredito.tipo,
+              punto_venta: notaCredito.puntoVenta,
+              numero: notaCredito.numero,
+              neto: notaCredito.desglose.neto,
+              iva_monto: notaCredito.desglose.ivaMonto,
+              exento: notaCredito.desglose.exento,
+              no_gravado: notaCredito.desglose.noGravado,
+              total: notaCredito.desglose.total,
+              cae: notaCredito.cae,
+              cae_vencimiento: notaCredito.caeVencimiento,
+              fecha_comprobante: notaCredito.fechaComprobante,
+              arca_ambiente: notaCredito.ambiente,
+              arca_resultado: "A",
+              arca_observaciones:
+                notaCredito.observaciones.length > 0 ? notaCredito.observaciones : null,
+              iva: notaCredito.iva.map((a) => ({
+                id: a.id,
+                base_imponible: a.baseImponible,
+                importe: a.importe,
+              })),
+              anula_comprobante_id: facturaOriginal.id,
+              emitido_por: user.id,
+            },
+          })
+        : await supabase.rpc("anular_venta", argumentosAnulacion);
 
     if (anulacionError || !resultadoAnulacion) {
       console.error("[ANULACION] Error anulando la venta:", anulacionError);
+      if (notaCredito) {
+        // EL caso residual: la NC existe en ARCA y la venta sigue viva. Se
+        // deja todo lo necesario para registrarla a mano.
+        console.error("[ARCA] NOTA DE CREDITO EMITIDA SIN ANULACION", {
+          ventaId,
+          tipo: notaCredito.tipo,
+          puntoVenta: notaCredito.puntoVenta,
+          numero: notaCredito.numero,
+          cae: notaCredito.cae,
+          caeVencimiento: notaCredito.caeVencimiento,
+          total: notaCredito.desglose.total,
+          ambiente: notaCredito.ambiente,
+          anulaComprobanteId: facturaOriginal?.id,
+        });
+      }
       const noAnulable = anulacionError?.message?.includes("VENTA_NO_ANULABLE");
       return {
         error: noAnulable
@@ -296,6 +408,11 @@ export async function anularVentaAction(
     if (itemsSinRestaurar.length > 0) {
       avisos.push(
         `No se pudo devolver al stock: ${itemsSinRestaurar.join(", ")}. Cargalo a mano.`,
+      );
+    }
+    if (notaCredito) {
+      avisos.push(
+        `Se emitió la nota de crédito ${formatearNumeroComprobante(notaCredito.puntoVenta, notaCredito.numero)} (CAE ${notaCredito.cae}). Entregásela al cliente junto con la devolución.`,
       );
     }
 

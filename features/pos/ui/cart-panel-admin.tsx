@@ -70,8 +70,12 @@ type CheckoutStep = "CART" | "PAYMENT";
 export function CartPanelAdmin({
   numeroWhatsApp,
   rubro,
+  puedeElegirComprobante = false,
 }: Readonly<{
   numeroWhatsApp?: string;
+  /** Permiso `ventas.elegir_comprobante`. Solo decide si se muestra el
+   * selector Factura / Ticket; el server vuelve a chequearlo. */
+  puedeElegirComprobante?: boolean;
   /** Decide si el ticket muestra miniaturas. Ausente = las muestra: es el
    * default seguro para cualquier consumidor que todavía no lo pase. */
   rubro?: Rubro;
@@ -247,6 +251,14 @@ export function CartPanelAdmin({
   const [pagos, setPagos] = useState<CreateSalePaymentInput[]>([]);
   const [modoMixto, setModoMixto] = useState(false);
   const [isCuentaCorriente, setIsCuentaCorriente] = useState(false);
+
+  // FACTURA O TICKET, por venta. `null` = todavía no se tocó: vale el
+  // default del comercio. Solo tiene sentido con modo ARCA; en los otros
+  // modos no se muestra ni se manda, y el server emite ticket como siempre.
+  // Vuelve al default después de cada venta: la elección es de ESA venta.
+  const [facturarElegido, setFacturarElegido] = useState<boolean | null>(null);
+  const facturacionActiva = branding?.modo_facturacion === "ARCA";
+  const facturar = facturarElegido ?? branding?.facturar_por_defecto ?? true;
   /** La vendedora anuló el recargo CC para ESTE ticket. No persiste entre
    * ventas: se resetea al cerrar la venta y al apagar Cuenta Corriente. */
   const [ccSinRecargo, setCcSinRecargo] = useState(false);
@@ -824,6 +836,8 @@ export function CartPanelAdmin({
     // del modal, este closure todavía vería `unidadesElegidas` vacío y la
     // venta saldría sin aparatos.
     unidadesOverride?: UnidadSeleccionada[],
+    /** Reintento tras "ARCA no responde": cobrar con ticket interno. */
+    opciones?: { sinFacturaPorArcaCaido?: boolean },
   ) => {
     const montoRealAsignado =
       montoAnticipoModal !== undefined ? montoAnticipoModal : sumaPagos;
@@ -917,6 +931,12 @@ export function CartPanelAdmin({
         formData.append("pagos", JSON.stringify(pagosToSubmit));
         formData.append("metodo_pago_id", pagosToSubmit[0]?.metodoPagoId || "");
         formData.append("is_cuenta_corriente", String(isCuentaCorriente));
+        if (facturacionActiva) {
+          formData.append("facturar", String(facturar));
+          if (opciones?.sinFacturaPorArcaCaido) {
+            formData.append("sin_factura_por_arca_caido", "true");
+          }
+        }
         formData.append("recargo_cc", String(recargoCuentaCorriente));
         formData.append("cc_sin_recargo", String(ccSinRecargo));
 
@@ -1042,6 +1062,22 @@ export function CartPanelAdmin({
                 },
               },
             });
+          } else if ("arcaCaido" in result && result.arcaCaido) {
+            // ARCA no respondió. La clienta está en el mostrador: se ofrece
+            // cobrar igual con ticket interno y facturar después desde el
+            // historial. No se decide solo — es una elección del comercio.
+            toast.error("ARCA no responde", {
+              description:
+                "Podés cobrar con ticket interno y facturar esta venta después desde el historial.",
+              duration: 15000,
+              action: {
+                label: "Cobrar con ticket",
+                onClick: () =>
+                  handleConfirmarVentaPOS(montoAnticipoModal, unidadesOverride, {
+                    sinFacturaPorArcaCaido: true,
+                  }),
+              },
+            });
           } else {
             toast.error("No se pudo registrar la venta.", {
               description: result.error ?? "Intenta nuevamente.",
@@ -1095,6 +1131,7 @@ export function CartPanelAdmin({
           total: totalFinal + recargoSubmit.totalRecargo,
           metodoPago: nombreMetodoMostrar,
           nroRecibo: idReal,
+          fiscal: result.fiscal ?? null,
           descuentoMonto: descuentoDetalle.monto,
           promocionNombre: descuentoDetalle.nombre,
           recargoMetodoMonto: recargoSubmit.totalRecargo,
@@ -1136,6 +1173,7 @@ export function CartPanelAdmin({
         clearCart();
         setCheckoutStep("CART");
         setPromocionId("ninguna");
+        setFacturarElegido(null);
         // La lista vuelve a Base después de cada venta, igual que la
         // promoción. Es fail-closed y a propósito: dejarla puesta arriesga
         // cobrarle mayorista a la clienta siguiente, que es un error del que
@@ -1262,6 +1300,12 @@ export function CartPanelAdmin({
           totalFinal={totalFinal}
           isCuentaCorriente={isCuentaCorriente}
           onCuentaCorrienteChange={handleCuentaCorrienteChange}
+          facturar={facturacionActiva ? facturar : undefined}
+          onFacturarChange={
+            facturacionActiva && puedeElegirComprobante
+              ? setFacturarElegido
+              : undefined
+          }
           isReserva={usaReservas && isReserva}
           // Sin `onReservaChange` el paso de pago no dibuja el botón
           // "Reservado" y la fila queda en dos columnas. Es el mismo mecanismo

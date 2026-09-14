@@ -269,8 +269,13 @@ export function PaletaComandos({
   // que no lleguen a un input que las esté escuchando.
   useEffect(() => {
     const alPresionar = (evento: KeyboardEvent) => {
-      const esCtrlK =
-        evento.key.toLowerCase() === "k" && (evento.ctrlKey || evento.metaKey);
+      // `key` puede venir undefined: Chrome en Windows despacha keydown
+      // sintéticos sin `key` desde el autocompletado y algunas extensiones
+      // (gestores de contraseñas). Visto el 14/9/2026 en /configuracion como
+      // "Cannot read properties of undefined (reading 'toLowerCase')". Este
+      // listener es global al panel, así que el crash era en cualquier pantalla.
+      const tecla = evento.key?.toLowerCase();
+      const esCtrlK = tecla === "k" && (evento.ctrlKey || evento.metaKey);
 
       if (esCtrlK) {
         evento.preventDefault();

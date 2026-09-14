@@ -7,9 +7,18 @@ import {
   Page,
   Text,
   View,
+  Image,
   StyleSheet,
   pdf,
 } from "@react-pdf/renderer";
+import {
+  codigoArcaComprobante,
+  discriminaIvaEnPapel,
+  fechaCorta,
+  numeroComprobanteFiscal,
+  receptorTexto,
+  tituloComprobante,
+} from "@/shared/lib/comprobante-fiscal-ticket";
 import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import { getTicketFinancialSummary, getTicketSubtotal } from "./ticket-utils";
 
@@ -117,10 +126,16 @@ const styles = StyleSheet.create({
 const ReceiptDocument = ({
   ticket,
   config,
+  qrDataUrl,
 }: {
   ticket: TicketData;
   config: ConfiguracionPOS | null;
+  /** QR de ARCA como data URL. Solo con `ticket.fiscal`. */
+  qrDataUrl?: string | null;
 }) => {
+  // Con factura, el PDF ES la factura: letra, número, CAE, QR, y sin la
+  // leyenda de "no válido". Mismo criterio que ticket-printable.tsx.
+  const fiscal = ticket.fiscal ?? null;
   /**
    * El subtotal y el resumen financiero salen de `ticket-utils`, igual que en
    * el ticket impreso y en el texto de WhatsApp.
@@ -138,15 +153,47 @@ const ReceiptDocument = ({
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {fiscal?.ambiente === "HOMOLOGACION" && (
+          <Text
+            style={{
+              fontSize: 10,
+              fontWeight: "bold",
+              textAlign: "center",
+              borderWidth: 1,
+              borderColor: "#0f172a",
+              padding: 4,
+              marginBottom: 12,
+            }}
+          >
+            PRUEBA (HOMOLOGACIÓN) — SIN VALOR FISCAL
+          </Text>
+        )}
+
         {/* Cabecera */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
             <Text style={styles.title}>
               {config?.posName?.toUpperCase() || "COMPROBANTE"}
             </Text>
+            {fiscal && config?.razon_social && (
+              <Text style={[styles.subtitle, { fontWeight: "bold", color: "#0f172a" }]}>
+                {config.razon_social}
+              </Text>
+            )}
             <Text style={styles.subtitle}>{config?.direccion || ""}</Text>
             {config?.whatsapp && (
               <Text style={styles.subtitle}>Tel: {config.whatsapp}</Text>
+            )}
+            {fiscal && config?.cuit && (
+              <Text style={styles.subtitle}>CUIT: {config.cuit}</Text>
+            )}
+            {fiscal && config?.condicion_iva && (
+              <Text style={styles.subtitle}>{config.condicion_iva}</Text>
+            )}
+            {fiscal && config?.inicio_actividades && (
+              <Text style={styles.subtitle}>
+                Inicio de actividades: {fechaCorta(config.inicio_actividades)}
+              </Text>
             )}
           </View>
           <View style={styles.headerRight}>
@@ -158,12 +205,28 @@ const ReceiptDocument = ({
                 marginBottom: 4,
               }}
             >
-              COMPROBANTE
+              {fiscal ? tituloComprobante(fiscal.tipo) : "COMPROBANTE"}
             </Text>
-            <Text style={styles.subtitle}>Nº #{ticket.nroRecibo}</Text>
-            <Text style={styles.subtitle}>
-              {ticket.fecha || new Date().toLocaleString("es-AR")}
-            </Text>
+            {fiscal ? (
+              <>
+                <Text style={styles.subtitle}>
+                  ORIGINAL · COD. {codigoArcaComprobante(fiscal.tipo)}
+                </Text>
+                <Text style={[styles.subtitle, { fontWeight: "bold", color: "#0f172a" }]}>
+                  Nº {numeroComprobanteFiscal(fiscal)}
+                </Text>
+                <Text style={styles.subtitle}>
+                  Fecha: {fechaCorta(fiscal.fechaComprobante)}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.subtitle}>Nº #{ticket.nroRecibo}</Text>
+                <Text style={styles.subtitle}>
+                  {ticket.fecha || new Date().toLocaleString("es-AR")}
+                </Text>
+              </>
+            )}
           </View>
         </View>
 
@@ -172,8 +235,13 @@ const ReceiptDocument = ({
           <View style={styles.infoBox}>
             <Text style={styles.infoTitle}>Cliente</Text>
             <Text style={styles.infoText}>
-              {ticket.clienteNombre || "Consumidor Final"}
+              {fiscal
+                ? receptorTexto(fiscal)
+                : ticket.clienteNombre || "Consumidor Final"}
             </Text>
+            {fiscal?.receptor.condicionIva && (
+              <Text style={styles.subtitle}>IVA: {fiscal.receptor.condicionIva}</Text>
+            )}
           </View>
           <View style={styles.infoBox}>
             <Text style={styles.infoTitle}>Condición de Pago</Text>
@@ -253,6 +321,41 @@ const ReceiptDocument = ({
             </View>
           )}
 
+          {fiscal && discriminaIvaEnPapel(fiscal.tipo) && (
+            <>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Neto gravado:</Text>
+                <Text style={styles.totalValue}>
+                  ${fiscal.neto.toLocaleString("es-AR")}
+                </Text>
+              </View>
+              {fiscal.iva.map((a) => (
+                <View style={styles.totalRow} key={a.alicuota}>
+                  <Text style={styles.totalLabel}>IVA {a.alicuota}%:</Text>
+                  <Text style={styles.totalValue}>
+                    ${a.importe.toLocaleString("es-AR")}
+                  </Text>
+                </View>
+              ))}
+              {fiscal.exento > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>Exento:</Text>
+                  <Text style={styles.totalValue}>
+                    ${fiscal.exento.toLocaleString("es-AR")}
+                  </Text>
+                </View>
+              )}
+              {fiscal.noGravado > 0 && (
+                <View style={styles.totalRow}>
+                  <Text style={styles.totalLabel}>No gravado:</Text>
+                  <Text style={styles.totalValue}>
+                    ${fiscal.noGravado.toLocaleString("es-AR")}
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+
           <View style={styles.totalRowFinal}>
             <Text style={styles.totalLabelBig}>TOTAL:</Text>
             <Text style={styles.totalValueBig}>
@@ -322,14 +425,43 @@ const ReceiptDocument = ({
           )}
         </View>
 
-        {/* Footer Legal */}
+        {/* Footer: CAE + QR en la factura, leyenda de interno en el ticket */}
         <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            COMPROBANTE INTERNO - NO VÁLIDO COMO FACTURA FISCAL
-          </Text>
-          <Text style={[styles.footerText, { marginTop: 4 }]}>
-            Generado por Comerz
-          </Text>
+          {fiscal ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 12,
+              }}
+            >
+              {qrDataUrl && (
+                // eslint-disable-next-line jsx-a11y/alt-text -- Image de react-pdf, no acepta alt
+                <Image src={qrDataUrl} style={{ width: 70, height: 70 }} />
+              )}
+              <View style={{ alignItems: "flex-start" }}>
+                <Text style={[styles.footerText, { color: "#0f172a", fontWeight: "bold" }]}>
+                  CAE: {fiscal.cae}
+                </Text>
+                <Text style={styles.footerText}>
+                  Vto. CAE: {fechaCorta(fiscal.caeVencimiento)}
+                </Text>
+                <Text style={styles.footerText}>
+                  Comprobante autorizado por ARCA
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.footerText}>
+                COMPROBANTE INTERNO - NO VÁLIDO COMO FACTURA FISCAL
+              </Text>
+              <Text style={[styles.footerText, { marginTop: 4 }]}>
+                Generado por Comerz
+              </Text>
+            </>
+          )}
         </View>
       </Page>
     </Document>
@@ -340,11 +472,12 @@ const ReceiptDocument = ({
 export async function downloadSaleReceiptPdf(
   ticket: TicketData,
   config: ConfiguracionPOS | null,
+  qrDataUrl?: string | null,
 ) {
   try {
     // 1. Generamos el Blob del PDF directamente en memoria
     const blob = await pdf(
-      <ReceiptDocument ticket={ticket} config={config} />,
+      <ReceiptDocument ticket={ticket} config={config} qrDataUrl={qrDataUrl} />,
     ).toBlob();
 
     // 2. Creamos una URL temporal
@@ -353,7 +486,9 @@ export async function downloadSaleReceiptPdf(
     // 3. Forzamos la descarga nativa del navegador
     const link = document.createElement("a");
     link.href = url;
-    link.download = `Comprobante_${ticket.nroRecibo}.pdf`;
+    link.download = ticket.fiscal
+      ? `${tituloComprobante(ticket.fiscal.tipo).replaceAll(" ", "_")}_${numeroComprobanteFiscal(ticket.fiscal)}.pdf`
+      : `Comprobante_${ticket.nroRecibo}.pdf`;
     document.body.appendChild(link);
     link.click();
 

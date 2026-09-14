@@ -91,10 +91,24 @@ export async function getVentasAction(opts?: {
           promocion_nombre
         ),
         comprobantes (
+          id,
           tipo,
           punto_venta,
           numero,
-          cae
+          cae,
+          cae_vencimiento,
+          fecha_comprobante,
+          neto,
+          iva_monto,
+          exento,
+          no_gravado,
+          total,
+          receptor_razon_social,
+          receptor_doc_tipo,
+          receptor_doc_nro,
+          receptor_condicion_iva,
+          arca_ambiente,
+          comprobantes_iva ( alicuota_id, base_imponible, importe )
         ),
         venta_pagos (
           metodo_pago_id,

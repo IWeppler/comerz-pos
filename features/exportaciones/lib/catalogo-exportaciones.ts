@@ -43,11 +43,10 @@ export const EXPORTACIONES: DefinicionExportacion[] = [
   {
     clave: "libro_iva_ventas",
     titulo: "Libro IVA Ventas",
-    descripcion: "Comprobantes emitidos con su IVA discriminado por alícuota.",
+    descripcion:
+      "Facturas y notas de crédito con CAE de producción, con el neto y el IVA abiertos por alícuota. Las notas de crédito van en negativo. Los tickets internos y las pruebas de homologación no entran.",
     grupo: "Impositivo",
-    disponible: false,
-    motivoNoDisponible:
-      "Necesita facturas emitidas con ARCA. Hoy el sistema emite tickets internos, que no llevan IVA discriminado y no van al libro.",
+    disponible: true,
   },
   {
     clave: "libro_iva_compras",
@@ -97,11 +96,10 @@ export const EXPORTACIONES: DefinicionExportacion[] = [
   {
     clave: "notas_credito",
     titulo: "Notas de crédito",
-    descripcion: "Comprobantes que anulan o corrigen una factura.",
+    descripcion:
+      "Las notas de crédito emitidas con CAE al anular una venta facturada, con la factura que compensan.",
     grupo: "Operaciones",
-    disponible: false,
-    motivoNoDisponible:
-      "Todavía no se emiten: una nota de crédito necesita su CAE, y eso requiere ARCA.",
+    disponible: true,
   },
   {
     clave: "notas_debito",

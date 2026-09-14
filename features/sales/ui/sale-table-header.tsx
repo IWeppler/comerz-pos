@@ -11,6 +11,7 @@ import { Search } from "lucide-react";
 import {
   ESTADOS_VENTA,
   METODO_TODOS,
+  COMPROBANTES_FILTRO,
 } from "./sale-table-filtros";
 
 export interface SaleTableHeaderOption {
@@ -31,6 +32,9 @@ interface SaleTableHeaderProps {
   /** Los métodos que aparecen en el historial, no los configurados. Ver la
    * tabla: una opción que da cero resultados es peor que no ofrecerla. */
   metodosOptions: string[];
+  /** Ausente = el historial no tiene facturas y el select no se muestra. */
+  comprobanteValue?: string;
+  onComprobanteChange?: (value: string) => void;
   actions?: ReactNode;
 }
 
@@ -58,6 +62,8 @@ export function SaleTableHeader({
   metodoValue,
   onMetodoChange,
   metodosOptions,
+  comprobanteValue,
+  onComprobanteChange,
 }: Readonly<SaleTableHeaderProps>) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-center sm:gap-3 sm:p-3">
@@ -91,6 +97,15 @@ export function SaleTableHeader({
             })),
           ]}
         />
+
+        {comprobanteValue !== undefined && onComprobanteChange && (
+          <FiltroSelect
+            value={comprobanteValue}
+            onChange={onComprobanteChange}
+            placeholder="Comprobante"
+            opciones={COMPROBANTES_FILTRO.map((c) => ({ ...c }))}
+          />
+        )}
 
         <FiltroSelect
           value={orderValue}

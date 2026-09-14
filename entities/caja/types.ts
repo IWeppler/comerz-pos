@@ -205,3 +205,19 @@ export interface PosicionDinero {
   por_acreditar: CuentaPosicion[];
   acreditado: CuentaPosicion[];
 }
+
+/** Respuesta de `ventas_facturadas`: qué parte de lo vendido tiene factura. */
+export interface VentasFacturadas {
+  desde: string;
+  hasta: string;
+  periodo: string;
+  facturado: {
+    cantidad: number;
+    total: number;
+    por_tipo: { tipo: string; cantidad: number; total: number }[];
+  };
+  sin_facturar: { cantidad: number; total: number };
+  /** CAE de homologación: comprobantes de prueba, sin valor fiscal. */
+  prueba: { cantidad: number; total: number };
+  total: { cantidad: number; total: number };
+}

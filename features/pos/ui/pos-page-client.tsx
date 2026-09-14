@@ -13,6 +13,9 @@ interface PosPageClientProps {
   /** Permiso `clientes.cobrar_cc`, resuelto en la página (server). Decide si
    * la barra del POS ofrece "Cobrar deuda". */
   puedeCobrarCuentaCorriente?: boolean;
+  /** Permiso `ventas.elegir_comprobante`: si el ticket muestra el selector
+   * Factura / Ticket interno (solo con modo ARCA). */
+  puedeElegirComprobante?: boolean;
   /**
    * El rubro, resuelto en el SERVER y sin costo (ver la página: sale de
    * `leerConfigPos`, que los layouts de este mismo request ya cachearon).
@@ -27,6 +30,7 @@ interface PosPageClientProps {
 
 export function PosPageClient({
   puedeCobrarCuentaCorriente = false,
+  puedeElegirComprobante = false,
   rubroInicial = RUBRO_DEFAULT,
 }: Readonly<PosPageClientProps> = {}) {
   // `?q=` es cómo entra un producto elegido en la paleta (Ctrl+K): en vez de
@@ -115,7 +119,10 @@ export function PosPageClient({
             bien desde el primer pintado, sin esperar al catálogo y sin
             cambiar de layout cuando llega (`posSinImagenes` decide si el
             ticket muestra miniaturas). */}
-        <CartPanelAdmin rubro={data?.data?.rubro ?? rubroInicial} />
+        <CartPanelAdmin
+          rubro={data?.data?.rubro ?? rubroInicial}
+          puedeElegirComprobante={puedeElegirComprobante}
+        />
       </div>
     </div>
   );

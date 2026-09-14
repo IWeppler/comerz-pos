@@ -14,6 +14,8 @@ import {
 } from "@/features/caja/actions/get-resumen-gerencial";
 import { getPosicionDineroAction } from "@/features/caja/actions/get-posicion-dinero";
 import { PosicionDinero } from "@/features/caja/ui/posicion-dinero";
+import { getVentasFacturadasAction } from "@/features/caja/actions/get-ventas-facturadas";
+import { VentasFacturadas } from "@/features/caja/ui/ventas-facturadas";
 import {
   TurnoCajaHistorial,
   VentaCaja,
@@ -54,8 +56,12 @@ export default async function CajaPage() {
   // 2. Traer configuración operativa
   const { data: config } = await supabase
     .from("configuracion_pos")
-    .select("modo_caja, requiere_caja_abierta")
+    .select("modo_caja, requiere_caja_abierta, modo_facturacion")
     .single();
+
+  // Facturado / sin facturar tiene sentido SOLO para quien factura con
+  // ARCA: en un comercio de ticket interno "0% facturado" es ruido.
+  const facturaConArca = config?.modo_facturacion === "ARCA";
 
   const modoCaja = config?.modo_caja || "UNICA";
 
@@ -152,13 +158,17 @@ export default async function CajaPage() {
   // esto es lo que decide si se renderiza, no lo que protege el dato.
   const puedeVerGerencial = await puedeVerVistaGerencialAction();
 
-  const [resumenGerencial, detalleMedios, posicion] = puedeVerGerencial
-    ? await Promise.all([
-        getResumenGerencialAction(),
-        getDetalleMediosPagoAction(),
-        getPosicionDineroAction(PERIODO_INICIAL_DINERO),
-      ])
-    : [null, null, null];
+  const [resumenGerencial, detalleMedios, posicion, facturadas] =
+    puedeVerGerencial
+      ? await Promise.all([
+          getResumenGerencialAction(),
+          getDetalleMediosPagoAction(),
+          getPosicionDineroAction(PERIODO_INICIAL_DINERO),
+          facturaConArca
+            ? getVentasFacturadasAction(PERIODO_INICIAL_DINERO)
+            : Promise.resolve(null),
+        ])
+      : [null, null, null, null];
 
   // 8. ¿Esta persona opera caja, o solo mira números? No hay un flag para
   // esto: se deduce de si tiene un turno propio abierto o abrió alguno en el
@@ -201,10 +211,18 @@ export default async function CajaPage() {
         }
         dinero={
           posicion?.data ? (
-            <PosicionDinero
-              posicionInicial={posicion.data}
-              periodoInicial={PERIODO_INICIAL_DINERO}
-            />
+            <div className="space-y-10">
+              <PosicionDinero
+                posicionInicial={posicion.data}
+                periodoInicial={PERIODO_INICIAL_DINERO}
+              />
+              {facturadas?.data && (
+                <VentasFacturadas
+                  inicial={facturadas.data}
+                  periodoInicial={PERIODO_INICIAL_DINERO}
+                />
+              )}
+            </div>
           ) : undefined
         }
         historial={

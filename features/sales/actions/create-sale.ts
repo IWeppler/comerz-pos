@@ -25,7 +25,27 @@ import {
 } from "@/shared/lib/precio-de-lista";
 import { mensajeSinStock } from "../lib/mensaje-sin-stock";
 import { emitirComprobante } from "../lib/emitir-comprobante";
-import { ARCA_EMISION_DISPONIBLE } from "@/shared/lib/facturacion";
+import {
+  emiteComprobanteFiscal,
+  parsePuntoVenta,
+} from "@/shared/lib/facturacion";
+import { determinarComprobante } from "@/shared/lib/determinar-comprobante";
+import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+import {
+  negocioActualId,
+  tieneCredencialesListas,
+} from "@/features/arca/lib/credenciales";
+import {
+  normalizarAmbiente,
+  PORCENTAJE_ALICUOTA,
+} from "@/features/arca/lib/codigos-arca";
+import type { ComprobanteFiscalTicket } from "@/shared/lib/comprobante-fiscal-ticket";
+import {
+  emitirFacturaArca,
+  ErrorEmision,
+  type FacturaEmitida,
+} from "@/features/arca/lib/emitir-factura";
+import type { TipoFiscal } from "@/features/arca/lib/armar-factura";
 
 export async function registrarVentaAction(
   prevState: { error: string | null; success: boolean },
@@ -88,16 +108,12 @@ export async function registrarVentaAction(
   }
 
   // Una factura no se puede emitir sin conexión: el CAE lo da ARCA en el
-  // momento. Mientras la emisión fiscal esté apagada esto no se activa —
-  // todo sale como TICKET interno, que sí se puede numerar al sincronizar—,
-  // pero el día que se prenda, una venta offline no puede colarse y quedar
-  // sin comprobante válido. El freno va acá, antes de tocar nada.
-  if (esVentaOffline && ARCA_EMISION_DISPONIBLE) {
-    return {
-      error: "Sin conexión no se puede facturar: el CAE lo autoriza ARCA en el momento.",
-      success: false,
-    };
-  }
+  // momento. Una venta offline llega acá DESPUÉS de cobrada, con la clienta ya
+  // ida, así que rechazarla no la deshace: la deja sin registrar para siempre
+  // en la cola del celular. Por eso se registra con TICKET interno (ver
+  // `arcaConectado` más abajo, que es false para offline) y se loguea como
+  // error: esa venta hay que facturarla a mano en ARCA, y el log es lo que
+  // permite encontrarla.
 
   if (!cartData) return { error: "El carrito está vacío.", success: false };
   const items = JSON.parse(cartData) as any[];
@@ -122,7 +138,7 @@ export async function registrarVentaAction(
     .select(
       // `modo_caja` y `requiere_caja_abierta` son para el turno; el resto para
       // los pagos y para el comprobante del paso 11. Misma fila, una consulta.
-      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta",
+      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto",
     )
     .single();
 
@@ -273,7 +289,7 @@ export async function registrarVentaAction(
         // carrito por el mismo motivo que el precio: el `tipo` que manda el
         // cliente es texto libre en un request, y con él se podría hacer
         // entrar cualquier renglón a una promo que no le corresponde.
-        "cantidad, id, producto_id, variante, producto:productos(nombre, precio, precio_costo, unidad_medida, tipo)",
+        "cantidad, id, producto_id, variante, producto:productos(nombre, precio, precio_costo, unidad_medida, tipo, tratamiento_iva)",
       )
       .in("producto_id", productoIds),
     supabase
@@ -490,6 +506,9 @@ export async function registrarVentaAction(
       // online, donde `precioUsado` ES el del server.
       desfasajeUnitario: precioUsado - precioServer,
       costoServer,
+      // Para el desglose de IVA de la factura. Sale de la base, no del
+      // carrito: es lo que decide cuánto impuesto se declara.
+      tratamientoIva: (productoData?.tratamiento_iva as string | null) ?? null,
     });
   }
 
@@ -715,6 +734,7 @@ export async function registrarVentaAction(
       precioUnitario: precioUnitario,
       descuentoMonto: itemDescuentoMonto,
       precioFinal: itemPrecioFinal,
+      tratamientoIva: item.tratamientoIva,
     });
   }
 
@@ -877,6 +897,127 @@ export async function registrarVentaAction(
         }
       }
     }
+  }
+
+  // --- 2ter. QUÉ COMPROBANTE SALE, DECIDIDO ANTES DE TOCAR NADA ---
+  //
+  // Con ARCA el CAE se pide ANTES de grabar la venta (una factura sin CAE no
+  // existe: CHECK `comprobantes_ticket_sin_cae_check`), así que qué
+  // comprobante corresponde tiene que estar resuelto antes del stock. Los
+  // datos del receptor se leen acá UNA vez y se copian a la fila del
+  // comprobante, que los congela: no se puede depender de un join contra
+  // `clientes` que mañana devuelva otra cosa.
+  //
+  // `arcaConectado` es un hecho del comercio (certificado cargado y vigente
+  // para su ambiente), no un flag del código: cada negocio prende el suyo.
+  // Offline siempre es false — el CAE se autoriza en el momento y la venta
+  // ya pasó— y se loguea como error más abajo para facturarla a mano.
+  let receptor: {
+    cliente_id: string;
+    receptor_razon_social: string | null;
+    receptor_cuit: string | null;
+    receptor_dni: string | null;
+    receptor_condicion_iva: string | null;
+  } | null = null;
+  if (clienteId) {
+    const { data: clienteFiscal } = await supabase
+      .from("clientes")
+      .select("nombre, razon_social, cuit, dni, condicion_iva")
+      .eq("id", clienteId)
+      .maybeSingle();
+
+    receptor = {
+      cliente_id: clienteId,
+      // La razón social es el dato fiscal; el nombre de fantasía es el
+      // fallback para que el comprobante no salga sin receptor cuando el
+      // cliente existe pero nunca cargó sus datos de facturación.
+      receptor_razon_social:
+        clienteFiscal?.razon_social || clienteFiscal?.nombre || null,
+      receptor_cuit: clienteFiscal?.cuit ?? null,
+      receptor_dni: clienteFiscal?.dni ?? null,
+      receptor_condicion_iva: clienteFiscal?.condicion_iva ?? null,
+    };
+  }
+
+  const modoArca = emiteComprobanteFiscal(configVenta?.modo_facturacion);
+  const ambienteArca = normalizarAmbiente(configVenta?.arca_ambiente);
+  let negocioId: string | null = null;
+  let arcaConectado = false;
+  if (modoArca && !esVentaOffline) {
+    negocioId = await negocioActualId(supabase);
+    arcaConectado = negocioId
+      ? await tieneCredencialesListas(negocioId, ambienteArca)
+      : false;
+  }
+
+  // FACTURAR O NO es una decisión de la vendedora, por venta. El POS manda
+  // `facturar`; si no viene (cliente viejo, venta offline) manda el default
+  // del comercio. Apartarse del default exige `ventas.elegir_comprobante`:
+  // sin el permiso el switch no se muestra, así que un valor distinto en el
+  // request es un request armado a mano y se ignora con aviso.
+  const facturarPorDefecto = configVenta?.facturar_por_defecto ?? true;
+  const facturarPedido = formData.get("facturar");
+  // ARCA no respondió en el intento anterior y la vendedora eligió cobrar
+  // con ticket interno para facturar después. No pide permiso: sin esto la
+  // caja queda parada mientras ARCA esté caído, y la venta queda marcada en
+  // el log para facturarla desde el historial.
+  const sinFacturaPorArcaCaido =
+    formData.get("sin_factura_por_arca_caido") === "true";
+  let facturar = facturarPorDefecto;
+  if (modoArca && arcaConectado && sinFacturaPorArcaCaido) {
+    facturar = false;
+    console.warn("[ARCA] Venta registrada con ticket interno porque ARCA no respondió: facturar desde el historial", {
+      ventaIdCliente,
+      vendedorId: user.id,
+    });
+  } else if (modoArca && arcaConectado && facturarPedido !== null) {
+    const elegido = facturarPedido === "true";
+    if (elegido !== facturarPorDefecto) {
+      if (await tienePermiso(supabase, PERMISOS.VENTAS_ELEGIR_COMPROBANTE)) {
+        facturar = elegido;
+      } else {
+        console.warn("[ARCA] Elección de comprobante sin permiso: se usa el default", {
+          vendedorId: user.id,
+          pedido: elegido,
+          porDefecto: facturarPorDefecto,
+        });
+      }
+    }
+  }
+
+  const decision = facturar
+    ? determinarComprobante({
+        modoFacturacion: configVenta?.modo_facturacion,
+        condicionIvaEmisor: configVenta?.condicion_iva,
+        condicionIvaReceptor: receptor?.receptor_condicion_iva,
+        comprobanteDefecto: configVenta?.comprobante_defecto,
+        arcaConectado,
+      })
+    : {
+        tipo: "TICKET" as const,
+        motivo: "Se eligió ticket interno para esta venta.",
+        requiereReceptorIdentificado: false,
+      };
+  const emiteFactura = decision.tipo !== "TICKET";
+
+  if (modoArca && esVentaOffline) {
+    console.error("[ARCA] Venta offline registrada con ticket interno: facturar a mano", {
+      ventaIdCliente,
+      vendidaEn,
+      total: totalConRecargoMetodo,
+    });
+  }
+
+  const puntoVentaFiscal = parsePuntoVenta(configVenta?.punto_venta);
+  if (emiteFactura && (!puntoVentaFiscal || !configVenta?.cuit)) {
+    // Configuración a medias. Se frena acá, sin tocar stock: es un error de
+    // configuración que se arregla en Configuración > Facturación, no una
+    // venta que haya que registrar con ticket en silencio.
+    return {
+      error:
+        "Para facturar con ARCA faltan el punto de venta o el CUIT del comercio (Configuración → Facturación).",
+      success: false,
+    };
   }
 
   // --- 1ter. VALIDAR Y DESCONTAR STOCK (ATÓMICO) ---
@@ -1222,42 +1363,154 @@ export async function registrarVentaAction(
 
   const ticketCorto = ventaId.split("-")[0].toUpperCase();
 
-  const { data: resultadoVenta, error: ventaError } = await supabase.rpc(
-    "registrar_venta",
-    {
-      p_venta: payloadVentas,
-      p_pagos: ventaPagosPayloads,
-      p_items: insertItems,
-      p_stock_legacy: stockLegacy,
-      p_descuento:
-        promoData &&
-        promocionId &&
-        promocionId !== "ninguna" &&
-        descuentoAplicado > 0
+  // --- 3bis. PEDIR EL CAE A ARCA (SOLO FACTURA) ---
+  //
+  // Va DESPUÉS del stock y ANTES de grabar la venta. Si ARCA rechaza o no
+  // responde, se devuelve el stock y no queda venta: la clienta está en el
+  // mostrador y la vendedora ve el motivo. Lo que NO puede pasar es una venta
+  // grabada sin su factura — de eso se ocupa `registrar_venta_facturada`,
+  // que mete la fila con el CAE en la misma transacción que la venta.
+  //
+  // El caso residual (CAE emitido y la transacción de la venta falla) se
+  // loguea con TODO el detalle: ese comprobante existe en ARCA y hay que
+  // compensarlo con nota de crédito a mano.
+  let factura: FacturaEmitida | null = null;
+  if (emiteFactura) {
+    try {
+      factura = await emitirFacturaArca({
+        negocioId: negocioId!,
+        ambiente: ambienteArca,
+        cuitEmisor: configVenta!.cuit!,
+        condicionIvaEmisor: configVenta!.condicion_iva!,
+        tipo: decision.tipo as TipoFiscal,
+        puntoVenta: puntoVentaFiscal!,
+        renglones: itemsProcesados.map((i) => ({
+          precioFinal: i.precioFinal,
+          cantidad: i.cantidad,
+          tratamientoIva: i.tratamientoIva,
+        })),
+        recargos: recargoCCServer + recargoMetodoTotal,
+        total: totalConRecargoMetodo,
+        receptor: receptor
           ? {
-              promocion_id: promocionId,
-              promocion_nombre: promoData.nombre,
-              tipo_descuento: promoData.tipo_descuento,
-              monto_descontado: descuentoAplicado,
+              cuit: receptor.receptor_cuit,
+              dni: receptor.receptor_dni,
+              condicionIva: receptor.receptor_condicion_iva,
+              razonSocial: receptor.receptor_razon_social,
             }
           : null,
-      p_cc:
-        isCuentaCorriente && clienteId
-          ? {
-              cliente_id: clienteId,
-              monto_pendiente: montoPendiente,
-              plazo_mora: Number(configVenta?.cc_plazo_mora ?? 30),
-              descripcion: `Compra Fiada - Ticket #${ticketCorto}`,
-            }
-          : null,
-      p_reserva_ids: reservaIds,
-    },
-  );
+        fecha: new Date(),
+      });
+    } catch (e) {
+      console.error("[ARCA] No se pudo emitir la factura; la venta no se registra", {
+        ventaId,
+        tipo: decision.tipo,
+        error: e,
+      });
+      await revertirStockDescontado();
+      await liberarUnidades();
+      // `arcaCaido`: la falla es de ARCA o de la conexión, no de los datos de
+      // la venta. El POS ofrece cobrar con ticket interno y facturar después.
+      // Un rechazo por datos (CUIT inválido, tope de consumidor final) NO lo
+      // ofrece: eso se arregla y se vuelve a intentar.
+      const arcaCaido =
+        e instanceof ErrorEmision &&
+        (e.codigo === "WSFE" ||
+          e.codigo === "WSAA" ||
+          e.codigo === "CREDENCIALES" ||
+          e.codigo === "INCONSISTENTE");
+      return {
+        error: `No se pudo facturar: ${(e as Error).message}`,
+        success: false,
+        arcaCaido,
+      };
+    }
+  }
+
+  const argumentosVenta = {
+    p_venta: payloadVentas,
+    p_pagos: ventaPagosPayloads,
+    p_items: insertItems,
+    p_stock_legacy: stockLegacy,
+    p_descuento:
+      promoData &&
+      promocionId &&
+      promocionId !== "ninguna" &&
+      descuentoAplicado > 0
+        ? {
+            promocion_id: promocionId,
+            promocion_nombre: promoData.nombre,
+            tipo_descuento: promoData.tipo_descuento,
+            monto_descontado: descuentoAplicado,
+          }
+        : null,
+    p_cc:
+      isCuentaCorriente && clienteId
+        ? {
+            cliente_id: clienteId,
+            monto_pendiente: montoPendiente,
+            plazo_mora: Number(configVenta?.cc_plazo_mora ?? 30),
+            descripcion: `Compra Fiada - Ticket #${ticketCorto}`,
+          }
+        : null,
+    p_reserva_ids: reservaIds,
+  };
+
+  const { data: resultadoVenta, error: ventaError } = factura
+    ? await supabase.rpc("registrar_venta_facturada", {
+        ...argumentosVenta,
+        p_comprobante: {
+          tipo: factura.tipo,
+          punto_venta: factura.puntoVenta,
+          numero: factura.numero,
+          cliente_id: receptor?.cliente_id ?? null,
+          receptor_razon_social: receptor?.receptor_razon_social ?? null,
+          receptor_cuit: receptor?.receptor_cuit ?? null,
+          receptor_condicion_iva: receptor?.receptor_condicion_iva ?? null,
+          receptor_doc_tipo: factura.desglose.receptorDocTipo,
+          receptor_doc_nro: factura.desglose.receptorDocNro,
+          neto: factura.desglose.neto,
+          iva_monto: factura.desglose.ivaMonto,
+          exento: factura.desglose.exento,
+          no_gravado: factura.desglose.noGravado,
+          total: factura.desglose.total,
+          cae: factura.cae,
+          cae_vencimiento: factura.caeVencimiento,
+          fecha_comprobante: factura.fechaComprobante,
+          arca_ambiente: factura.ambiente,
+          arca_resultado: "A",
+          arca_observaciones:
+            factura.observaciones.length > 0 ? factura.observaciones : null,
+          iva: factura.iva.map((a) => ({
+            id: a.id,
+            base_imponible: a.baseImponible,
+            importe: a.importe,
+          })),
+          emitido_por: user.id,
+        },
+      })
+    : await supabase.rpc("registrar_venta", argumentosVenta);
 
   if (ventaError || !resultadoVenta) {
     // Nada de la venta quedó escrito: la transacción entera se deshizo. Solo
     // hay que devolver lo que se hizo ANTES de ella.
     console.error("[VENTA] Error registrando la venta:", ventaError);
+    if (factura) {
+      // EL caso residual. El CAE existe en ARCA y acá no quedó nada: hay que
+      // emitir la nota de crédito a mano. Todo lo necesario para hacerlo
+      // está en esta línea.
+      console.error("[ARCA] CAE EMITIDO SIN VENTA: compensar con nota de crédito", {
+        ventaId,
+        tipo: factura.tipo,
+        puntoVenta: factura.puntoVenta,
+        numero: factura.numero,
+        cae: factura.cae,
+        caeVencimiento: factura.caeVencimiento,
+        fechaComprobante: factura.fechaComprobante,
+        total: factura.desglose.total,
+        ambiente: factura.ambiente,
+      });
+    }
     await revertirStockDescontado();
     await liberarUnidades();
 
@@ -1321,33 +1574,53 @@ export async function registrarVentaAction(
     };
   }
 
-  // --- 11. EMITIR EL COMPROBANTE ---
-  // Va último y NO puede voltear la venta: a esta altura la plata ya se cobró
-  // y el stock ya se descontó. Ver el comentario largo en emitir-comprobante.ts
-  // — con TICKET interno, dejar la venta sin comprobante es menos grave que
-  // hacer rebotar una venta que ya ocurrió en el mostrador. Cuando ARCA emita
-  // de verdad esto se invierte: el CAE hay que pedirlo ANTES de cerrar.
-  //
-  // Los datos del receptor se leen recién acá y se copian a la fila: el
-  // comprobante los congela, así que no se puede depender de un join contra
-  // `clientes` que mañana devuelva otra cosa.
-  let receptor = null;
-  if (clienteId) {
-    const { data: clienteFiscal } = await supabase
-      .from("clientes")
-      .select("nombre, razon_social, cuit, condicion_iva")
-      .eq("id", clienteId)
-      .maybeSingle();
-
-    receptor = {
-      cliente_id: clienteId,
-      // La razón social es el dato fiscal; el nombre de fantasía es el
-      // fallback para que el comprobante no salga sin receptor cuando el
-      // cliente existe pero nunca cargó sus datos de facturación.
-      receptor_razon_social:
-        clienteFiscal?.razon_social || clienteFiscal?.nombre || null,
-      receptor_cuit: clienteFiscal?.cuit ?? null,
-      receptor_condicion_iva: clienteFiscal?.condicion_iva ?? null,
+  // --- 11. EMITIR EL TICKET INTERNO ---
+  // Solo cuando NO hubo factura: la factura ya entró en la transacción de la
+  // venta (paso 3bis + `registrar_venta_facturada`). El ticket va último y
+  // NO puede voltear la venta: a esta altura la plata ya se cobró y el stock
+  // ya se descontó. Ver el comentario largo en emitir-comprobante.ts — con
+  // TICKET interno, dejar la venta sin comprobante es menos grave que hacer
+  // rebotar una venta que ya ocurrió en el mostrador.
+  if (factura) {
+    revalidatePath("/", "layout");
+    return {
+      error: null,
+      success: true,
+      ventaId: nuevaVenta.venta_id,
+      comprobante: {
+        tipo: factura.tipo,
+        puntoVenta: factura.puntoVenta,
+        numero: factura.numero,
+        cae: factura.cae,
+        caeVencimiento: factura.caeVencimiento,
+      },
+      // Todo lo que el papel necesita para imprimirse como factura, sin
+      // otra consulta. Es el mismo dato que quedó en `comprobantes`.
+      fiscal: {
+        tipo: factura.tipo,
+        puntoVenta: factura.puntoVenta,
+        numero: factura.numero,
+        cae: factura.cae,
+        caeVencimiento: factura.caeVencimiento,
+        fechaComprobante: factura.fechaComprobante,
+        neto: factura.desglose.neto,
+        ivaMonto: factura.desglose.ivaMonto,
+        exento: factura.desglose.exento,
+        noGravado: factura.desglose.noGravado,
+        total: factura.desglose.total,
+        iva: factura.iva.map((a) => ({
+          alicuota: PORCENTAJE_ALICUOTA[a.id] ?? 0,
+          baseImponible: a.baseImponible,
+          importe: a.importe,
+        })),
+        receptor: {
+          razonSocial: receptor?.receptor_razon_social ?? null,
+          docTipo: factura.desglose.receptorDocTipo,
+          docNro: factura.desglose.receptorDocNro,
+          condicionIva: receptor?.receptor_condicion_iva ?? null,
+        },
+        ambiente: factura.ambiente,
+      } satisfies ComprobanteFiscalTicket,
     };
   }
 

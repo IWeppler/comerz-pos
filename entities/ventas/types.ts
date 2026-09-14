@@ -1,3 +1,5 @@
+import type { ComprobanteFiscalTicket } from "@/shared/lib/comprobante-fiscal-ticket";
+
 export type SupabaseRelation<T> = T | T[] | null;
 
 export const getSupabaseRelation = <T>(
@@ -81,10 +83,28 @@ export type EstadoOperacionVenta = "CONFIRMADA" | "ANULADA";
 /** Comprobante emitido por una venta. Es un array porque una venta puede
  * tener más de uno: la factura y, si se anula, su nota de crédito. */
 export interface VentaComprobante {
+  id?: string;
   tipo: string;
   punto_venta: number;
   numero: number;
   cae?: string | null;
+  cae_vencimiento?: string | null;
+  fecha_comprobante?: string | null;
+  neto?: number | null;
+  iva_monto?: number | null;
+  exento?: number | null;
+  no_gravado?: number | null;
+  total?: number | null;
+  receptor_razon_social?: string | null;
+  receptor_doc_tipo?: number | null;
+  receptor_doc_nro?: string | null;
+  receptor_condicion_iva?: string | null;
+  arca_ambiente?: string | null;
+  comprobantes_iva?: {
+    alicuota_id: number;
+    base_imponible: number;
+    importe: number;
+  }[];
 }
 
 export interface Venta {
@@ -192,4 +212,8 @@ export interface TicketData {
   montoCobrado?: number;
   montoPendiente?: number;
   esFiadoDirecto?: boolean;
+  /** Presente SOLO si la venta salió con factura (CAE). Cambia el papel:
+   * letra, número, emisor, receptor, IVA, CAE y QR. Ausente = ticket
+   * interno, con su leyenda de "no válido como factura". */
+  fiscal?: ComprobanteFiscalTicket | null;
 }

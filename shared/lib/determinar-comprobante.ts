@@ -1,5 +1,4 @@
 import {
-  ARCA_EMISION_DISPONIBLE,
   comprobanteDefectoEsValido,
   normalizarModoFacturacion,
   normalizarTipoComprobante,
@@ -46,6 +45,13 @@ export interface EntradaDeterminacion {
    * permite: es una preferencia, no una orden. */
   comprobanteDefecto?: unknown;
   operacion?: TipoOperacion;
+  /**
+   * Si ESTE comercio puede pedir un CAE ahora: certificado cargado y vigente
+   * para el ambiente activo (`tieneCredencialesListas`). Lo resuelve quien
+   * llama, con la base; acá solo se respeta. Ausente = false: sin saberlo,
+   * sale ticket.
+   */
+  arcaConectado?: boolean;
 }
 
 export interface ResultadoDeterminacion {
@@ -134,10 +140,11 @@ function esCondicionConocida(
 export function determinarComprobante(
   entrada: EntradaDeterminacion,
 ): ResultadoDeterminacion {
-  if (!ARCA_EMISION_DISPONIBLE) {
+  if (!entrada.arcaConectado) {
     return {
       tipo: "TICKET",
-      motivo: "La emisión con ARCA todavía no está disponible.",
+      motivo:
+        "El comercio no tiene conectado ARCA (falta el certificado, o venció).",
       requiereReceptorIdentificado: false,
     };
   }
@@ -146,16 +153,12 @@ export function determinarComprobante(
 }
 
 /**
- * La matriz, SIN el corte por disponibilidad de ARCA.
+ * La matriz, SIN el corte por conexión con ARCA.
  *
  * Está separada de `determinarComprobante` para que la regla fiscal se pueda
- * testear entera HOY, con el flag apagado. Si la única puerta de entrada
- * incluyera el corte, la matriz quedaría sin una sola prueba hasta el día que
- * se prenda ARCA — que es exactamente el día en que ya no se puede descubrir
- * que estaba mal.
- *
- * El flag es una cuestión de despliegue; esto es la regla del negocio. En
- * producción se entra siempre por `determinarComprobante`.
+ * testear entera sin credenciales. La conexión es un hecho del comercio
+ * (certificado cargado o no); esto es la regla del negocio. En producción se
+ * entra siempre por `determinarComprobante`.
  */
 export function determinarComprobanteFiscal(
   entrada: EntradaDeterminacion,

@@ -17,9 +17,11 @@ import {
 import {
   filasComprobantes,
   filasCompras,
+  filasLibroIvaVentas,
   filasMovimientosCaja,
   filasMovimientosGenerales,
   filasVentas,
+  type ComprobanteFiscalExport,
   type Fila,
 } from "../lib/construir-filas";
 
@@ -72,7 +74,12 @@ export async function exportarAction(
   let filas: Fila[] = [];
 
   try {
-    filas = await construirFilas(supabase, clave, desde, hasta);
+    filas = await construirFilas(supabase, clave, desde, hasta, {
+      // Para las columnas DATE (fecha fiscal): el día local, no el ISO en
+      // UTC, que a las 23:59 del último día ya es el día siguiente.
+      desdeDia: formatearFechaISO(inicio),
+      hastaDia: formatearFechaISO(fin),
+    });
   } catch (err) {
     console.error("[EXPORTACION] Error armando", clave, err);
     return { error: "No se pudo armar la exportación." };
@@ -109,6 +116,7 @@ async function construirFilas(
   clave: ClaveExportacion,
   desde: string,
   hasta: string,
+  dias: { desdeDia: string; hastaDia: string },
 ): Promise<Fila[]> {
   switch (clave) {
     case "ventas": {
@@ -133,13 +141,39 @@ async function construirFilas(
       const { data } = await supabase
         .from("comprobantes")
         .select(
-          "tipo, punto_venta, numero, emitido_en, total, neto, iva_monto, cae, cae_vencimiento, receptor_razon_social, receptor_cuit, receptor_condicion_iva, venta_id",
+          "tipo, punto_venta, numero, emitido_en, total, neto, iva_monto, cae, cae_vencimiento, receptor_razon_social, receptor_cuit, receptor_condicion_iva, arca_ambiente, venta_id",
         )
         .gte("emitido_en", desde)
         .lte("emitido_en", hasta)
         .order("emitido_en", { ascending: true });
 
       return filasComprobantes(data ?? []);
+    }
+
+    case "libro_iva_ventas":
+    case "notas_credito": {
+      // Por FECHA FISCAL (CbteFch), no por `emitido_en`: una factura hecha
+      // desde el historial a las 23:59 lleva el día que ARCA autorizó. Solo
+      // producción: los CAE de homologación no existen para el fisco.
+      const { data } = await supabase
+        .from("comprobantes")
+        .select(
+          "id, tipo, punto_venta, numero, fecha_comprobante, total, neto, iva_monto, exento, no_gravado, cae, receptor_razon_social, receptor_doc_tipo, receptor_doc_nro, receptor_condicion_iva, arca_ambiente, anula_comprobante_id, comprobantes_iva(alicuota_id, base_imponible, importe)",
+        )
+        .eq("arca_ambiente", "PRODUCCION")
+        .not("cae", "is", null)
+        .gte("fecha_comprobante", dias.desdeDia)
+        .lte("fecha_comprobante", dias.hastaDia)
+        .order("fecha_comprobante", { ascending: true })
+        .order("punto_venta", { ascending: true })
+        .order("numero", { ascending: true });
+
+      const filas = (data ?? []) as ComprobanteFiscalExport[];
+      return filasLibroIvaVentas(
+        clave === "notas_credito"
+          ? filas.filter((c) => c.tipo.startsWith("NOTA_CREDITO"))
+          : filas,
+      );
     }
 
     case "compras": {

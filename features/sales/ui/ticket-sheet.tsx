@@ -26,6 +26,12 @@ import {
 import { TicketData } from "@/entities/ventas/types";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { TicketPrintable } from "./ticket-printable";
+import { useQrFiscal } from "./use-qr-fiscal";
+import {
+  fechaCorta,
+  numeroComprobanteFiscal,
+  tituloComprobante,
+} from "@/shared/lib/comprobante-fiscal-ticket";
 import { buildWhatsappMessage } from "../utils/whatsapp-helper";
 import {
   formatTicketMoney,
@@ -61,6 +67,11 @@ export function TicketSheet({
   origen = "POS",
 }: Readonly<TicketSheetProps>) {
   const [isDownloading, setIsDownloading] = useState(false);
+
+  // Con factura: el QR de ARCA, generado en el navegador. Null en el ticket
+  // interno, que no lo lleva. Va al papel impreso y al PDF.
+  const fiscal = ticket?.fiscal ?? null;
+  const qrDataUrl = useQrFiscal(ticket, config?.cuit);
 
   // El ancho del papel del comercio. Sin configurar son 80mm, que es lo que
   // se imprimía antes de que esto existiera.
@@ -134,7 +145,7 @@ export function TicketSheet({
     setIsDownloading(true);
     const { downloadSaleReceiptPdf } =
       await import("./download-sale-receipt-pdf");
-    const success = await downloadSaleReceiptPdf(ticket, config);
+    const success = await downloadSaleReceiptPdf(ticket, config, qrDataUrl);
     setIsDownloading(false);
 
     // El éxito no se avisa: el navegador ya muestra la descarga y el archivo
@@ -163,7 +174,7 @@ export function TicketSheet({
     if (!ticket) return;
 
     const alTeclado = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "p") return;
+      if (e.key?.toLowerCase() !== "p") return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
 
       const foco = document.activeElement;
@@ -204,10 +215,10 @@ export function TicketSheet({
                 </div>
                 <div>
                   <SheetTitle className="text-md font-semibold text-foreground leading-tight">
-                    Detalle de venta
+                    {fiscal ? tituloComprobante(fiscal.tipo) : "Detalle de venta"}
                   </SheetTitle>
                   <p className="text-xs text-muted-foreground leading-tight mt-0.5">
-                    #{ticket?.nroRecibo}
+                    {fiscal ? numeroComprobanteFiscal(fiscal) : `#${ticket?.nroRecibo}`}
                   </p>
                 </div>
               </div>
@@ -244,9 +255,23 @@ export function TicketSheet({
                   <div className="rounded-xl border border-border bg-card divide-y divide-border">
                     <DetailRow
                       icon={<Hash className="w-3.5 h-3.5" />}
-                      label="Nro. recibo"
-                      value={`#${ticket?.nroRecibo}`}
+                      label={fiscal ? "Nro. comprobante" : "Nro. recibo"}
+                      value={fiscal ? numeroComprobanteFiscal(fiscal) : `#${ticket?.nroRecibo}`}
                     />
+                    {fiscal && (
+                      <DetailRow
+                        icon={<Hash className="w-3.5 h-3.5" />}
+                        label={`CAE${fiscal.ambiente === "HOMOLOGACION" ? " (prueba)" : ""}`}
+                        value={fiscal.cae}
+                      />
+                    )}
+                    {fiscal && (
+                      <DetailRow
+                        icon={<Calendar className="w-3.5 h-3.5" />}
+                        label="Vto. CAE"
+                        value={fechaCorta(fiscal.caeVencimiento)}
+                      />
+                    )}
                     <DetailRow
                       icon={<Calendar className="w-3.5 h-3.5" />}
                       label="Fecha y hora"
@@ -461,7 +486,7 @@ export function TicketSheet({
             </div>
           </div>
 
-          <TicketPrintable ticket={ticket} config={config} />
+          <TicketPrintable ticket={ticket} config={config} qrDataUrl={qrDataUrl} />
         </SheetContent>
       </Sheet>
     </>

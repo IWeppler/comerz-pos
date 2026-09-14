@@ -27,3 +27,18 @@ export const ESTADOS_VENTA = [
 ] as const;
 
 export type EstadoVentaFiltro = (typeof ESTADOS_VENTA)[number]["value"];
+
+/**
+ * Factura o ticket interno. El select se ofrece SOLO cuando el historial
+ * tiene al menos una venta facturada: para un comercio de ticket interno es
+ * un filtro que nunca cambia nada.
+ */
+export const COMPROBANTE_TODOS = "todos";
+
+export const COMPROBANTES_FILTRO = [
+  { value: COMPROBANTE_TODOS, label: "Factura o ticket" },
+  { value: "facturadas", label: "Facturadas" },
+  { value: "sin_facturar", label: "Sin facturar" },
+] as const;
+
+export type ComprobanteFiltro = (typeof COMPROBANTES_FILTRO)[number]["value"];

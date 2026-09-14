@@ -4,6 +4,11 @@ import {
   formatTicketMoney,
   getTicketFinancialSummary,
 } from "../ui/ticket-utils";
+import {
+  fechaCorta,
+  numeroComprobanteFiscal,
+  tituloComprobante,
+} from "@/shared/lib/comprobante-fiscal-ticket";
 
 export function buildWhatsappMessage(
   ticket: TicketData,
@@ -16,7 +21,12 @@ export function buildWhatsappMessage(
     getTicketFinancialSummary(ticket);
 
   let mensaje = `*${nombreComercio.toUpperCase()}*\n\n`;
-  mensaje += `*Comprobante:* #${ticket.nroRecibo}\n`;
+  if (ticket.fiscal) {
+    mensaje += `*${tituloComprobante(ticket.fiscal.tipo)}:* ${numeroComprobanteFiscal(ticket.fiscal)}\n`;
+    mensaje += `*CAE:* ${ticket.fiscal.cae} (vto. ${fechaCorta(ticket.fiscal.caeVencimiento)})\n`;
+  } else {
+    mensaje += `*Comprobante:* #${ticket.nroRecibo}\n`;
+  }
   mensaje += `*Fecha:* ${
     ticket.fecha ||
     new Date().toLocaleString("es-AR", {

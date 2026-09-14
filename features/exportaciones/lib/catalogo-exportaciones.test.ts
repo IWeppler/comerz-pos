@@ -22,11 +22,12 @@ describe("catálogo", () => {
     }
   });
 
-  it("los libros de IVA NO están disponibles todavía", () => {
-    // Exportarlos hoy daría un archivo vacío, o peor: armado con tickets
-    // internos como si fueran facturas. Un contador que lo toma por bueno
-    // presenta información falsa.
-    expect(esExportable("libro_iva_ventas")).toBe(false);
+  it("el libro de IVA ventas está disponible; compras y resumen no", () => {
+    // Ventas sale de `comprobantes` con CAE de producción, que existe desde
+    // la conexión con ARCA. Compras no se destraba con ARCA: los remitos no
+    // guardan CUIT ni IVA. Y el resumen necesita los dos.
+    expect(esExportable("libro_iva_ventas")).toBe(true);
+    expect(esExportable("notas_credito")).toBe(true);
     expect(esExportable("libro_iva_compras")).toBe(false);
     expect(esExportable("resumen_iva")).toBe(false);
   });

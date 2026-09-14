@@ -132,15 +132,13 @@ export function comprobanteDefectoEsValido(
 }
 
 /**
- * Si Comerz puede pedir un CAE hoy. Está en false porque la conexión con ARCA
- * (certificado + web service) todavía no existe: lo único que hay es la
- * configuración guardada.
- *
- * Existe como constante y no como un `if` suelto en la venta para que prender
- * ARCA sea UN cambio en UN lugar, y para que `tipoComprobanteAEmitir` se pueda
- * testear en los dos mundos sin tocar el POS.
+ * Si un comercio puede pedir un CAE NO es una constante del código: lo decide
+ * su certificado (`features/arca/lib/credenciales.ts`,
+ * `tieneCredencialesListas`) y viaja como `arcaConectado` a
+ * `determinarComprobante`. Hubo una `ARCA_EMISION_DISPONIBLE = false` acá
+ * hasta que existió la conexión; se sacó porque un flag global prendería a
+ * los cuatro negocios a la vez, y la conexión es de cada uno.
  */
-export const ARCA_EMISION_DISPONIBLE = false;
 
 /**
  * Qué comprobante emitir al cerrar una venta NO se decide acá: lo decide

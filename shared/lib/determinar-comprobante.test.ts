@@ -4,14 +4,12 @@ import {
   determinarComprobanteFiscal,
   RI_A_MONOTRIBUTO,
 } from "./determinar-comprobante";
-import { ARCA_EMISION_DISPONIBLE } from "./facturacion";
 
 /**
  * `determinarComprobante` es la puerta de producción e incluye el corte por
- * disponibilidad de ARCA. `determinarComprobanteFiscal` es la matriz sola, y
- * es la que se prueba en detalle: así la regla queda cubierta HOY, con el flag
- * apagado, y no el día que se prenda ARCA — que es cuando ya no sirve
- * descubrir que estaba mal.
+ * conexión con ARCA (`arcaConectado`, que sale de las credenciales del
+ * comercio). `determinarComprobanteFiscal` es la matriz sola, y es la que se
+ * prueba en detalle.
  */
 
 const RI = "Responsable Inscripto";
@@ -19,18 +17,28 @@ const RI = "Responsable Inscripto";
 const ARCA = { modoFacturacion: "ARCA" as const };
 
 describe("determinarComprobante (puerta de producción)", () => {
-  it("hoy TODO sale TICKET porque ARCA no está conectado", () => {
-    expect(ARCA_EMISION_DISPONIBLE).toBe(false);
+  it("sin conexión con ARCA TODO sale TICKET, aunque el modo diga ARCA", () => {
+    for (const arcaConectado of [undefined, false]) {
+      const r = determinarComprobante({
+        ...ARCA,
+        condicionIvaEmisor: RI,
+        condicionIvaReceptor: RI,
+        arcaConectado,
+      });
+      expect(r.tipo).toBe("TICKET");
+      expect(r.motivo).toContain("ARCA");
+      expect(r.requiereReceptorIdentificado).toBe(false);
+    }
+  });
 
+  it("con conexión entra a la matriz", () => {
     const r = determinarComprobante({
       ...ARCA,
       condicionIvaEmisor: RI,
       condicionIvaReceptor: RI,
+      arcaConectado: true,
     });
-
-    expect(r.tipo).toBe("TICKET");
-    expect(r.motivo).toContain("ARCA");
-    expect(r.requiereReceptorIdentificado).toBe(false);
+    expect(r.tipo).toBe("FACTURA_A");
   });
 });
 

@@ -27,6 +27,7 @@ export default async function VentasPage() {
     puedeVerTodasRes,
     puedeCorregirPagoRes,
     puedeDevolverRes,
+    puedeFacturarRes,
   ] = await Promise.all([
       supabase.rpc("tiene_permiso", { clave: "ventas.anular" }),
       supabase.rpc("tiene_permiso", { clave: "ventas.ver_todas" }),
@@ -37,11 +38,15 @@ export default async function VentasPage() {
       // También propio: devolver un renglón no es anular la venta. Ver
       // 20260903160000.
       supabase.rpc("tiene_permiso", { clave: "ventas.devolver" }),
+      // Facturar después una venta que salió con ticket: la misma decisión
+      // que el switch del POS, más tarde.
+      supabase.rpc("tiene_permiso", { clave: "ventas.elegir_comprobante" }),
     ]);
   const puedeAnular = Boolean(puedeAnularRes.data);
   const puedeVerTodas = Boolean(puedeVerTodasRes.data);
   const puedeCorregirPago = Boolean(puedeCorregirPagoRes.data);
   const puedeDevolver = Boolean(puedeDevolverRes.data);
+  const puedeFacturar = Boolean(puedeFacturarRes.data);
 
   // 3. Cargar las ventas.
   //
@@ -67,6 +72,7 @@ export default async function VentasPage() {
           puedeAnular={puedeAnular}
           puedeCorregirPago={puedeCorregirPago}
           puedeDevolver={puedeDevolver}
+          puedeFacturar={puedeFacturar}
         />
       )}
     </div>
