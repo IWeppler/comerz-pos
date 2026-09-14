@@ -21,6 +21,7 @@ import {
 } from "../actions/invitaciones-actions";
 import type { Rol } from "@/entities/roles/types";
 import { LimiteDelPlan } from "@/features/planes/ui/limite-del-plan";
+import { CrearEmpleadoLocal } from "./crear-empleado-local";
 import type { UsoDelPlan } from "@/features/planes/actions/uso-del-plan";
 
 export interface InvitacionPendiente {
@@ -196,6 +197,12 @@ export function InvitacionesPanel({
           </div>
         </div>
       ) : null}
+
+      <CrearEmpleadoLocal
+        roles={roles}
+        usuariosOcupados={usuariosOcupados}
+        maxUsuarios={maxUsuarios}
+      />
 
       {invitaciones.length > 0 ? (
         <div className="space-y-2">
