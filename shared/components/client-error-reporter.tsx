@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { reportarErrorCliente } from "@/shared/lib/reportar-error-cliente";
 import { tomarOperacionSinCerrar } from "@/shared/lib/breadcrumb-carga";
+import { esRespuestaNoRsc } from "@/shared/lib/sesion-vencida";
+import { sondearServidor } from "@/shared/lib/sondear-servidor";
 
 /**
  * Se monta una sola vez en el layout raíz. Hace dos cosas:
@@ -44,13 +46,30 @@ export function ClientErrorReporter() {
 
     const onRejection = (event: PromiseRejectionEvent) => {
       const motivo = event.reason;
-      reportarErrorCliente({
-        tipo: "unhandledrejection",
+      const base = {
+        tipo: "unhandledrejection" as const,
         mensaje:
           motivo instanceof Error
             ? motivo.message
             : String(motivo ?? "Rechazo sin motivo"),
         stack: motivo instanceof Error ? motivo.stack : undefined,
+      };
+
+      // "An unexpected response was received from the server" es el texto
+      // genérico de Next cuando un server action no volvió como RSC, y solo
+      // dice ESO: no dice si fue la sesión, la red o el servidor. El 12/9/2026
+      // llegó uno desde /pos y no se pudo cerrar el diagnóstico porque para
+      // cuando se miró ya no quedaban logs de Vercel. La sonda contesta la
+      // pregunta en el momento. Solo diagnostica: la salida por sesión muerta
+      // ya la dispara el cliente de Supabase cuando ve el 401 (ver
+      // `sesion-muerta-cliente.ts`), y el middleware nunca redirige un action.
+      if (!esRespuestaNoRsc(motivo)) {
+        reportarErrorCliente(base);
+        return;
+      }
+
+      void sondearServidor().then((sonda) => {
+        reportarErrorCliente({ ...base, detalle: sonda });
       });
     };
 

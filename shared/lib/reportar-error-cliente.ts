@@ -21,7 +21,11 @@ export type TipoEventoCliente =
   // Un POST a una Server Action que se acerca al tope de la plataforma. No es
   // un error todavía: es el aviso de que va camino a serlo (ver
   // `tamano-payload.ts`).
-  | "payload-grande";
+  | "payload-grande"
+  // El cliente de browser recibió un 401 de PostgREST o un refresh rechazado
+  // y se fue solo a /auth/salir (ver `sesion-muerta-cliente.ts`). No es un
+  // error del sistema: es la PWA con una sesión que otra ventana cerró.
+  | "sesion-muerta";
 
 export type EventoErrorCliente = {
   tipo: TipoEventoCliente;

@@ -8,6 +8,13 @@ import {
   leerCookie,
   leerCookieNegocioActivo,
 } from "@/shared/lib/negocio-activo";
+import { reportarErrorCliente } from "@/shared/lib/reportar-error-cliente";
+import { RUTA_SALIR } from "@/shared/lib/salir-sesion";
+import {
+  esRespuestaDeSesionMuerta,
+  hayCookieDeSesion,
+  salirPorSesionMuerta,
+} from "@/shared/lib/sesion-muerta-cliente";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || "";
@@ -53,6 +60,16 @@ const headersNegocio = (): Record<string, string> => {
   return headers;
 };
 
+/** El `code` del cuerpo de error de PostgREST, sin consumir la respuesta. */
+async function leerCodigoPostgrest(respuesta: Response): Promise<string | null> {
+  try {
+    const cuerpo = (await respuesta.clone().json()) as { code?: unknown };
+    return typeof cuerpo?.code === "string" ? cuerpo.code : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Cliente del PANEL: lleva la sesión del usuario. NO usarlo en el catálogo
  * público — para eso está `createPublicBrowserClient`, abajo, que explica por
@@ -68,12 +85,41 @@ const headersNegocio = (): Record<string, string> => {
 export const createClient = () =>
   createBrowserClient(supabaseUrl, supabaseKey, {
     global: {
-      fetch: (input, init) => {
+      fetch: async (input, init) => {
         const headers = new Headers(init?.headers);
         for (const [clave, valor] of Object.entries(headersNegocio())) {
           headers.set(clave, valor);
         }
-        return fetch(input, { ...init, headers });
+        const respuesta = await fetch(input, { ...init, headers });
+
+        // Red de seguridad contra la sesión zombie: un 401 de PostgREST que
+        // sea de verdad "no hay sesión" manda a /auth/salir. La regla es
+        // estricta a propósito (JWT rechazado, o request salido como anon) —
+        // ver `sesion-muerta-cliente.ts` para el incidente y los falsos
+        // positivos que NO deben disparar esto.
+        if (respuesta.status === 401) {
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.href
+                : input.url;
+          const codigo = await leerCodigoPostgrest(respuesta);
+          const senal = {
+            url,
+            status: respuesta.status,
+            codigo,
+            haySesionLocal: hayCookieDeSesion(document.cookie, supabaseUrl),
+          };
+          if (esRespuestaDeSesionMuerta(senal) && salirPorSesionMuerta()) {
+            reportarErrorCliente({
+              tipo: "sesion-muerta",
+              mensaje: `401 en ${new URL(url).pathname}: sesión ausente o rechazada, se sale por ${RUTA_SALIR}.`,
+              detalle: { codigo, haySesionLocal: senal.haySesionLocal },
+            });
+          }
+        }
+        return respuesta;
       },
     },
   });

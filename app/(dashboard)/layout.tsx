@@ -13,6 +13,7 @@ import {
   COOKIE_NEGOCIO_ACTIVO,
 } from "@/shared/lib/negocio-activo";
 import { BannerImpersonation } from "@/features/admin/ui/banner-impersonation";
+import { VigilanteSesion } from "@/shared/components/vigilante-sesion";
 import { NegocioActivoProvider } from "@/shared/components/negocio-activo-provider";
 import { BannerVerificacionEmail } from "@/features/auth/ui/banner-verificacion";
 import { PlanProvider } from "@/features/planes/ui/plan-provider";
@@ -112,6 +113,9 @@ export default async function DashboardLayout({
   return (
     <NegocioActivoProvider negocio={negocioActivo}>
       <PlanProvider contexto={contextoPlan}>
+    {/* Sesión zombie: si auth-js dice SIGNED_OUT o la PWA vuelve del fondo
+        sin sesión, se sale por /auth/salir. Ver vigilante-sesion.tsx. */}
+    <VigilanteSesion />
     <div className="min-h-screen bg-sidebar flex flex-col md:flex-row">
       <Sidebar
         branding={systemBranding}
