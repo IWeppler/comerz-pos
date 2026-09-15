@@ -21,6 +21,7 @@ import {
 } from "@/shared/lib/comprobante-fiscal-ticket";
 import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import { getTicketFinancialSummary, getTicketSubtotal } from "./ticket-utils";
+import { entregarArchivo } from "../lib/entregar-archivo";
 
 // Estilos específicos para el PDF
 const styles = StyleSheet.create({
@@ -468,35 +469,27 @@ const ReceiptDocument = ({
   );
 };
 
-// Función maestra que genera y descarga el PDF invisiblemente en 1 segundo
+/**
+ * Genera el PDF en memoria y lo ENTREGA: hoja nativa en el celular (para
+ * mandarlo por WhatsApp como archivo), descarga en la PC. El porqué de esa
+ * distinción está en `entregar-archivo.ts`.
+ */
 export async function downloadSaleReceiptPdf(
   ticket: TicketData,
   config: ConfiguracionPOS | null,
   qrDataUrl?: string | null,
 ) {
   try {
-    // 1. Generamos el Blob del PDF directamente en memoria
     const blob = await pdf(
       <ReceiptDocument ticket={ticket} config={config} qrDataUrl={qrDataUrl} />,
     ).toBlob();
 
-    // 2. Creamos una URL temporal
-    const url = URL.createObjectURL(blob);
-
-    // 3. Forzamos la descarga nativa del navegador
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = ticket.fiscal
+    const nombre = ticket.fiscal
       ? `${tituloComprobante(ticket.fiscal.tipo).replaceAll(" ", "_")}_${numeroComprobanteFiscal(ticket.fiscal)}.pdf`
       : `Comprobante_${ticket.nroRecibo}.pdf`;
-    document.body.appendChild(link);
-    link.click();
+    const file = new File([blob], nombre, { type: "application/pdf" });
 
-    // 4. Limpiamos la basura
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    return true;
+    return await entregarArchivo(file, nombre.replace(/\.pdf$/, ""));
   } catch (error) {
     console.error("Error generando PDF con react-pdf:", error);
     return false;
