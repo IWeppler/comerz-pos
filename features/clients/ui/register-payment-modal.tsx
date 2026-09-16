@@ -27,6 +27,7 @@ import { Cliente } from "@/entities/clientes/type";
 import { MetodoPago } from "@/entities/payments/types";
 import { cn } from "@/lib/utils";
 import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
+import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
 
 export function RegisterPaymentModal({
   cliente,
@@ -73,6 +74,8 @@ export function RegisterPaymentModal({
           queryKey: queryKeys.clientes.detalle(cliente.id),
         });
         setIsOpen(false);
+        // El recibo se abre con lo que el server ESCRIBIÓ, para imprimirlo.
+        if (result.recibo) useReciboCcStore.getState().mostrar(result.recibo);
       } else {
         toast.error(result.error || "Ocurrió un error.");
       }

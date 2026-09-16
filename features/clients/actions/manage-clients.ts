@@ -14,6 +14,7 @@ import { validarPerdonDeuda } from "@/features/clients/lib/validar-perdon-deuda"
 import { urlDeResumen } from "@/shared/lib/dominios";
 import { esCuitValido, normalizarCuit } from "@/shared/lib/cuit";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+import type { ReciboCobroCC } from "@/features/clients/lib/recibo-cc";
 
 interface ClientActionState {
   error: string | null;
@@ -221,10 +222,14 @@ export async function getClienteDetalleAction(clienteId: string) {
 }
 
 // 3. REGISTRAR PAGO DE DEUDA
+//
+// Devuelve, además del éxito, el RECIBO del cobro con los números que quedaron
+// escritos: es lo que se imprime. Sale de acá y no del modal porque la mora y
+// el saldo anterior los conoce esta función, no el cliente.
 export async function registrarPagoDeudaAction(
   prevState: ClientActionState | null,
   formData: FormData,
-) {
+): Promise<{ error: string | null; success: boolean; recibo?: ReciboCobroCC }> {
   const clienteId = formData.get("cliente_id") as string;
   const metodoPagoId = formData.get("metodo_pago_id") as string;
   const montoRaw = formData.get("monto") as string;
@@ -320,11 +325,15 @@ export async function registrarPagoDeudaAction(
     await Promise.all([
       supabase
         .from("configuracion_pos")
-        .select("recargo_mora_tipo, recargo_mora_valor, cc_plazo_mora")
+        // Los cuatro últimos son la cabecera del recibo que se imprime: van
+        // en la misma consulta para no pagar otro viaje.
+        .select(
+          "recargo_mora_tipo, recargo_mora_valor, cc_plazo_mora, posName, direccion, whatsapp, ancho_ticket_mm",
+        )
         .single(),
       supabase
         .from("clientes")
-        .select("saldo_pendiente, fecha_vencimiento_deuda")
+        .select("nombre, saldo_pendiente, fecha_vencimiento_deuda")
         .eq("id", clienteId)
         .single(),
       supabase.rpc("deuda_cc_vencida", { p_cliente_id: clienteId }).single(),
@@ -503,7 +512,32 @@ export async function registrarPagoDeudaAction(
   revalidatePath("/clientes");
   revalidatePath("/caja");
 
-  return { error: null, success: true };
+  const recibo: ReciboCobroCC = {
+    pagoId: pagoRegistrado.id,
+    fecha: new Date().toISOString(),
+    clienteNombre: clienteDeuda?.nombre ?? "",
+    metodoNombre: metodo.nombre,
+    montoBase: monto,
+    recargoMetodoPorcentaje: recargoPorcentaje,
+    recargoMetodoMonto: recargoMetodoMonto,
+    montoBruto,
+    moraMonto: montoRecargo,
+    // `saldoActual` es el caché de `clientes` releído ANTES de aplicarle la
+    // mora y el pago (la mora vive en el ledger; el caché lo escribe recién el
+    // update de arriba), así que es exactamente lo que la clienta debía al
+    // entrar.
+    saldoAnterior: saldoActual,
+    saldoNuevo: saldoFinal,
+    fechaVencimiento: actualizacionCliente.fecha_vencimiento_deuda,
+    comercio: {
+      nombre: configPos?.posName ?? null,
+      direccion: configPos?.direccion ?? null,
+      whatsapp: configPos?.whatsapp ?? null,
+      anchoTicketMm: configPos?.ancho_ticket_mm ?? null,
+    },
+  };
+
+  return { error: null, success: true, recibo };
 }
 
 // 4. CREAR CLIENTE NUEVO

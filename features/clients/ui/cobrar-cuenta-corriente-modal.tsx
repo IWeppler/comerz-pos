@@ -32,6 +32,7 @@ import {
   type ClienteConDeuda,
 } from "../actions/datos-cobro-cc";
 import type { MetodoPago } from "@/entities/payments/types";
+import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
 
 /**
  * Cobrar un saldo de cuenta corriente, en dos pasos y sin salir de donde estés.
@@ -179,6 +180,8 @@ export function CobrarCuentaCorrienteModal() {
         `Cobro registrado: ${formatearMoneda(montoNumero)} de ${cliente.nombre}.`,
       );
       cerrar();
+      // El recibo se abre con lo que el server ESCRIBIÓ, para imprimirlo.
+      if (res.recibo) useReciboCcStore.getState().mostrar(res.recibo);
       // El cobro entra al turno abierto: el chip de caja y las pantallas que
       // muestren saldos tienen que reflejarlo sin recargar a mano.
       router.refresh();

@@ -26,6 +26,7 @@ import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 import { getRolActual } from "@/shared/config/supabase/contexto-actual";
 import { puedeCobrarCuentaCorriente } from "@/features/clients/lib/puede-cobrar-cc";
 import { CobrarCuentaCorrienteModal } from "@/features/clients/ui/cobrar-cuenta-corriente-modal";
+import { ReciboCcSheet } from "@/features/clients/ui/recibo-cc-sheet";
 import { PaletaComandos } from "@/shared/components/paleta-comandos";
 import { SincronizadorVentas } from "@/features/sales/ui/sincronizador-ventas";
 
@@ -187,6 +188,10 @@ export default async function DashboardLayout({
               modal de caja, y dos instancias serían dos formularios de cobro
               en paralelo. Mismo criterio que el modal de caja. */}
           {puedeCobrarCc && <CobrarCuentaCorrienteModal />}
+
+          {/* El recibo del cobro, también una sola instancia: lo abren ese
+              modal y el de la ficha del cliente. */}
+          {puedeCobrarCc && <ReciboCcSheet />}
 
           {/* Ctrl+K. Va acá por lo mismo: una sola instancia para toda la app,
               y el atajo escuchado en `window` una sola vez. */}
