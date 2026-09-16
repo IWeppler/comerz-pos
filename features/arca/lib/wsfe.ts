@@ -1,4 +1,5 @@
 import { URLS_ARCA, fechaArcaAIso, type AmbienteArca } from "./codigos-arca";
+import { describirErrorRed } from "./error-red";
 import type { SolicitudCae } from "./armar-factura";
 import type { TicketAcceso } from "./wsaa";
 import { escaparXml, leerEtiqueta, leerEtiquetas, sobreSoap } from "./xml";
@@ -104,7 +105,7 @@ async function llamar(
   } catch (e) {
     throw new ErrorWsfe(
       "RED",
-      `No se pudo conectar con WSFE (${ambiente}): ${(e as Error).message}`,
+      `No se pudo conectar con WSFE (${ambiente}): ${describirErrorRed(e)}`,
     );
   }
 

@@ -1,4 +1,5 @@
 import forge from "node-forge";
+import { describirErrorRed } from "./error-red";
 import { SERVICIO_WSFE, URLS_ARCA, type AmbienteArca } from "./codigos-arca";
 import { escaparXml, leerEtiqueta } from "./xml";
 
@@ -125,7 +126,7 @@ export async function pedirTicketAcceso(
   } catch (e) {
     throw new ErrorWsaa(
       "RED",
-      `No se pudo conectar con WSAA (${ambiente}): ${(e as Error).message}`,
+      `No se pudo conectar con WSAA (${ambiente}): ${describirErrorRed(e)}`,
     );
   }
 
