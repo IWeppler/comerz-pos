@@ -63,6 +63,11 @@ export function Navbar({ branding, categorias = [] }: Readonly<NavbarProps>) {
           <div className="flex items-center justify-center md:justify-start w-1/3 md:w-auto">
             <Link
               href={rutaDelCatalogo}
+              // Sin prefetch en toda la barra: el catálogo es force-dynamic y
+              // sin loading boundary, así que el prefetch no precarga nada y
+              // cuesta una invocación por link visible. Mismo criterio que el
+              // sidebar del panel.
+              prefetch={false}
               className="flex items-center gap-2 shrink-0"
             >
               {branding?.posLogo && (
@@ -161,6 +166,7 @@ export function Navbar({ branding, categorias = [] }: Readonly<NavbarProps>) {
                         <li key={categoria.id}>
                           <Link
                             href={`${rutaDelCatalogo}?categoria=${encodeURIComponent(categoria.slug || categoria.id)}`}
+                            prefetch={false}
                             onClick={() => setIsMenuOpen(false)}
                             className="block py-2.5 text-sm font-medium text-foreground hover:text-primary transition-colors"
                           >
@@ -171,6 +177,7 @@ export function Navbar({ branding, categorias = [] }: Readonly<NavbarProps>) {
                       <li>
                         <Link
                           href={`${rutaDelCatalogo}?ver=todo`}
+                          prefetch={false}
                           onClick={() => setIsMenuOpen(false)}
                           className="block py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                         >

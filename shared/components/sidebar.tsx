@@ -326,6 +326,18 @@ export function Sidebar({
                       <TooltipTrigger asChild>
                         <Link
                           href={item.href}
+                          // Sin prefetch, y es la regla para todo link del
+                          // panel. No hay ningún `loading.tsx` y todas las
+                          // rutas son force-dynamic, así que el prefetch
+                          // devuelve una cáscara de 328 bytes que no acelera
+                          // nada — pero para armarla ejecuta el root layout y
+                          // su `generateMetadata`, con consulta a
+                          // `configuracion_pos` incluida. Medido el 15/9/2026:
+                          // 8.150 ejecuciones del root layout por 1.190
+                          // navegaciones reales, o sea ~7.000 invocaciones de
+                          // Vercel por día que no producían nada. Ver el
+                          // bloque PREFETCH de middleware.ts.
+                          prefetch={false}
                           className={`group flex items-center rounded-sm transition-all duration-200 font-medium active:scale-[0.98] ${
                             isCollapsed
                               ? "justify-center h-9 w-9 mx-auto"
@@ -424,6 +436,7 @@ export function Sidebar({
           {userRole === "ADMIN" ? (
             <Link
               href="/perfil"
+              prefetch={false}
               className={`flex items-center gap-3 px-2 py-1.5 mt-1 rounded-md hover:bg-muted/80 transition-colors cursor-pointer group ${isCollapsed ? "justify-center" : ""}`}
             >
               <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">

@@ -2,7 +2,6 @@
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
-import { revalidatePath } from "next/cache";
 import { CreateSalePaymentInput } from "@/entities/ventas/types";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { calcularPagosConRecargo } from "@/shared/lib/recargo-metodo";
@@ -1642,7 +1641,6 @@ export async function registrarVentaAction(
   // TICKET interno, dejar la venta sin comprobante es menos grave que hacer
   // rebotar una venta que ya ocurrió en el mostrador.
   if (factura) {
-    revalidatePath("/", "layout");
     return {
       error: null,
       success: true,
@@ -1694,7 +1692,21 @@ export async function registrarVentaAction(
     emitidoPor: user.id,
   });
 
-  revalidatePath("/", "layout");
+  // SIN revalidatePath, y es a propósito.
+  //
+  // Hasta el 16/9/2026 acá había un `revalidatePath("/", "layout")`. En un
+  // server action, cualquier revalidación hace que Next devuelva en la MISMA
+  // respuesta el árbol RSC entero de la ruta actual: root layout + layout del
+  // panel (sus ~8 consultas en Promise.all) + la página del POS. Una venta
+  // pagaba dos veces: su propio trabajo y un render completo que nadie usaba —
+  // el POS refresca el stock por React Query (`invalidateQueries` del
+  // catálogo en cart-panel-admin.tsx), no por RSC.
+  //
+  // Lo que se pierde: las pantallas que muestran la venta (/ventas, /caja, /)
+  // son force-dynamic y se renderizan frescas en cada navegación; lo único que
+  // podría servir algo viejo es el caché del router del navegador
+  // (`staleTimes.dynamic: 30` en next.config.ts) si se vuelve a una de esas
+  // pantallas visitada hace menos de 30 segundos. Es el precio, y es chico.
   return {
     error: null,
     success: true,
