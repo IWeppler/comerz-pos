@@ -4,7 +4,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { formatearMoneda, formatearHora } from "@/shared/utils/formatters";
 import { getSupabaseRelation, type Venta } from "@/entities/ventas/types";
 
-type ProductoRanking = { nombre: string; unidades: number; ganancia: number };
+type ProductoRanking = {
+  nombre: string;
+  unidades: number;
+  ganancia: number;
+  /** La cantidad en su unidad ("12 u.", "0,129 kg"). */
+  cantidadEtiqueta?: string;
+};
 
 interface RendimientoCardProps {
   topProductos: ProductoRanking[];
@@ -38,7 +44,10 @@ export function RendimientoCard({
           </TabsList>
         </div>
 
-        <TabsContent value="top" className="flex-1 overflow-y-auto p-3 pt-2 mt-0">
+        <TabsContent
+          value="top"
+          className="flex-1 overflow-y-auto p-3 pt-2 mt-0"
+        >
           <div className="grid grid-cols-2 gap-3 h-full">
             <div>
               <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
@@ -51,17 +60,22 @@ export function RendimientoCard({
                       key={idx}
                       className="flex items-center justify-between gap-1.5 text-xs"
                     >
-                      <span className="truncate text-foreground" title={p.nombre}>
+                      <span
+                        className="truncate text-foreground"
+                        title={p.nombre}
+                      >
                         {idx + 1}. {p.nombre}
                       </span>
                       <span className="shrink-0 text-muted-foreground">
-                        {p.unidades} u.
+                        {p.cantidadEtiqueta ?? `${p.unidades} u.`}
                       </span>
                     </div>
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground italic">Sin datos.</p>
+                <p className="text-xs text-muted-foreground italic">
+                  Sin datos.
+                </p>
               )}
             </div>
 
@@ -76,7 +90,10 @@ export function RendimientoCard({
                       key={idx}
                       className="flex items-center justify-between gap-1.5 text-xs"
                     >
-                      <span className="truncate text-foreground" title={p.nombre}>
+                      <span
+                        className="truncate text-foreground"
+                        title={p.nombre}
+                      >
                         {idx + 1}. {p.nombre}
                       </span>
                       <span className="shrink-0 text-muted-foreground">
@@ -86,7 +103,9 @@ export function RendimientoCard({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground italic">Sin datos.</p>
+                <p className="text-xs text-muted-foreground italic">
+                  Sin datos.
+                </p>
               )}
             </div>
           </div>

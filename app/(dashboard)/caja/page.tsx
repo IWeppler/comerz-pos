@@ -67,7 +67,10 @@ export default async function CajaPage() {
   // 2. Traer configuración operativa
   const { data: config } = await supabase
     .from("configuracion_pos")
-    .select("modo_caja, requiere_caja_abierta, modo_facturacion")
+    // posName y ancho_ticket_mm son la cabecera del cierre Z impreso.
+    .select(
+      "modo_caja, requiere_caja_abierta, modo_facturacion, posName, ancho_ticket_mm",
+    )
     .single();
 
   // Facturado / sin facturar tiene sentido SOLO para quien factura con
@@ -240,6 +243,10 @@ export default async function CajaPage() {
           <CajaHistoryTable
             historial={turnos}
             totalesPorTurno={totalesPorTurno ?? undefined}
+            papel={{
+              nombreComercio: config?.posName ?? null,
+              anchoTicketMm: config?.ancho_ticket_mm ?? null,
+            }}
           />
         }
       />

@@ -1,4 +1,10 @@
 import { Producto } from "@/entities/productos/types";
+import {
+  acumularUnidad,
+  listarFraccionado,
+  nuevoAcumuladorUnidades,
+} from "./unidades-vendidas";
+import { formatearCantidad } from "@/shared/lib/unidad-venta";
 import { EgresoCaja } from "@/entities/caja/types";
 import {
   Venta,
@@ -156,7 +162,8 @@ export function getDashboardMetrics(
   let ticketsDeUnaUnidad = 0;
   let costoMercaderiaVendida = 0;
   let gananciaBrutaVentas = 0;
-  let unidadesVendidas = 0;
+  // Piezas y fraccionado (kg, g, m…) por separado: ver unidades-vendidas.ts.
+  const unidades = nuevoAcumuladorUnidades();
   let totalComisiones = 0; // NUEVO: Fuga de capital por comisiones
   // Recargo por método cobrado al cliente. NO es venta de mercadería: es
   // recupero financiero, y existe justamente para compensar `totalComisiones`.
@@ -217,7 +224,13 @@ export function getDashboardMetrics(
   const productosConVentas = new Set<string>();
   const ventasPorProducto: Record<
     string,
-    { nombre: string; ingresos: number; unidades: number; ganancia: number }
+    {
+      nombre: string;
+      ingresos: number;
+      unidades: number;
+      ganancia: number;
+      unidadMedida: string | null;
+    }
   > = {};
 
   const clientesMap = new Map<
@@ -380,7 +393,9 @@ export function getDashboardMetrics(
       const itemIngreso = precioUnitario * cantidadItem;
       const itemGanancia = (precioUnitario - costoUnitario) * cantidadItem;
 
-      unidadesVendidas += cantidadItem;
+      const unidadMedidaItem =
+        prodDataGuardado?.unidad_medida ?? prodCat?.unidad_medida ?? null;
+      acumularUnidad(unidades, cantidadItem, unidadMedidaItem);
 
       const cat =
         prodCat?.categoria?.nombre ||
@@ -414,6 +429,7 @@ export function getDashboardMetrics(
           ingresos: 0,
           unidades: 0,
           ganancia: 0,
+          unidadMedida: unidadMedidaItem,
         };
       }
       ventasPorProducto[pId].ingresos += itemIngreso;
@@ -586,6 +602,10 @@ export function getDashboardMetrics(
 
   const topProductos = Object.values(ventasPorProducto)
     .sort((a, b) => b.unidades - a.unidades)
+    .map((p) => ({
+      ...p,
+      cantidadEtiqueta: formatearCantidad(p.unidades, p.unidadMedida),
+    }))
     .slice(0, 10);
 
   const topProductosRentables = Object.values(ventasPorProducto)
@@ -671,10 +691,15 @@ export function getDashboardMetrics(
     .filter((f) => f.ingresos > 0)
     .slice(0, 3);
 
+  const fraccionadoVendido = listarFraccionado(unidades);
+
   return {
     ingresos: ingresosBrutos,
     ordenes,
-    unidadesVendidas,
+    /** Solo PIEZAS. Lo vendido por peso/volumen/largo va aparte. */
+    unidadesVendidas: unidades.piezas,
+    /** Lo fraccionable, por unidad: "0,206 kg", "3 m". Vacío si no hubo. */
+    fraccionadoVendido,
     ticketPromedio,
     /** Desvío muestral del ticket, para poder decir si una variación del
      * ticket promedio se distingue del ruido. Ver `crecimientoDeMedia`. */

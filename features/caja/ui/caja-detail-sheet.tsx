@@ -28,10 +28,16 @@ import {
 } from "lucide-react";
 import { getDetallesTurnoAction } from "../actions/caja-action";
 import { etiquetaTipoEgreso } from "../lib/tipo-egreso";
+import {
+  cssImpresionTicket,
+  normalizarAnchoTicket,
+} from "@/shared/lib/ancho-ticket";
+import { CierreZPrintable, type PapelCierreZ } from "./cierre-z-printable";
 
 interface CajaDetailSheetProps {
   turno: TurnoCajaHistorial | null;
   onClose: () => void;
+  papel: PapelCierreZ;
 }
 
 type MovimientoDetalle = {
@@ -61,6 +67,7 @@ const formatearMoneda = (monto: number) => {
 export function CajaDetailSheet({
   turno,
   onClose,
+  papel,
 }: Readonly<CajaDetailSheetProps>) {
   const [movimientos, setMovimientos] = useState<MovimientoDetalle[]>([]);
   const [totalesDigitales, setTotalesDigitales] = useState({
@@ -203,219 +210,235 @@ export function CajaDetailSheet({
         if (!open) onClose();
       }}
     >
+      {/* Mismo CSS de impresión que el ticket de venta y el recibo de CC:
+          esconde la app y deja solo el `#ticket-print-wrapper` al ancho del
+          papel. Sin esto "Imprimir Cierre Z" imprimía la pantalla o nada. */}
+      <style>
+        {cssImpresionTicket(normalizarAnchoTicket(papel.anchoTicketMm))}
+      </style>
       <SheetContent
         side="right"
-        className="w-full sm:max-w-2xl p-0 flex flex-col h-dvh overflow-hidden bg-card"
+        className="ticket-sheet-print-scope w-full sm:max-w-2xl p-0 flex flex-col h-dvh overflow-hidden bg-card"
       >
-        <SheetHeader className="p-6 border-b border-border z-10 shrink-0">
-          <SheetTitle className="flex items-center gap-3 text-xl font-semi text-foreground">
-            <div className="p-2 bg-muted rounded-full">
-              <FileText className="w-5 h-5 text-muted-foreground" />
+        <div className="ticket-screen-only flex min-h-0 flex-1 flex-col">
+          <SheetHeader className="p-6 border-b border-border z-10 shrink-0">
+            <SheetTitle className="flex items-center gap-3 text-xl font-semi text-foreground">
+              <div className="p-2 bg-muted rounded-full">
+                <FileText className="w-5 h-5 text-muted-foreground" />
+              </div>
+              Auditoría de Turno
+            </SheetTitle>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto min-h-0 p-4">
+            <div className="text-center mb-6">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                Ticket Z #{idCorto}
+              </p>
             </div>
-            Auditoría de Turno
-          </SheetTitle>
-        </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto min-h-0 p-4">
-          <div className="text-center mb-6">
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-              Ticket Z #{idCorto}
-            </p>
-          </div>
+            {/* ARQUEO FÍSICO */}
+            <div className="bg-card p-5 rounded-2xl border border-border mb-4">
+              <div className="flex justify-between items-start mb-4">
+                <span className="text-sm text-foreground font-semibold flex items-center gap-2">
+                  <Wallet className="w-4 h-4 text-success" /> Arqueo Físico
+                  (Cajón)
+                </span>
+                {isAbierto ? (
+                  <Badge
+                    variant="outline"
+                    className="bg-success/10 text-success border-success/20"
+                  >
+                    En Curso
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    className="bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20"
+                  >
+                    Finalizado
+                  </Badge>
+                )}
+              </div>
 
-          {/* ARQUEO FÍSICO */}
-          <div className="bg-card p-5 rounded-2xl border border-border mb-4">
-            <div className="flex justify-between items-start mb-4">
-              <span className="text-sm text-foreground font-semibold flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-success" /> Arqueo Físico
-                (Cajón)
-              </span>
-              {isAbierto ? (
-                <Badge
-                  variant="outline"
-                  className="bg-success/10 text-success border-success/20"
-                >
-                  En Curso
-                </Badge>
-              ) : (
-                <Badge
-                  variant="outline"
-                  className="bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20"
-                >
-                  Finalizado
-                </Badge>
+              {!isAbierto && (
+                <div className="flex items-center justify-between pb-4 border-b border-border mb-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">
+                      Diferencia de Efectivo
+                    </p>
+                    {diferencia === 0 ? (
+                      <span className="text-xl font-semibold text-success">
+                        Caja OK
+                      </span>
+                    ) : diferencia < 0 ? (
+                      <span className="text-xl font-semibold text-danger">
+                        Faltante: {formatearMoneda(diferencia)}
+                      </span>
+                    ) : (
+                      <span className="text-xl font-semibold text-info">
+                        Sobrante: +{formatearMoneda(diferencia)}
+                      </span>
+                    )}
+                  </div>
+                </div>
               )}
+
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Fondo Inicial declarado:</span>
+                  <span className="font-medium text-foreground">
+                    {formatearMoneda(Number(turno.monto_inicial))}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Efectivo Esperado (Sistema):</span>
+                  <span
+                    className={`font-medium ${esperadoNegativo ? "text-danger" : "text-foreground"}`}
+                  >
+                    {isAbierto ? "-" : formatearMoneda(esperado)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Efectivo Contado (Físico):</span>
+                  <span className="font-bold text-foreground">
+                    {isAbierto ? "-" : formatearMoneda(final)}
+                  </span>
+                </div>
+                {esperadoNegativo && (
+                  <p className="text-xs text-danger font-semibold flex items-center gap-1.5 pt-1">
+                    ⚠ Revisar: el esperado dio negativo. Puede haber egresos mal
+                    atribuidos a este turno.
+                  </p>
+                )}
+              </div>
             </div>
 
-            {!isAbierto && (
-              <div className="flex items-center justify-between pb-4 border-b border-border mb-4">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">
-                    Diferencia de Efectivo
-                  </p>
-                  {diferencia === 0 ? (
-                    <span className="text-xl font-semibold text-success">
-                      Caja OK
-                    </span>
-                  ) : diferencia < 0 ? (
-                    <span className="text-xl font-semibold text-danger">
-                      Faltante: {formatearMoneda(diferencia)}
-                    </span>
-                  ) : (
-                    <span className="text-xl font-semibold text-info">
-                      Sobrante: +{formatearMoneda(diferencia)}
-                    </span>
-                  )}
+            {/* ARQUEO DIGITAL */}
+            <div className="bg-card p-5 rounded-2xl border border-border mb-6">
+              <div className="flex justify-between items-start mb-4 border-b border-border/50 pb-3">
+                <span className="text-sm text-foreground font-semibold flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-info" />
+                  Cobros Digitales
+                </span>
+              </div>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between items-center text-muted-foreground">
+                  <span>Monto Bruto:</span>
+                  <span className="font-medium text-foreground">
+                    {formatearMoneda(totalesDigitales.bruto)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center font-medium">
+                  <span className="text-muted-foreground">
+                    Comisiones Retenidas:
+                  </span>
+                  <span className="">
+                    -{formatearMoneda(totalesDigitales.comision)}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center font-medium pt-1">
+                  <span className="text-muted-foreground">
+                    Acreditación Neta:
+                  </span>
+                  <span>{formatearMoneda(totalesDigitales.neto)}</span>
                 </div>
               </div>
-            )}
+            </div>
 
-            <div className="space-y-3 text-sm">
-              <div className="flex justify-between items-center text-muted-foreground">
-                <span>Fondo Inicial declarado:</span>
-                <span className="font-medium text-foreground">
-                  {formatearMoneda(Number(turno.monto_inicial))}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-muted-foreground">
-                <span>Efectivo Esperado (Sistema):</span>
-                <span
-                  className={`font-medium ${esperadoNegativo ? "text-danger" : "text-foreground"}`}
-                >
-                  {isAbierto ? "-" : formatearMoneda(esperado)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-muted-foreground">
-                <span>Efectivo Contado (Físico):</span>
-                <span className="font-bold text-foreground">
-                  {isAbierto ? "-" : formatearMoneda(final)}
-                </span>
-              </div>
-              {esperadoNegativo && (
-                <p className="text-xs text-danger font-semibold flex items-center gap-1.5 pt-1">
-                  ⚠ Revisar: el esperado dio negativo. Puede haber egresos mal
-                  atribuidos a este turno.
-                </p>
+            <div className="space-y-3 pb-8">
+              <h3 className="font-semibold text-foreground flex items-center gap-2">
+                <Clock className="w-4 h-4 text-muted-foreground" /> Movimientos
+              </h3>
+
+              {isLoading ? (
+                <div className="py-12 flex justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : movimientos.length === 0 ? (
+                <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
+                  No hubo movimientos de dinero en este turno.
+                </div>
+              ) : (
+                <div className="bg-card border border-border rounded-xl p-2 divide-y divide-border/60">
+                  {movimientos.map((mov) => (
+                    <div
+                      key={`${mov.tipo}-${mov.id}`}
+                      className="py-3 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-3">
+                        {mov.origen === "VENTA" && (
+                          <div className="text-success shrink-0">
+                            <ShoppingBag className="w-4 h-4" />
+                          </div>
+                        )}
+                        {mov.origen === "COBRO_DEUDA" && (
+                          <div className="text-info shrink-0">
+                            <BookUser className="w-4 h-4" />
+                          </div>
+                        )}
+                        {mov.origen === "EGRESO" && (
+                          <div className="text-danger shrink-0">
+                            <TrendingDown className="w-4 h-4" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-medium text-xs sm:text-sm text-foreground max-w-[200px] truncate">
+                            {mov.concepto}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground uppercase mt-0.5">
+                            {new Date(mov.fecha).toLocaleTimeString("es-AR", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}{" "}
+                            • {mov.metodo}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div
+                          className={`font-medium text-sm text-muted-foreground`}
+                        >
+                          {mov.tipo === "INGRESO" ? "+" : "-"}
+                          {formatearMoneda(mov.monto)}
+                        </div>
+                        {mov.recargo > 0 && (
+                          <div className="text-xs text-warning font-medium leading-none mt-1">
+                            incl. {formatearMoneda(mov.recargo)} de recargo
+                          </div>
+                        )}
+                        {mov.comision > 0 && (
+                          <div className="text-xs text-danger font-medium leading-none mt-1">
+                            -{formatearMoneda(mov.comision)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
 
-          {/* ARQUEO DIGITAL */}
-          <div className="bg-card p-5 rounded-2xl border border-border mb-6">
-            <div className="flex justify-between items-start mb-4 border-b border-border/50 pb-3">
-              <span className="text-sm text-foreground font-semibold flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-info" />
-                Cobros Digitales
-              </span>
+          {!isAbierto && (
+            <div className="p-4 bg-card border-t border-border flex justify-center shadow-md z-10 shrink-0">
+              <Button
+                variant="ghost"
+                className="w-full flex h-12 gap-2 text-foreground font-bold hover:bg-muted border border-border shadow-none"
+                onClick={() => window.print()}
+              >
+                <Printer className="w-5 h-5 mr-1" /> Imprimir Cierre Z
+              </Button>
             </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between items-center text-muted-foreground">
-                <span>Monto Bruto:</span>
-                <span className="font-medium text-foreground">
-                  {formatearMoneda(totalesDigitales.bruto)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center font-medium">
-                <span className="text-muted-foreground">
-                  Comisiones Retenidas:
-                </span>
-                <span className="">
-                  -{formatearMoneda(totalesDigitales.comision)}
-                </span>
-              </div>
-              <div className="flex justify-between items-center font-medium pt-1">
-                <span className="text-muted-foreground">
-                  Acreditación Neta:
-                </span>
-                <span>{formatearMoneda(totalesDigitales.neto)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-3 pb-8">
-            <h3 className="font-semibold text-foreground flex items-center gap-2">
-              <Clock className="w-4 h-4 text-muted-foreground" /> Movimientos
-            </h3>
-
-            {isLoading ? (
-              <div className="py-12 flex justify-center">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : movimientos.length === 0 ? (
-              <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-muted-foreground">
-                No hubo movimientos de dinero en este turno.
-              </div>
-            ) : (
-              <div className="bg-card border border-border rounded-xl p-2 divide-y divide-border/60">
-                {movimientos.map((mov) => (
-                  <div
-                    key={`${mov.tipo}-${mov.id}`}
-                    className="py-3 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      {mov.origen === "VENTA" && (
-                        <div className="text-success shrink-0">
-                          <ShoppingBag className="w-4 h-4" />
-                        </div>
-                      )}
-                      {mov.origen === "COBRO_DEUDA" && (
-                        <div className="text-info shrink-0">
-                          <BookUser className="w-4 h-4" />
-                        </div>
-                      )}
-                      {mov.origen === "EGRESO" && (
-                        <div className="text-danger shrink-0">
-                          <TrendingDown className="w-4 h-4" />
-                        </div>
-                      )}
-                      <div>
-                        <p className="font-medium text-xs sm:text-sm text-foreground max-w-[200px] truncate">
-                          {mov.concepto}
-                        </p>
-                        <p className="text-[10px] text-muted-foreground uppercase mt-0.5">
-                          {new Date(mov.fecha).toLocaleTimeString("es-AR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}{" "}
-                          • {mov.metodo}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div
-                        className={`font-medium text-sm text-muted-foreground`}
-                      >
-                        {mov.tipo === "INGRESO" ? "+" : "-"}
-                        {formatearMoneda(mov.monto)}
-                      </div>
-                      {mov.recargo > 0 && (
-                        <div className="text-xs text-warning font-medium leading-none mt-1">
-                          incl. {formatearMoneda(mov.recargo)} de recargo
-                        </div>
-                      )}
-                      {mov.comision > 0 && (
-                        <div className="text-xs text-danger font-medium leading-none mt-1">
-                          -{formatearMoneda(mov.comision)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          )}
         </div>
 
         {!isAbierto && (
-          <div className="p-4 bg-card border-t border-border flex justify-center shadow-md z-10 shrink-0">
-            <Button
-              variant="ghost"
-              className="w-full flex h-12 gap-2 text-foreground font-bold hover:bg-muted border border-border shadow-none"
-              onClick={() => window.print()}
-            >
-              <Printer className="w-5 h-5 mr-1" /> Imprimir Cierre Z
-            </Button>
-          </div>
+          <CierreZPrintable
+            turno={turno}
+            movimientos={movimientos}
+            papel={papel}
+          />
         )}
       </SheetContent>
     </Sheet>

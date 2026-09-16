@@ -1,5 +1,6 @@
 "use client";
 
+import { etiquetaFraccionado } from "@/features/dashboard/lib/unidades-vendidas";
 import { useState } from "react";
 import { BarChart } from "@/features/reports/ui/bar-chart";
 import { HeatmapChart } from "@/features/reports/ui/heatmap-chart";
@@ -101,6 +102,12 @@ export function VentasTab({ metrics }: Readonly<VentasTabProps>) {
                 u.
               </span>
             </div>
+            {etiquetaFraccionado(metrics.fraccionadoVendido) && (
+              <p className="text-xs text-muted-foreground mt-1">
+                {etiquetaFraccionado(metrics.fraccionadoVendido)} por peso o
+                medida
+              </p>
+            )}
           </CardContent>
         </Card>
         <Card className="border-border shadow-none">

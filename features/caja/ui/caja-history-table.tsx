@@ -14,10 +14,13 @@ import {
   FileText,
 } from "lucide-react";
 import { CajaDetailSheet } from "./caja-detail-sheet";
+import type { PapelCierreZ } from "./cierre-z-printable";
 import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
 
 interface CajaHistoryTableProps {
   historial: TurnoCajaHistorial[];
+  /** Cabecera del cierre Z impreso (nombre del comercio y ancho del papel). */
+  papel: PapelCierreZ;
   /** Facturado por turno (`turno_id` -> monto), de la RPC
    * `totales_ventas_por_turno`. Opcional: si no llega, la fila de día muestra
    * "S/D" en vez de un total inventado a partir de los campos de caja, que
@@ -73,6 +76,7 @@ function etiquetaDia(fechaISO: string): string {
 export function CajaHistoryTable({
   historial,
   totalesPorTurno,
+  papel,
 }: Readonly<CajaHistoryTableProps>) {
   const [searchQuery, setSearchQuery] = useState("");
   const [paginaActual, setPaginaActual] = useState(1);
@@ -163,6 +167,7 @@ export function CajaHistoryTable({
       <CajaDetailSheet
         turno={turnoAbierto}
         onClose={() => setTurnoAbierto(null)}
+        papel={papel}
       />
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-2">
         <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">

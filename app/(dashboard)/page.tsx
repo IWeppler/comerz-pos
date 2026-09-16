@@ -1,3 +1,4 @@
+import { etiquetaFraccionado } from "@/features/dashboard/lib/unidades-vendidas";
 import {
   getVentasAction,
   getPagosCuentaCorrienteAction,
@@ -535,7 +536,12 @@ export default async function DashboardPage({
             <KpiMiniCard
               label="Unidades"
               value={String(metricasActuales.unidadesVendidas)}
-              sublabel={`vendidas · ${tituloComparacion}`}
+              sublabel={[
+                etiquetaFraccionado(metricasActuales.fraccionadoVendido),
+                `vendidas · ${tituloComparacion}`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               rightSlot={
                 <GrowthBadge
                   value={crecimientoUnidades}

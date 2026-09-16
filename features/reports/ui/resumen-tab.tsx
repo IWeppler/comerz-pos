@@ -1,3 +1,4 @@
+import { etiquetaFraccionado } from "@/features/dashboard/lib/unidades-vendidas";
 import { Venta } from "@/entities/ventas/types";
 import { PeriodoDashboard } from "@/features/dashboard/lib/get-dashboard-metrics";
 import { BarChart } from "@/features/reports/ui/bar-chart";
@@ -109,6 +110,11 @@ export function ResumenTab({
                 <span className="text-sm font-normal text-muted-foreground">
                   u.
                 </span>
+                {etiquetaFraccionado(metrics.fraccionadoVendido) && (
+                  <span className="text-xs font-normal text-muted-foreground ml-2">
+                    {etiquetaFraccionado(metrics.fraccionadoVendido)}
+                  </span>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 Ticket medio: {formatearMoneda(metrics.ticketPromedio)}
