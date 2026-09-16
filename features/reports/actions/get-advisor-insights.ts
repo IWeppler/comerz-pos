@@ -136,7 +136,7 @@ export function recargoParaEmpatar(comisionPct: number): number {
 
 /** Días sin vender a partir de los cuales un producto con stock cuenta como
  * estancado. 30 es el mismo default que ofrece /reportes. */
-const DIAS_SIN_MOVIMIENTO = 30;
+export const DIAS_SIN_MOVIMIENTO = 30;
 
 /** Piso de muestra para cualquier regla que hable de un RITMO (por día, por
  * día de semana). Dos semanas es el mínimo para que un día de la semana haya

@@ -145,30 +145,10 @@ export async function getProductosSimilaresAction(
   return { data: (data ?? []) as unknown as Producto[], error: null };
 }
 
-/**
- * El índice del catálogo para filtrar en el navegador.
- *
- * Existe para sacar el catálogo del HTML. Antes la página se lo pasaba como
- * prop a `StoreCatalog`, que es un componente de CLIENTE: eso serializa el
- * array entero adentro del documento, y en Evens eran 1,99 MB de los cuales 34
- * kB terminaban siendo markup — el resto viajaba solo para que el navegador
- * pudiera filtrar después de hidratar. Pedido por acá, el documento arranca
- * chico y esto llega en paralelo, sin bloquear el primer pintado.
- *
- * SIN parámetros a propósito. `getProductosAction` acepta `conCostos`, y todo
- * lo exportado de un archivo "use server" es un endpoint que el navegador
- * puede llamar con los argumentos que quiera. Hoy la base lo frena igual (anon
- * no tiene concedido `precio_costo` desde 20260811140000, así que pedirlo es
- * un 403 y no una fuga), pero el catálogo público no tiene por qué ofrecer
- * siquiera la puerta.
- */
-export async function getIndiceCatalogoPublicoAction() {
-  const supabase = await createPublicClient();
-  const { data, error } = await traerProductosPublicos(supabase, {
-    conCostos: false,
-  });
-  return { data, error };
-}
+// El índice del catálogo para filtrar en el navegador vive en
+// `shared/actions/indice-catalogo-publico.ts`: lee del MISMO cache por
+// negocio que el render del server. Acá estaba antes, sin cache, y cada
+// visitante bajaba el catálogo entero de Supabase otra vez.
 
 // Combina productos + categorías + config para la terminal VENDER en un
 // solo fetch client-side (React Query cachea esto con staleTime de 3 min).

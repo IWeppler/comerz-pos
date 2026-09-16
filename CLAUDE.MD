@@ -1172,6 +1172,39 @@ tiene 11.
   anulación dejaría una factura viva en ARCA contra una venta que el sistema
   da por anulada. Con TICKET interno NUNCA se activa, así que hoy anular
   funciona igual que siempre; es la red para el día que se prenda ARCA.
+- **Egress (auditoría del 16/9/2026).** Medido sobre 24 h de logs de Supabase
+  (60.591 requests): hoy no hay un culpable grande. El que había —el catálogo
+  del panel bajado entero 6.849 veces/día, ~1,68 GB/día— lo resolvió la sync
+  por delta del 3/9 (`catalogo-delta.ts`: 3 bajadas completas de Evens por
+  día contra 643 deltas). Lo que queda son ~130–160 MB/día repartidos entre
+  Storage (~40 MB, 78 % CDN hit), el sobrecosto de ~60.000 requests (~40 MB)
+  y consultas que traen historial o catálogo completo. Dos cosas se cerraron
+  ese día, y son las que escalaban mal:
+  * **El panel (`/`) pide ventas con ventana**, no el historial entero.
+    `features/dashboard/lib/ventana-historial-panel.ts` ES LA LISTA de hasta
+    dónde mira cada regla del panel (comparación, día típico, gráfico,
+    Insights, quiebres, temporada, inventario estancado) y de ahí sale el
+    `desde` de ventas, egresos y cobros de CC. Cualquier regla nueva que
+    necesite más historia se agrega AHÍ, no en la página: una regla que mire
+    más atrás que la ventana no falla, devuelve un número más chico en
+    silencio. El productos del panel es `getProductosPanelAction`
+    (`ProductoPanel`: sin variantes ni fotos; 2.348 kB → 772 kB en Evens).
+    Sigue leyendo el stock del espejo `productos_stock`, que es deuda aparte.
+    `/reportes` queda con el historial completo a propósito: tiene "histórico"
+    y el CRM mide recencia sobre toda la vida de la clienta.
+  * **El índice del catálogo público lee del mismo `unstable_cache` que el
+    render** (`shared/actions/indice-catalogo-publico.ts`). La action anterior
+    ejecutaba la consulta entera por visitante —301 kB en el cable, 1,8 MB
+    crudos en Evens— aunque el server acababa de servirla desde el cache. El
+    negocio se resuelve DEL HEADER que escribe el middleware, nunca de un
+    parámetro: la clave del cache es el `negocio_id`, y un id mandado desde el
+    navegador con el slug de otro negocio dejaría el catálogo de uno en el
+    cache del otro.
+  Verificado que el tramo Vercel → Supabase viaja gzip (~6:1): los "MB crudos"
+  de los comentarios se dividen por seis para pensar en egress de Supabase.
+  Lo que NO se tocó y cuesta requests, no bytes: polling de caja (3 req/min
+  por pestaña), `tiene_permiso` por permiso, `unidades_serie` en cada cambio
+  del carrito sin gatear por rubro, ~10 consultas de layout por navegación.
 
 ## Aprendizajes que ya costaron plata (no repetir)
 

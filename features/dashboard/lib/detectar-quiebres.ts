@@ -1,4 +1,4 @@
-import { Producto } from "@/entities/productos/types";
+import { ProductoPanel } from "@/entities/productos/types";
 import { Venta, VentaItem } from "@/entities/ventas/types";
 
 export type QuiebreProducto = {
@@ -70,7 +70,7 @@ export function calcularUnidadesVendidasRecientes(
  */
 export function detectarQuiebresRotacion(
   ventasOperativas: Venta[],
-  productos: Producto[],
+  productos: ProductoPanel[],
   ventanaDias: number,
   ahora: Date,
 ): QuiebreProducto[] {
@@ -111,7 +111,7 @@ export function detectarQuiebresRotacion(
  */
 export function detectarStockCriticoRotacion(
   ventasOperativas: Venta[],
-  productos: Producto[],
+  productos: ProductoPanel[],
   ventanaDias: number,
   ahora: Date,
 ): StockCriticoRotacionItem[] {

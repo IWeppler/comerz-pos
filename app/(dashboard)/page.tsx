@@ -3,7 +3,11 @@ import {
   getVentasAction,
   getPagosCuentaCorrienteAction,
 } from "@/features/sales/actions/get-sales";
-import { getStockAction } from "@/features/stock/actions/get-product";
+import { getProductosPanelAction } from "@/features/stock/actions/get-product";
+import {
+  DIAS_INSIGHTS,
+  resolverDesdeHistorialPanel,
+} from "@/features/dashboard/lib/ventana-historial-panel";
 import { leerConfigPos } from "@/entities/config/lib/leer-config-pos";
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
@@ -104,8 +108,9 @@ const ETIQUETA_RANKING: Record<PeriodoPanel, string> = {
 // quedan muy espaciadas y sobra aire.
 const INSIGHTS_EN_PANEL = 5;
 
-// Ventana de Comerz Insights. NO es la del selector, y eso es el punto: lo que
-// necesita tu atención no cambia porque alguien haya clickeado "Hoy".
+// Ventana de Comerz Insights (DIAS_INSIGHTS). NO es la del selector, y eso es
+// el punto: lo que necesita tu atención no cambia porque alguien haya
+// clickeado "Hoy".
 //
 // Alimentar el motor con el período elegido tenía dos efectos feos y reales:
 // la regla de confianza corta con menos de 3 ventas, así que con "Hoy" la
@@ -114,7 +119,10 @@ const INSIGHTS_EN_PANEL = 5;
 // dispara con margen negativo, que en un día suelto es cuestión de a qué hora
 // se cargó un gasto — pasó 1 de cada 36 días completos en Evens, y a media
 // mañana es mucho más fácil.
-const DIAS_INSIGHTS = 28;
+//
+// La constante vive en `ventana-historial-panel.ts`, junto con las demás
+// ventanas que el panel mira: es lo que decide desde qué fecha se piden las
+// ventas.
 
 type ReservaActivaRow = {
   id: string;
@@ -144,6 +152,14 @@ export default async function DashboardPage({
   const ahora = new Date();
   const rangoInsights = resolverRangoRolling(DIAS_INSIGHTS, ahora);
 
+  // Desde cuándo se piden ventas, egresos, bajas y cobros de CC. Antes era
+  // el historial ENTERO y cada cálculo recortaba lo suyo en memoria: el
+  // payload crecía con cada venta y sin techo. La ventana la fija
+  // `ventana-historial-panel.ts`, que enumera hasta dónde mira cada regla del
+  // panel — cualquier regla nueva que necesite más historia se agrega AHÍ.
+  const desdeHistorial = resolverDesdeHistorialPanel(periodo, ahora);
+  const desdeIso = desdeHistorial.toISOString();
+
   const [
     ventasResponse,
     productosResponse,
@@ -158,11 +174,16 @@ export default async function DashboardPage({
     senales,
     configResponse,
   ] = await Promise.all([
-    getVentasAction(),
-    getStockAction(),
+    getVentasAction({ desde: desdeIso }),
+    // Sin variantes ni fotos: el panel no las lee. Ver `ProductoPanel`.
+    getProductosPanelAction(),
     supabase
       .from("egresos")
-      .select("id, concepto, monto, fecha, tipo, orden_compra_id"),
+      .select("id, concepto, monto, fecha, tipo, orden_compra_id")
+      .gte("fecha", desdeIso),
+    // Sin ventana a propósito: las PENDIENTES se cuentan todas (es un
+    // pendiente, no un hecho del período) y la tabla está vacía en los cuatro
+    // negocios — nada que crezca todavía.
     supabase
       .from("bajas")
       .select("id, producto_id, cantidad, creado_en, estado"),
@@ -170,7 +191,7 @@ export default async function DashboardPage({
     getDeudaVencidaAction(),
     getRemitosPendientesAction(),
     supabase.from("categorias").select("id, nombre, slug, parent_id"),
-    getPagosCuentaCorrienteAction(),
+    getPagosCuentaCorrienteAction({ desde: desdeIso }),
     // Devuelve null si no es ADMIN: el gate vive en la RPC, así que acá no hay
     // que preguntar el rol por separado.
     getEstadoActivacionAction(),

@@ -171,19 +171,27 @@ export async function getVentasAction(opts?: {
  * Devuelve el bruto además de la comisión para que el desglose por método de
  * Reportes cierre contra el de Caja; el capital cobrado NO se suma a ingresos
  * (ver getDashboardMetrics: el ticket fiado ya computó su total).
+ *
+ * `desde` acota por `creado_en` (ISO), con el mismo criterio que
+ * `getVentasAction`: sin default, que lo pase el que sabe qué ventana
+ * necesita. El panel lo pasa; /reportes no, porque tiene "histórico".
  */
-export async function getPagosCuentaCorrienteAction() {
+export async function getPagosCuentaCorrienteAction(opts?: { desde?: string }) {
   try {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
-    const { data, error } = await supabase
+    let query = supabase
       .from("venta_pagos")
       .select(
         "id, metodo_nombre, metodo_tipo, monto_base, recargo_porcentaje, recargo_monto, monto_bruto, comision_porcentaje, comision_monto, monto_neto, tipo_movimiento, estado_pago_operacion, creado_en",
       )
       .is("venta_id", null)
       .order("creado_en", { ascending: false });
+
+    if (opts?.desde) query = query.gte("creado_en", opts.desde);
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Error fetching pagos de cuenta corriente:", error);

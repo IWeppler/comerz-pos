@@ -181,3 +181,40 @@ export type ProductoIndice = Pick<
     "id" | "sku" | "nombre_display" | "precio" | "costo" | "stock" | "atributos"
   >[];
 };
+
+/**
+ * Forma del producto para las MÉTRICAS del panel (`/`): lo que leen
+ * `getDashboardMetrics`, `detectarQuiebresRotacion`,
+ * `detectarCategoriasEnRiesgo` y `detectarFinDeTemporada` /
+ * `detectarProximaTemporada`, y nada más.
+ *
+ * Es la contraparte de `ProductoIndice` para otra pantalla. El panel traía el
+ * catálogo entero por `getStockAction` —con variantes, fotos, slug y
+ * descripción— para calcular stock valorizado, quiebres y temporada: 2,35 MB
+ * en Evens, de los cuales estas funciones leen 0,77 MB. Ninguna mira
+ * `producto_variantes`: el stock lo sacan del espejo legacy `stock`
+ * (`productos_stock`), y eso NO se cambia acá — espejo y canónica difieren en
+ * 20 productos y mover la fuente es su propio cambio con su propia
+ * verificación (ver el encabezado de `getStockAction`).
+ *
+ * `stock` queda opcional, igual que en `Producto`, para que un `Producto[]`
+ * completo siga entrando: `/reportes` le pasa a las mismas funciones el
+ * catálogo de `getStockAction`, y los tests construyen `Producto`. Sin
+ * `producto_variantes` en el tipo a propósito: si una regla nueva las
+ * necesita, el compilador la manda a agregarlas también al select en vez de
+ * dejarla leer `undefined`.
+ */
+export type ProductoPanel = Pick<
+  Producto,
+  | "id"
+  | "nombre"
+  | "tipo"
+  | "precio"
+  | "precio_costo"
+  | "categoria_id"
+  | "creado_en"
+  | "unidad_medida"
+  | "stock"
+> & {
+  categoria?: CategoriaRelacion | null;
+};

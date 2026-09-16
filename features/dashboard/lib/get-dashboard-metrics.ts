@@ -1,4 +1,4 @@
-import { Producto } from "@/entities/productos/types";
+import { ProductoPanel } from "@/entities/productos/types";
 import {
   acumularUnidad,
   listarFraccionado,
@@ -56,13 +56,13 @@ type StockCriticoItem = {
   cantidad: number;
 };
 
-type ProductoSinMovimiento = Producto & {
+type ProductoSinMovimiento = ProductoPanel & {
   diasSinVender: number;
 };
 
 export function getDashboardMetrics(
   ventas: Venta[],
-  productos: Producto[],
+  productos: ProductoPanel[],
   egresos: EgresoCaja[] = [],
   bajas: MovimientoBaja[] = [],
   periodo: PeriodoDashboard = "mes",

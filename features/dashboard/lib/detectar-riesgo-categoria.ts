@@ -1,4 +1,4 @@
-import { Producto } from "@/entities/productos/types";
+import { ProductoPanel } from "@/entities/productos/types";
 import { Venta } from "@/entities/ventas/types";
 import { calcularUnidadesVendidasRecientes } from "./detectar-quiebres";
 
@@ -30,7 +30,7 @@ const DIAS_COBERTURA_CRITICA = 7;
  */
 export function detectarCategoriasEnRiesgo(
   ventasOperativas: Venta[],
-  productos: Producto[],
+  productos: ProductoPanel[],
   ventanaDias: number,
   ahora: Date,
 ): CategoriaRiesgoStock[] {

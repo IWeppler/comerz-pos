@@ -2,7 +2,11 @@
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
-import { Producto, ProductoIndice } from "@/entities/productos/types";
+import {
+  Producto,
+  ProductoIndice,
+  ProductoPanel,
+} from "@/entities/productos/types";
 import { normalizarRubro, type Rubro } from "@/entities/config/types";
 import {
   anotarStockDisponible,
@@ -88,6 +92,56 @@ export async function getStockAction(): Promise<{
     }));
 
     return { data: productos, error: null };
+  } catch (err) {
+    console.error(err);
+    return { data: null, error: "Ocurrió un error inesperado." };
+  }
+}
+
+/**
+ * El catálogo para las MÉTRICAS del panel (`/`). Ver `ProductoPanel`.
+ *
+ * Es `getStockAction` sin lo que el panel no lee: variantes (3.873 filas con
+ * su JSON de atributos en Evens), fotos en tres tamaños, slug, publicado y
+ * descripción. Medido en la base sobre Evens, 16/9/2026: 2.348 kB contra
+ * 772 kB, y el panel es la pantalla de entrada del comercio — se carga en
+ * cada visita a `/`, 157 veces por día entre los negocios.
+ *
+ * Conserva el espejo legacy `stock:productos_stock` a propósito: es de donde
+ * `getDashboardMetrics`, `detectarQuiebresRotacion`, `detectarCategoriasEnRiesgo`
+ * y `detectarFinDeTemporada` sacan el stock. La deuda de leer la canónica en
+ * vez del espejo está descripta en `getStockAction` y no se paga acá.
+ *
+ * `/reportes` y Carga Rápida siguen con `getStockAction`: la pestaña de
+ * inventario de Reportes rinde `productosSinMovimiento` con la foto del
+ * producto, y Carga Rápida necesita las variantes.
+ */
+export async function getProductosPanelAction(): Promise<{
+  data: ProductoPanel[] | null;
+  error: string | null;
+}> {
+  try {
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+
+    const { data, error } = await traerTodo("productos (panel)", (desde, hasta) =>
+      supabase
+        .from("productos")
+        .select(
+          `
+        id, nombre, tipo, precio, precio_costo, categoria_id, creado_en, unidad_medida,
+        categoria:categorias(id, nombre, slug),
+        stock:productos_stock(id, variante, cantidad)
+        `,
+          { count: "exact" },
+        )
+        .order("creado_en", { ascending: false })
+        .range(desde, hasta),
+    );
+
+    if (error) return { data: null, error: "Error al cargar." };
+
+    return { data: data as unknown as ProductoPanel[], error: null };
   } catch (err) {
     console.error(err);
     return { data: null, error: "Ocurrió un error inesperado." };

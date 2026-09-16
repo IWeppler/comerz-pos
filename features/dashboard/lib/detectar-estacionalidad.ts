@@ -1,4 +1,4 @@
-import { Producto } from "@/entities/productos/types";
+import { ProductoPanel } from "@/entities/productos/types";
 import { Venta } from "@/entities/ventas/types";
 import type { CategoriaBase } from "@/shared/utils/category-tree";
 import { calcularUnidadesVendidasRecientes } from "./detectar-quiebres";
@@ -87,9 +87,9 @@ export const TEMPORADAS: DefinicionTemporada[] = [
 ];
 
 // "Últimas 2-3 semanas de la temporada" (regla de liquidación).
-const DIAS_VENTANA_FIN_TEMPORADA = 21;
+export const DIAS_VENTANA_FIN_TEMPORADA = 21;
 // "3-4 semanas antes de que arranque la temporada siguiente" (regla de reposición).
-const DIAS_VENTANA_PROXIMA_TEMPORADA = 28;
+export const DIAS_VENTANA_PROXIMA_TEMPORADA = 28;
 
 // Stock valorizado de la categoría estacional por encima de este % del
 // valorizado total del inventario cuenta como "alto" — un piso relativo al
@@ -103,7 +103,7 @@ const TASA_ROTACION_BAJA = 0.05;
 // relativo, para no hardcodear una cantidad fija de unidades.
 const PROPORCION_STOCK_BAJO = 0.4;
 
-function sumaStockProducto(producto: Producto): number {
+function sumaStockProducto(producto: ProductoPanel): number {
   return (producto.stock || []).reduce(
     (acc, s) => acc + Number(s.cantidad || 0),
     0,
@@ -157,7 +157,7 @@ export type ResultadoFinDeTemporada = {
  */
 export function detectarFinDeTemporada(
   ventasOperativas: Venta[],
-  productos: Producto[],
+  productos: ProductoPanel[],
   categoriasFlat: CategoriaBase[],
   stockValorizadoCostoTotal: number,
   ventanaRotacionDias: number,
@@ -237,7 +237,7 @@ export type ResultadoProximaTemporada = {
  * unidades que no escala entre clientes.
  */
 export function detectarProximaTemporada(
-  productos: Producto[],
+  productos: ProductoPanel[],
   categoriasFlat: CategoriaBase[],
   ahora: Date,
 ): ResultadoProximaTemporada | null {

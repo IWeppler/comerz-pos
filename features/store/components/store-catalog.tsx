@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Producto } from "@/entities/productos/types";
-import { getIndiceCatalogoPublicoAction } from "@/shared/actions/store-actions";
+import { getIndiceCatalogoPublicoAction } from "@/shared/actions/indice-catalogo-publico";
 import type { PortadaCatalogo } from "../lib/catalogo-core";
 import { Button } from "@/shared/ui/button";
 import { Plus, SearchX, ShoppingBag } from "lucide-react";
