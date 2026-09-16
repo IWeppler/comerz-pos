@@ -133,6 +133,22 @@ export async function crearPedidoAction(datos: {
   return { success: true, numero: r.numero, id: r.id };
 }
 
+/**
+ * La lista que ve la caja. Desde el 16/9/2026 ya no se pollea cada 15 s: la
+ * llama React Query cuando llega la señal de Realtime (ver
+ * `use-pedidos-realtime.ts`) y, como red, cada 90 s.
+ *
+ * PENDIENTE, documentado y no hecho: esta lectura podría ir directo desde el
+ * navegador con supabase-js —el cliente de `client.ts` ya manda
+ * `x-negocio-activo`, así que la RLS de `pedidos` resolvería igual— y ahí
+ * costaría CERO invocaciones de Vercel. No se hizo todavía porque el select
+ * embebe `perfiles` y `clientes`, y las policies de esas dos tablas se
+ * escribieron pensando en el server (`perfiles` en particular: qué nombres de
+ * otros usuarios puede leer una vendedora desde el navegador es una decisión
+ * que hay que tomar mirando esa policy, no heredarla por accidente). Con la
+ * señal por Realtime la cantidad de llamadas ya bajó ~10×; el resto es una
+ * mejora, no una urgencia.
+ */
 export async function listarPedidosPorCobrarAction(): Promise<{
   data: PedidoPorCobrar[];
   error: string | null;

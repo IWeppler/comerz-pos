@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ClipboardList, Loader2, Trash2 } from "lucide-react";
@@ -28,6 +28,7 @@ import {
   listarPedidosPorCobrarAction,
   type PedidoPorCobrar,
 } from "../actions/pedidos";
+import { usePedidosRealtime } from "../hooks/use-pedidos-realtime";
 
 /**
  * La cola de la caja: los pedidos que los puestos mandaron y todavía nadie
@@ -40,6 +41,15 @@ import {
  */
 
 const CLAVE = ["pedidos", "por-cobrar"] as const;
+
+/**
+ * Fallback de polling. La señal de que hubo un cambio llega por Realtime
+ * (`usePedidosRealtime`); esto es la red por si el websocket está caído, la
+ * PWA de iOS volvió del fondo con el socket muerto, o la policy rechazó el
+ * canal. Antes era 15 s SIN señal: 1.836 invocaciones por día en una sola
+ * caja, hubiera pedidos o no.
+ */
+const FALLBACK_MS = 90_000;
 
 export function PedidosPorCobrar({
   negocioId,
@@ -67,17 +77,35 @@ export function PedidosPorCobrar({
   const [aCancelar, setACancelar] = useState<PedidoPorCobrar | null>(null);
   const queryClient = useQueryClient();
 
+  const queryKey = [...CLAVE, negocioId ?? "sin-negocio"];
+
   const { data, isLoading } = useQuery({
-    queryKey: [...CLAVE, negocioId ?? "sin-negocio"],
+    queryKey,
     queryFn: async () => {
       const r = await listarPedidosPorCobrarAction();
       if (r.error) throw new Error(r.error);
       return r.data;
     },
-    refetchInterval: 15_000,
+    refetchInterval: FALLBACK_MS,
+    // Default de React Query v5, explícito porque importa: con la pestaña
+    // oculta no se pollea. Al volver, `refetchOnWindowFocus` trae lo nuevo.
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     enabled: Boolean(negocioId),
   });
+
+  // La señal: cualquier INSERT/UPDATE/DELETE en `pedidos` del negocio activo
+  // invalida la query, y React Query vuelve a pedir la lista completa. El
+  // payload del evento no se mira. `useCallback` con la clave estable para
+  // que el hook no vea una función nueva en cada render.
+  const negocioClave = negocioId ?? "sin-negocio";
+  const alCambiar = useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: [...CLAVE, negocioClave],
+    });
+  }, [queryClient, negocioClave]);
+  usePedidosRealtime(negocioId, alCambiar);
 
   const pedidos = data ?? [];
 
