@@ -691,6 +691,11 @@ export function VentasTable({
           const primerItem = items[0];
           const producto = getSupabaseRelation(primerItem?.producto);
           const varios = items.length > 1;
+          // Las unidades que VUELVEN al inventario: la venta libre no tiene
+          // stock, así que no cuenta. `ventas.cantidad` las suma todas.
+          const unidadesConStock = items
+            .filter((item) => !item.es_venta_libre)
+            .reduce((acc, item) => acc + Number(item.cantidad || 0), 0);
 
           return (
             <AnularVentaModal
@@ -705,6 +710,7 @@ export function VentasTable({
                   ? accionAbierta.venta.cantidad
                   : (primerItem?.cantidad ?? 0)
               }
+              unidadesConStock={unidadesConStock}
               variante={
                 varios
                   ? "Varios artículos"
@@ -821,8 +827,11 @@ export function VentasTable({
                                   </span>
                                 ) : (
                                   <span className="text-muted-foreground font-normal ml-1">
-                                    · Talle {primerItem.variante} · x
-                                    {primerItem.cantidad}
+                                    ·{" "}
+                                    {primerItem.es_venta_libre
+                                      ? detalleRenglon(primerItem)
+                                      : `Talle ${primerItem.variante}`}{" "}
+                                    · x{primerItem.cantidad}
                                   </span>
                                 )}
                               </span>
@@ -964,7 +973,10 @@ export function VentasTable({
                           </span>
                         ) : (
                           <span className="text-muted-foreground text-xs mt-0.5">
-                            Talle {primerItem.variante} · x{primerItem.cantidad}
+                            {primerItem.es_venta_libre
+                              ? detalleRenglon(primerItem)
+                              : `Talle ${primerItem.variante}`}{" "}
+                            · x{primerItem.cantidad}
                           </span>
                         )}
                         {getSupabaseRelation(primerItem.unidad_serie)?.imei && (

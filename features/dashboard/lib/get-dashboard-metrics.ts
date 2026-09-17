@@ -418,12 +418,20 @@ export function getDashboardMetrics(
         (rentabilidadCatMap.get(cat) || 0) + itemGanancia,
       );
 
-      const pId = item.producto_id || prodCat?.id || "eliminado";
-      if (pId !== "eliminado") productosConVentas.add(pId);
+      // Las ventas libres van en su propio cajón, no en "eliminado": no son
+      // un producto que se perdió, son cobros sin producto — y verlos juntos
+      // en el ranking dice cuánto se vende sin cargar al catálogo.
+      const pId = item.es_venta_libre
+        ? "venta-libre"
+        : item.producto_id || prodCat?.id || "eliminado";
+      if (pId !== "eliminado" && pId !== "venta-libre") {
+        productosConVentas.add(pId);
+      }
 
       if (!ventasPorProducto[pId]) {
-        const nombreReal =
-          prodCat?.nombre || prodDataGuardado?.nombre || "Producto Eliminado";
+        const nombreReal = item.es_venta_libre
+          ? "Venta libre"
+          : prodCat?.nombre || prodDataGuardado?.nombre || "Producto Eliminado";
         ventasPorProducto[pId] = {
           nombre: nombreReal,
           ingresos: 0,

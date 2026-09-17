@@ -55,18 +55,24 @@ export async function getRestaurabilidadVentaAction(
 
     const { data: items, error } = await supabase
       .from("ventas_items")
-      .select("producto_id, variante, variante_id")
+      .select("producto_id, variante, variante_id, es_venta_libre")
       .eq("venta_id", ventaId);
 
     if (error || !items?.length) return vacio;
 
+    // La venta libre no tiene stock que devolver ni que perder: no es un
+    // renglón "sin restaurar" (eso avisa que hay que cargar unidades a mano,
+    // y acá no hay ninguna) ni uno restaurable. Se saca antes de contar.
+    const conStock = items.filter((item) => !item.es_venta_libre);
+    if (conStock.length === 0) return vacio;
+
     const productoIds = [
-      ...new Set(items.map((item) => item.producto_id).filter(Boolean)),
+      ...new Set(conStock.map((item) => item.producto_id).filter(Boolean)),
     ] as string[];
 
     if (productoIds.length === 0) {
       return {
-        sinRestaurar: items.map((item) => item.variante),
+        sinRestaurar: conStock.map((item) => item.variante),
         restaurables: 0,
       };
     }
@@ -84,7 +90,7 @@ export async function getRestaurabilidadVentaAction(
     const sinRestaurar: string[] = [];
     let restaurables = 0;
 
-    for (const item of items) {
+    for (const item of conStock) {
       const resuelve =
         !!item.producto_id &&
         ((item.variante_id && porId.has(item.variante_id)) ||

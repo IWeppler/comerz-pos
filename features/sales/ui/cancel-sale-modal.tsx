@@ -29,6 +29,10 @@ interface AnularVentaModalProps {
   id: string;
   productoNombre: string;
   cantidad: number;
+  /** Unidades que tienen stock que devolver. Difiere de `cantidad` cuando el
+   * ticket lleva renglones de venta libre, que no mueven inventario. Sin
+   * pasar, se asume que todas lo tienen. */
+  unidadesConStock?: number;
   variante: string;
   isProductoEliminado: boolean;
   /** Controlado desde el menú de la fila. Ver `sale-table.tsx`: un
@@ -42,11 +46,15 @@ export function AnularVentaModal({
   id,
   productoNombre,
   cantidad,
+  unidadesConStock = cantidad,
   variante,
   isProductoEliminado,
   open,
   onOpenChange,
 }: Readonly<AnularVentaModalProps>) {
+  // Un ticket hecho solo de venta libre no tiene producto físico del que
+  // decidir nada: se anula la plata y listo.
+  const sinStockQueDevolver = unidadesConStock === 0;
   // Controlado, y hacía falta por dos motivos. El primero es que la vista
   // previa de restaurabilidad se pide al ABRIR: es una consulta que solo tiene
   // sentido cuando alguien va a anular de verdad, no en cada una de las diez
@@ -101,11 +109,13 @@ export function AnularVentaModal({
             ? `Salieron $${Math.round(efectivo).toLocaleString("es-AR")} de la caja.`
             : "No salió efectivo de la caja.";
 
-        const detalleStock = isProductoEliminado
-          ? "Stock no restaurado porque el producto fue eliminado del catálogo."
-          : motivo === "RESTAURAR_STOCK"
-            ? `Se devolvieron ${cantidad}u al inventario.`
-            : "Se registró como Baja (pérdida).";
+        const detalleStock = sinStockQueDevolver
+          ? "Sin stock que devolver: la venta no llevaba productos del catálogo."
+          : isProductoEliminado
+            ? "Stock no restaurado porque el producto fue eliminado del catálogo."
+            : motivo === "RESTAURAR_STOCK"
+              ? `Se devolvieron ${unidadesConStock}u al inventario.`
+              : "Se registró como Baja (pérdida).";
 
         toast.success("Venta anulada.", {
           description: `${detalleCaja} ${detalleStock}`,
@@ -142,7 +152,7 @@ export function AnularVentaModal({
         </DialogHeader>
 
         <div className="space-y-6 pt-4">
-          {!isProductoEliminado && (
+          {!isProductoEliminado && !sinStockQueDevolver && (
             <div className="space-y-3">
               <Label className="text-sm font-semibold">
                 ¿Qué hacemos con el producto físico?
@@ -171,7 +181,7 @@ export function AnularVentaModal({
                     </Label>
                     <p className="text-xs text-muted-foreground">
                       El cliente se arrepintió. El producto está sano y se
-                      sumará al inventario (+{cantidad}).
+                      sumará al inventario (+{unidadesConStock}).
                     </p>
                   </div>
                 </div>
