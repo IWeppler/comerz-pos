@@ -1,5 +1,6 @@
 import forge from "node-forge";
 import { describirErrorRed } from "./error-red";
+import { postXml, type RespuestaHttp } from "./http-arca";
 import { SERVICIO_WSFE, URLS_ARCA, type AmbienteArca } from "./codigos-arca";
 import { escaparXml, leerEtiqueta } from "./xml";
 
@@ -112,17 +113,14 @@ export async function pedirTicketAcceso(
     `<soapenv:Body><wsaa:loginCms><wsaa:in0>${cms}</wsaa:in0></wsaa:loginCms></soapenv:Body>` +
     `</soapenv:Envelope>`;
 
-  let respuesta: Response;
+  let respuesta: RespuestaHttp;
   try {
-    respuesta = await fetch(URLS_ARCA[ambiente].wsaa, {
-      method: "POST",
-      headers: {
-        "Content-Type": "text/xml; charset=utf-8",
-        SOAPAction: "",
-      },
-      body: cuerpo,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    respuesta = await postXml(
+      URLS_ARCA[ambiente].wsaa,
+      { "Content-Type": "text/xml; charset=utf-8", SOAPAction: "" },
+      cuerpo,
+      TIMEOUT_MS,
+    );
   } catch (e) {
     throw new ErrorWsaa(
       "RED",
@@ -130,7 +128,7 @@ export async function pedirTicketAcceso(
     );
   }
 
-  const texto = await respuesta.text();
+  const texto = respuesta.text;
 
   // Un fault viene con HTTP 500 y `<faultstring>`; se lee antes que el
   // status porque el mensaje de ARCA es más útil que "500".

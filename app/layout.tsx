@@ -3,33 +3,30 @@ import "./globals.css";
 import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/shared/ui/sonner";
 import { leerConfigPos } from "@/entities/config/lib/leer-config-pos";
-import { Geist_Mono, Geist } from "next/font/google";
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { cn } from "@/lib/utils";
 import { InstalacionPwaListener } from "@/shared/components/instalacion-pwa-listener";
 import { ClientErrorReporter } from "@/shared/components/client-error-reporter";
 
 
 /**
- * Las dos son fuentes VARIABLES, así que no llevan `weight`.
+ * Geist y Geist Mono vienen del paquete `geist` (los woff2 variables están en
+ * node_modules y los sirve `next/font/local`), NO de `next/font/google`.
  *
- * Con un array de pesos, `next/font` no baja la variable: instancia una fuente
- * estática por peso. Eran 12 archivos (7 de Geist + 5 de Geist Mono) para
- * cubrir un rango que un solo woff2 variable cubre entero, y el catálogo los
- * descubre recién cuando el CSS los pide. Sin `weight` queda un archivo por
- * familia y cualquier peso intermedio sigue disponible — `font-semibold` y
- * compañía siguen funcionando igual.
+ * Con `next/font/google` la fuente se descarga en tiempo de BUILD, y en cada
+ * capa del build por separado (server y cliente). El 16/9/2026 el build de
+ * Vercel descargó bien en una capa y cayó al fallback en la otra: el nombre
+ * de la clase `__variable_<hash>` sale de un hash del CSS generado, así que
+ * el <html> salió con una clase (`__variable_5b3a4d`) y el CSS con otra
+ * (`__variable_246ccd`), `--font-sans` quedó vacía y toda la app se veía en
+ * Times New Roman. Sin error en el build: Next solo avisa "Failed to
+ * download ... Using fallback font instead". Con el archivo en el repo no hay
+ * descarga ni dos capas que puedan discrepar.
+ *
+ * Las variables las fija el paquete (`--font-geist-sans` / `--font-geist-mono`)
+ * y globals.css las mapea a `--font-sans` / `--font-mono` de Tailwind.
  */
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  style: ["normal"],
-  variable: "--font-mono",
-});
-
-const geist = Geist({
-  subsets: ["latin"],
-  style: ["normal"],
-  variable: "--font-sans",
-});
 
 export const viewport: Viewport = {
   themeColor: "#09090b",
@@ -72,16 +69,14 @@ export default async function RootLayout({
         "h-full",
         "antialiased",
         "font-sans",
-        geist.variable,
-        geistMono.variable,
+        GeistSans.variable,
+        GeistMono.variable,
       )}
       suppressHydrationWarning
     >
-      {/* Sin `preconnect` a fonts.googleapis.com / fonts.gstatic.com:
-          `next/font/google` descarga las fuentes en tiempo de BUILD y las
-          sirve desde este mismo dominio, así que el navegador nunca pide
-          nada a Google. Eran dos handshakes contra origins que no se usan,
-          compitiendo con la carga real justo al principio del head. */}
+      {/* Sin `preconnect` a fonts.googleapis.com / fonts.gstatic.com: las
+          fuentes se sirven desde este mismo dominio, el navegador nunca pide
+          nada a Google. */}
       <body className="min-h-full flex flex-col font-sans text-foreground">
         <ThemeProvider
           attribute="class"

@@ -205,7 +205,7 @@ export function IngresosAreaChart({
               tick={{
                 fontSize: 11,
                 fill: "var(--muted-foreground)",
-                fontFamily: "var(--font-mono)",
+                fontFamily: "var(--font-geist-mono)",
               }}
               axisLine={false}
               tickLine={false}

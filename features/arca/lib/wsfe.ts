@@ -1,5 +1,6 @@
 import { URLS_ARCA, fechaArcaAIso, type AmbienteArca } from "./codigos-arca";
 import { describirErrorRed } from "./error-red";
+import { postXml, type RespuestaHttp } from "./http-arca";
 import type { SolicitudCae } from "./armar-factura";
 import type { TicketAcceso } from "./wsaa";
 import { escaparXml, leerEtiqueta, leerEtiquetas, sobreSoap } from "./xml";
@@ -92,16 +93,14 @@ async function llamar(
     `<${operacion} xmlns="${NS}">${cuerpoInterno}</${operacion}>`,
   );
 
-  let respuesta: Response;
+  let respuesta: RespuestaHttp;
   try {
-    respuesta = await fetch(URLS_ARCA[ambiente].wsfe, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/soap+xml; charset=utf-8",
-      },
-      body: cuerpo,
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    respuesta = await postXml(
+      URLS_ARCA[ambiente].wsfe,
+      { "Content-Type": "application/soap+xml; charset=utf-8" },
+      cuerpo,
+      TIMEOUT_MS,
+    );
   } catch (e) {
     throw new ErrorWsfe(
       "RED",
@@ -109,7 +108,7 @@ async function llamar(
     );
   }
 
-  const texto = await respuesta.text();
+  const texto = respuesta.text;
 
   const fault =
     leerEtiqueta(texto, "faultstring") ?? leerEtiqueta(texto, "Text");

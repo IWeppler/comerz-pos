@@ -1122,6 +1122,24 @@ tiene 11.
   `ventas_delete_propia_o_admin` existe y ahora una venta con comprobante ya
   no se puede borrar. Es lo buscado (la app nunca borra ventas: anula con
   `estado_operacion`), pero es un camino que antes funcionaba.
+- **Las llamadas a ARCA van por `node:https` con un agente propio, NO por
+  `fetch`** (`features/arca/lib/http-arca.ts`). `servicios1.afip.gov.ar` (WSFE
+  de producción) prefiere DHE con un grupo de **1024 bits**, y OpenSSL 3 —el
+  Node de Vercel— lo rechaza: `ERR_SSL_DH_KEY_TOO_SMALL`. La prueba de conexión
+  de Estilo Bonito se caía en FEDummy, antes de firmar nada, con "fetch
+  failed" a secas (16/9/2026); desde una máquina local conectaba, así que
+  parecía un bloqueo de red de ARCA y no lo era. El agente no ofrece DHE
+  (`!DH`) y el servidor elige otra cosa —ECDHE en `wsaa`/`wsaahomo`/`wswhomo`,
+  RSA-AES256-GCM en `servicios1`—; NO se baja el nivel de seguridad
+  (`@SECLEVEL=1`), que aceptaría el DH chico. Homologación no lo sufre porque
+  esos hosts negocian ECDHE: **que funcione en homologación no prueba que
+  funcione en producción.** Volver a `fetch` ahí rompe la facturación sin
+  tocar una línea de ARCA.
+  Y los errores de red se muestran con su `code` (`error-red.ts`): "fetch
+  failed" no distingue DNS, firewall ni TLS, y son tres arreglos distintos.
+  Un "Certificado no emitido por AC de confianza" en WSAA es otra cosa: el
+  certificado es del OTRO ambiente (producción lo emite el ARCA real,
+  homologación el portal WSASS, con CAs distintas).
 - El número que se imprime es el del comprobante (`formatearNumeroComprobante`,
   "0001-00000123"), no más el prefijo del UUID de la venta. En el POS viaja en
   la respuesta de `registrarVentaAction` (sin consulta extra); en el historial
