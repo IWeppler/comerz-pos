@@ -26,6 +26,8 @@ type AtajosCarritoProps = {
   /** Reservar existe solo en los rubros que lo usan (indumentaria). Sin
    * esto, `3` sería una tecla que no hace nada en un kiosco. */
   puedeReservar: boolean;
+  /** Abre el renglón de venta libre del ticket (tecla V). */
+  abrirVentaLibre: () => void;
 };
 
 export type TipoVenta = "COMUN" | "CUENTA_CORRIENTE" | "RESERVA";
@@ -55,6 +57,7 @@ export function AtajosCarrito({
   ajustarUltimo,
   elegirTipoVenta,
   puedeReservar,
+  abrirVentaLibre,
 }: Readonly<AtajosCarritoProps>) {
   /** Cuándo fue que Ctrl+Enter llevó al paso de pago. Ver el atajo. */
   const llegadaAPagoPorAtajo = useRef(0);
@@ -79,6 +82,15 @@ export function AtajosCarrito({
       teclas: "F7",
       activo: hayItems && !ocupado,
       correr: abrirSelectorCliente,
+    },
+    {
+      // Cobrar algo que no está cargado. Letra suelta, misma regla que la
+      // "F" del buscador: con el foco en un campo de texto NO se dispara,
+      // así que tipear "vestido" en el buscador no abre nada. Desde la
+      // grilla (foco en una card) o con nada enfocado, "V" abre el renglón.
+      teclas: "v",
+      activo: !ocupado,
+      correr: abrirVentaLibre,
     },
     // 1 / 2 / 3: qué tipo de venta es. Van SOLO en el paso de pago, que es
     // donde están los botones que representan: un atajo que cambia algo que

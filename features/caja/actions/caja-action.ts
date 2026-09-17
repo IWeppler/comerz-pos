@@ -213,7 +213,7 @@ export async function getDetallesTurnoAction(turnoId: string) {
           `
           id, total, metodo_pago, fecha_venta, cliente_id, clientes(nombre),
           monto_cobrado, monto_pendiente, estado_pago, estado_operacion, perfiles(nombre),
-          ventas_items(producto:productos(nombre)),
+          ventas_items(variante, es_venta_libre, producto:productos(nombre)),
           venta_pagos(metodo_nombre, metodo_tipo, monto_base, recargo_porcentaje, recargo_monto, monto_bruto, comision_porcentaje, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento)
         `,
         )

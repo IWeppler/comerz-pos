@@ -23,6 +23,10 @@ import {
   type ListaDePrecios,
 } from "@/shared/lib/precio-de-lista";
 import { mensajeSinStock } from "../lib/mensaje-sin-stock";
+import {
+  esIdVentaLibre,
+  validarVentaLibre,
+} from "@/features/pos/lib/venta-libre";
 import { emitirComprobante } from "../lib/emitir-comprobante";
 import {
   emiteComprobanteFiscal,
@@ -45,6 +49,31 @@ import {
   type FacturaEmitida,
 } from "@/features/arca/lib/emitir-factura";
 import type { TipoFiscal } from "@/features/arca/lib/armar-factura";
+
+/** Un renglón del carrito ya resuelto contra la base (o, en la venta libre,
+ * contra nada: ahí `productoIdReal`, `varianteId` y `stockActual` van null). */
+type ItemResuelto = {
+  productoIdReal: string | null;
+  variante: string;
+  varianteId: string | null;
+  tipo: string;
+  nombreProducto: string;
+  cantidad: number;
+  stockActual: { id: string; cantidad: number } | null;
+  precioServer: number;
+  desfasajeUnitario: number;
+  costoServer: number;
+  tratamientoIva: string | null;
+  esVentaLibre: boolean;
+};
+
+/** La marca viaja en el item del carrito; el id local (`libre:…`) es el
+ * respaldo para un carrito guardado que la perdió. Cualquiera de las dos
+ * alcanza: el server no confía en ninguna para el precio de un producto real
+ * — un renglón libre no tiene producto, por CHECK. */
+function esRenglonLibre(item: { ventaLibre?: unknown; productoId?: unknown }) {
+  return item.ventaLibre === true || esIdVentaLibre(item.productoId as string);
+}
 
 export async function registrarVentaAction(
   prevState: { error: string | null; success: boolean },
@@ -197,8 +226,16 @@ export async function registrarVentaAction(
   // consultas para todo el carrito, no dos por renglón: antes era un `for` con
   // dos `await` adentro, o sea 20 viajes en un ticket de 10 renglones. Mismo
   // criterio que `aprobar_orden_compra` e `importar_productos_planilla`.
+  //
+  // Los renglones de VENTA LIBRE no entran acá: no son ningún producto, y su
+  // id local ni siquiera es un uuid (PostgREST rebotaría el `.in()` entero).
+  // Se resuelven aparte en el loop de abajo, sin stock ni variante.
   const productoIds = [
-    ...new Set(items.map((item) => item.productoId ?? item.id)),
+    ...new Set(
+      items
+        .filter((item) => !esRenglonLibre(item))
+        .map((item) => item.productoId ?? item.id),
+    ),
   ];
 
   /**
@@ -356,8 +393,56 @@ export async function registrarVentaAction(
     (variantesFilas ?? []).map((v) => [`${v.producto_id}|${v.nombre_display}`, v]),
   );
 
-  const itemsResueltos = [];
+  const itemsResueltos: ItemResuelto[] = [];
   for (const item of items) {
+    // --- VENTA LIBRE: un renglón que no es ningún producto ---
+    //
+    // Es la ÚNICA excepción nueva a "el precio lo pone el server": no hay
+    // fila contra la cual revalidarlo. Lo que sí se revalida es la FORMA
+    // (`validarVentaLibre`, la misma función que el POS), y la base agrega el
+    // freno de fondo: el CHECK de `ventas_items` no deja que un renglón
+    // marcado libre apunte a un producto o a una variante, así que este camino
+    // no sirve para cobrar mercadería real al precio que uno quiera.
+    //
+    // No mueve stock (no hay variante), no lleva costo (nadie lo cargó: el
+    // margen de este renglón es el precio entero, y `margen_realizado` lo
+    // cuenta como costo cero, que es la verdad) y no entra en promos por
+    // categoría (no tiene). El IVA sale del default del comercio.
+    if (esRenglonLibre(item)) {
+      const libre = validarVentaLibre({
+        descripcion: item.nombre ?? item.variante,
+        precio: item.precio ?? item.precioUnitario,
+      });
+      if (!libre.ok) return { error: libre.error, success: false };
+
+      const cantidadLibre = normalizarCantidadVendible(
+        item.cantidad ?? 1,
+        "UNIDAD",
+      );
+      if (cantidadLibre === null) {
+        return {
+          error: `"${libre.valor.descripcion}" se vende por unidad: la cantidad tiene que ser un número entero.`,
+          success: false,
+        };
+      }
+
+      itemsResueltos.push({
+        productoIdReal: null,
+        variante: libre.valor.descripcion,
+        varianteId: null,
+        tipo: "Venta libre",
+        nombreProducto: libre.valor.descripcion,
+        cantidad: cantidadLibre,
+        stockActual: null,
+        precioServer: libre.valor.precio,
+        desfasajeUnitario: 0,
+        costoServer: 0,
+        tratamientoIva: null,
+        esVentaLibre: true,
+      });
+      continue;
+    }
+
     const productoIdReal = item.productoId ?? item.id;
 
     // Match por PK cuando el carrito trae varianteId (sin ambigüedad
@@ -545,6 +630,7 @@ export async function registrarVentaAction(
       // Para el desglose de IVA de la factura. Sale de la base, no del
       // carrito: es lo que decide cuánto impuesto se declara.
       tratamientoIva: (productoData?.tratamiento_iva as string | null) ?? null,
+      esVentaLibre: false,
     });
   }
 
@@ -764,8 +850,10 @@ export async function registrarVentaAction(
       nombreProducto: item.nombreProducto,
       varianteId,
       cantidad: cantidadFinal,
-      stockId: stockActual.id,
-      stockOriginal: stockActual.cantidad,
+      // null en la venta libre: no hay espejo que descontar.
+      stockId: stockActual?.id ?? null,
+      stockOriginal: stockActual?.cantidad ?? null,
+      esVentaLibre: item.esVentaLibre,
       precioCosto: precioCostoReal,
       precioUnitario: precioUnitario,
       descuentoMonto: itemDescuentoMonto,
@@ -1388,15 +1476,21 @@ export async function registrarVentaAction(
     promocion_id: promoData && item.descuentoMonto > 0 ? promocionId : null,
     promocion_nombre:
       promoData && item.descuentoMonto > 0 ? promoData.nombre : null,
+    // Ver `20260917120000_venta_libre`: la marca explícita de que este
+    // renglón no es ningún producto, para que el historial no lo muestre como
+    // "Producto eliminado".
+    es_venta_libre: item.esVentaLibre,
   }));
 
   // El espejo legacy va por DELTA (cuánto restarle), no con el valor final: el
   // valor que se mandaba antes salía de una lectura hecha al principio de la
   // venta y dos cajas concurrentes escribían las dos sobre la misma foto.
-  const stockLegacy = itemsProcesados.map((item) => ({
-    stock_id: item.stockId,
-    cantidad: item.cantidad,
-  }));
+  const stockLegacy = itemsProcesados
+    .filter((item) => item.stockId)
+    .map((item) => ({
+      stock_id: item.stockId,
+      cantidad: item.cantidad,
+    }));
 
   const ticketCorto = ventaId.split("-")[0].toUpperCase();
 

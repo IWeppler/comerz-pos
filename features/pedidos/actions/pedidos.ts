@@ -26,6 +26,8 @@ export interface PedidoItem {
   cantidad: number;
   unidadMedida?: string | null;
   imagenUrl?: string | null;
+  /** Renglón de venta libre: sin producto ni stock. Ver `venta-libre.ts`. */
+  ventaLibre?: boolean;
 }
 
 /**
@@ -81,6 +83,7 @@ function aItemPedido(i: CartItemStore): PedidoItem {
     cantidad: i.cantidad,
     unidadMedida: i.unidadMedida ?? null,
     imagenUrl: i.imagenUrl ?? null,
+    ventaLibre: i.ventaLibre,
   };
 }
 

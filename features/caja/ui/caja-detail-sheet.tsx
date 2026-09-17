@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import {
   TurnoCajaHistorial,
   EgresoCaja,
@@ -90,13 +91,16 @@ export function CajaDetailSheet({
         const egresos = res.data.egresos as EgresoCaja[];
 
         const ventasMapeadas: MovimientoDetalle[] = ventas.flatMap((v) => {
-          const primerProducto = getSupabaseRelation(
-            v.ventas_items?.[0]?.producto,
-          );
+          const primerItem = v.ventas_items?.[0];
+          const primerProducto = getSupabaseRelation(primerItem?.producto);
           const itemsExtra = (v.ventas_items?.length || 1) - 1;
-          const conceptoNombre = primerProducto?.nombre
-            ? `${primerProducto.nombre} ${itemsExtra > 0 ? `+ ${itemsExtra} art.` : ""}`
-            : "Varios/Eliminado";
+          const nombrePrimero = primerItem
+            ? nombreRenglon(primerProducto?.nombre, primerItem)
+            : null;
+          const conceptoNombre =
+            nombrePrimero && nombrePrimero !== "Producto eliminado"
+              ? `${nombrePrimero} ${itemsExtra > 0 ? `+ ${itemsExtra} art.` : ""}`
+              : "Varios/Eliminado";
 
           const pagos = v.venta_pagos || [];
 

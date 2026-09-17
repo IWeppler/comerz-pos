@@ -69,6 +69,8 @@ import {
   etiquetaRecargo,
 } from "@/shared/lib/recargo-metodo";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
+import { useVentaLibreStore } from "@/shared/store/venta-libre-store";
+import { VentaLibreInline } from "./venta-libre-inline";
 
 const subscribeToClientMount = () => () => {};
 const getClientSnapshot = () => true;
@@ -334,6 +336,11 @@ export function CartPanelAdmin({
     let algunoCambia = false;
 
     for (const item of items) {
+      // La venta libre no tiene lista: el precio es el que tipeó la
+      // vendedora y una regla de −20% sobre eso sería descontar lo que ella
+      // ya decidió. Se deja como está (el server tampoco la re-precia).
+      if (item.ventaLibre) continue;
+
       // Una línea que entró desde otra pantalla (Inventario, la ficha de un
       // producto) no trae `precioBase`: ahí el precio con el que entró ES el
       // base, porque esas pantallas no conocen la lista.
@@ -356,6 +363,7 @@ export function CartPanelAdmin({
    *  números antes de cambiar nada. */
   const totalConLista = (listaId: string | null) =>
     items.reduce((acc, item) => {
+      if (item.ventaLibre) return acc + item.precio * item.cantidad;
       const base = item.precioBase ?? item.precio;
       const { precio } = resolverPrecio({
         listaPrecioId: listaId,
@@ -452,6 +460,31 @@ export function CartPanelAdmin({
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("CART");
   const [clienteSeleccionado, setClienteSeleccionado] =
     useState<ClienteBasico | null>(null);
+
+  // ── VENTA LIBRE ──────────────────────────────────────────────────────
+  // El formulario vive adentro del ticket (`VentaLibreInline`, en el paso de
+  // líneas). Quien lo abre desde AFUERA —la tecla V, o la grilla con "Vender 'X' sin
+  // cargarlo"— necesita que el ticket esté a la vista y en ese paso: en
+  // tablet el sheet, en celular el drawer, y si estaba en el pago, volver.
+  // Sin esto, en un celular con el carrito vacío el botón de la grilla
+  // abriría un formulario que no se ve.
+  // Se suscribe al store en vez de leerlo con el hook: reacciona a la
+  // APERTURA (un evento), no al estado, y los flags de layout se leen en ese
+  // momento desde una ref sin volver a suscribir.
+  const layoutRef = useRef({ isPhoneLayout, isMobileLayout });
+  useEffect(() => {
+    layoutRef.current = { isPhoneLayout, isMobileLayout };
+  }, [isPhoneLayout, isMobileLayout]);
+  useEffect(
+    () =>
+      useVentaLibreStore.subscribe((s, prev) => {
+        if (s.apertura === prev.apertura) return;
+        setCheckoutStep("CART");
+        if (layoutRef.current.isPhoneLayout) setPhoneCartOpen(true);
+        else if (layoutRef.current.isMobileLayout) setIsOpen(true);
+      }),
+    [setIsOpen],
+  );
   // Qué letra saldría si se factura, con la MISMA matriz que aplica el
   // server al cobrar: emisor + cliente elegido + preferencias. Sin el corte
   // por conexión con ARCA, que acá no se conoce; si al cobrar ARCA no está,
@@ -942,6 +975,7 @@ export function CartPanelAdmin({
         // El stock real lo valida el server al cobrar (UPDATE atómico); acá
         // no hay catálogo a mano y un tope inventado bloquearía la línea.
         stockMaximo: Number.MAX_SAFE_INTEGER,
+        ventaLibre: i.ventaLibre,
       });
     }
     // La lista con la que se precio el pedido, sin re-preciar: los renglones
@@ -1277,6 +1311,9 @@ export function CartPanelAdmin({
           // garantía del aparato que el cliente se acaba de llevar.
           items: items.map((item) => ({
             ...item,
+            // La descripción de una venta libre ya es el nombre; repetirla
+            // entre paréntesis en el papel no agrega nada.
+            variante: item.ventaLibre ? "" : item.variante,
             imei: item.varianteId
               ? (imeisParaVenta[item.varianteId] ?? null)
               : null,
@@ -1375,6 +1412,7 @@ export function CartPanelAdmin({
           setSelectorClienteAbierto(true);
         }}
         vaciarTicket={clearCartAndResetStep}
+        abrirVentaLibre={() => useVentaLibreStore.getState().abrir()}
         // Pasa por los MISMOS handlers que los botones: apagar cuenta
         // corriente descarta la exención de recargo, y prender una apaga la
         // otra. Un atajo que seteara los estados por su cuenta se saltearía
@@ -1487,6 +1525,7 @@ export function CartPanelAdmin({
               deshabilitado={isPending}
             />
           }
+          pieDeLineas={<VentaLibreInline />}
         />
       ) : (
         <CartStepCheckout

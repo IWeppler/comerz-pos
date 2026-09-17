@@ -45,6 +45,7 @@ import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
 import { fiscalDesdeComprobante } from "../lib/comprobante-fiscal-desde-venta";
 import { letraComprobante } from "@/shared/lib/comprobante-fiscal-ticket";
 import { numeroTicketVenta } from "@/features/sales/lib/numero-ticket";
+import { detalleRenglon, nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { SaleTableHeader } from "./sale-table-header";
 import {
   ESTADO_TODOS,
@@ -551,9 +552,9 @@ export function VentasTable({
     setTicketAbierto({
       items: (venta.ventas_items || []).map(
         (item: VentaItem): TicketItemData => ({
-          nombre:
-            getSupabaseRelation(item.producto)?.nombre || "Producto eliminado",
-          variante: item.variante,
+          nombre: nombreRenglon(getSupabaseRelation(item.producto)?.nombre, item),
+          // En la venta libre la descripción ya es el nombre: no se repite.
+          variante: item.es_venta_libre ? "" : item.variante,
           cantidad: item.cantidad,
           precioUnitario: item.precio_unitario,
           imei: getSupabaseRelation(item.unidad_serie)?.imei ?? null,
@@ -697,7 +698,7 @@ export function VentasTable({
               productoNombre={
                 varios
                   ? "Ticket Completo"
-                  : producto?.nombre || "Varios artículos"
+                  : nombreRenglon(producto?.nombre, primerItem ?? {})
               }
               cantidad={
                 varios
@@ -705,9 +706,11 @@ export function VentasTable({
                   : (primerItem?.cantidad ?? 0)
               }
               variante={
-                varios ? "Varios artículos" : (primerItem?.variante ?? "")
+                varios
+                  ? "Varios artículos"
+                  : detalleRenglon(primerItem ?? {})
               }
-              isProductoEliminado={!producto}
+              isProductoEliminado={!producto && !primerItem?.es_venta_libre}
               open
               onOpenChange={(abierto) => !abierto && cerrarAccion()}
             />
@@ -774,10 +777,10 @@ export function VentasTable({
                       if (!primerItem) return null;
 
                       const producto = getSupabaseRelation(primerItem.producto);
-                      const isEliminado = !producto;
-                      const nombrePrincipal = isEliminado
-                        ? "Producto eliminado"
-                        : producto.nombre;
+                      const nombrePrincipal = nombreRenglon(
+                        producto?.nombre,
+                        primerItem,
+                      );
                       const itemsExtra = items.length - 1;
 
                       const clienteNombre = getClienteNombre(venta);
@@ -933,10 +936,10 @@ export function VentasTable({
                 if (!primerItem) return null;
 
                 const producto = getSupabaseRelation(primerItem.producto);
-                const isEliminado = !producto;
-                const nombrePrincipal = isEliminado
-                  ? "Producto eliminado"
-                  : producto.nombre;
+                const nombrePrincipal = nombreRenglon(
+                  producto?.nombre,
+                  primerItem,
+                );
                 const itemsExtra = items.length - 1;
 
                 const clienteNombre = getClienteNombre(venta);

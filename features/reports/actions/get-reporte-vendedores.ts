@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/shared/config/supabase/server";
+import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { cookies } from "next/headers";
 import { getSupabaseRelation } from "@/entities/ventas/types";
 import {
@@ -26,6 +27,8 @@ interface VentaRow {
     precio_unitario: number;
     producto: { nombre?: string | null } | { nombre?: string | null }[] | null;
     producto_id?: string | null;
+    variante?: string | null;
+    es_venta_libre?: boolean | null;
   }[];
   venta_pagos: {
     metodo_tipo: string;
@@ -61,7 +64,7 @@ export async function getReporteVendedoresAction(
       metodo_pago,
       estado_operacion,
       perfiles(nombre),
-      ventas_items(cantidad, precio_final, precio_unitario, producto_id, producto:productos(nombre)),
+      ventas_items(cantidad, precio_final, precio_unitario, producto_id, variante, es_venta_libre, producto:productos(nombre)),
       venta_pagos(metodo_tipo, monto_bruto)
       `,
     )
@@ -112,8 +115,10 @@ export async function getReporteVendedoresAction(
       resumen.cantidadAnuladas += 1;
 
       const primerItem = venta.ventas_items?.[0];
-      const productoNombre =
-        getSupabaseRelation(primerItem?.producto)?.nombre || "Producto eliminado";
+      const productoNombre = nombreRenglon(
+        getSupabaseRelation(primerItem?.producto)?.nombre,
+        primerItem ?? {},
+      );
 
       if (!anuladasAcc.has(vendedorId)) anuladasAcc.set(vendedorId, []);
       anuladasAcc.get(vendedorId)!.push({
@@ -156,9 +161,12 @@ export async function getReporteVendedoresAction(
     const productosDelVendedor = productosAcc.get(vendedorId)!;
 
     for (const item of venta.ventas_items || []) {
-      const productoId = item.producto_id || "sin-id";
-      const productoNombre =
-        getSupabaseRelation(item.producto)?.nombre || "Producto eliminado";
+      // Las ventas libres se agrupan en una sola fila "Venta libre": son
+      // cosas distintas cada vez y una fila por descripción sería ruido.
+      const productoId = item.producto_id || (item.es_venta_libre ? "venta-libre" : "sin-id");
+      const productoNombre = item.es_venta_libre
+        ? "Venta libre"
+        : nombreRenglon(getSupabaseRelation(item.producto)?.nombre, item);
       const montoItem =
         (item.precio_final ?? item.precio_unitario) * item.cantidad;
 

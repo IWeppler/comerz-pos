@@ -32,6 +32,13 @@ interface CartStepItemsProps {
    * —no escondido en el paso de pago— porque cambia el precio de cada renglón.
    */
   encabezado?: React.ReactNode;
+  /**
+   * Lo que va DEBAJO de las líneas, adentro del área que scrollea. Hoy es el
+   * renglón de venta libre del POS. Se muestra también con el ticket vacío,
+   * porque cobrar algo sin cargar es justo lo que se hace cuando no hay nada
+   * que agregar desde la grilla.
+   */
+  pieDeLineas?: React.ReactNode;
 }
 
 /**
@@ -55,6 +62,7 @@ export function CartStepItems({
   onElegirUnidad,
   mostrarImagenes = true,
   encabezado,
+  pieDeLineas,
 }: Readonly<CartStepItemsProps>) {
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-card">
@@ -84,6 +92,11 @@ export function CartStepItems({
               className="mb-2 h-40 w-auto dark:opacity-50"
             />
             <p className="text-sm font-medium">Tu carrito esta vacio</p>
+            {pieDeLineas && (
+              <div className="mt-4 w-full max-w-sm text-left">
+                {pieDeLineas}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -93,10 +106,13 @@ export function CartStepItems({
                 item={item}
                 mostrarImagen={mostrarImagenes}
                 esSerializada={
-                  !!item.varianteId && variantesSerializadas?.has(item.varianteId)
+                  !!item.varianteId &&
+                  variantesSerializadas?.has(item.varianteId)
                 }
                 imei={
-                  item.varianteId ? imeiPorVariante?.[item.varianteId] : undefined
+                  item.varianteId
+                    ? imeiPorVariante?.[item.varianteId]
+                    : undefined
                 }
                 onElegirUnidad={onElegirUnidad}
                 onUpdateQuantity={(cantidad) =>
@@ -105,6 +121,7 @@ export function CartStepItems({
                 onRemove={() => onRemoveItem(item.productoId, item.variante)}
               />
             ))}
+            {pieDeLineas && <div className="pt-1">{pieDeLineas}</div>}
           </div>
         )}
       </div>

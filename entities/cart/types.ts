@@ -49,4 +49,12 @@ export interface CartItemStore {
   stockMaximo: number;
   /** IDs de `reservas` que esta línea del carrito viene a saldar (flujo "Confirmar venta" desde Reservas activas). */
   reservaIds?: string[];
+  /**
+   * Renglón cobrado SIN producto del catálogo (venta libre). `productoId` es
+   * un id local sin correlato en la base, `nombre` y `variante` son la
+   * descripción tipeada, y `precio` lo puso la vendedora. El server lo
+   * registra con `producto_id` null y `es_venta_libre = true`, sin tocar
+   * stock. Ver `features/pos/lib/venta-libre.ts`.
+   */
+  ventaLibre?: boolean;
 }

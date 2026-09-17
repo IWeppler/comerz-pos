@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSlugNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { Producto } from "@/entities/productos/types";
 import type { Rubro } from "@/entities/config/types";
-import { PackagePlus, ShoppingBag } from "lucide-react";
+import { PackagePlus, Receipt, ShoppingBag } from "lucide-react";
 import { useCartStore } from "@/shared/store/cart-store";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { toast } from "sonner";
@@ -40,6 +40,7 @@ import {
 } from "@/features/carga-rapida/ui/carga-rapida-panel";
 import type { ProductoCargado } from "@/features/carga-rapida/types";
 import { useCobroCcStore } from "@/shared/store/cobro-cc-store";
+import { useVentaLibreStore } from "@/shared/store/venta-libre-store";
 import { useAtajosTeclado } from "@/shared/hooks/use-atajos-teclado";
 import { useListasPrecios } from "@/shared/hooks/use-listas-precios";
 import { precioBaseDeVariante } from "@/shared/lib/precio-de-lista";
@@ -115,6 +116,9 @@ export function PosTerminal({
   cargandoCatalogo = false,
 }: Readonly<PosTerminalProps>) {
   const abrirCobroCc = useCobroCcStore((state) => state.abrir);
+  // "Vender 'X' sin cargarlo": la búsqueda que no encontró nada es la
+  // descripción del renglón libre. El formulario vive en el ticket.
+  const abrirVentaLibre = useVentaLibreStore((state) => state.abrir);
   // El buscador de la barra: lo comparten la tecla "F" y la Carga rápida.
   const buscadorRef = useRef<HTMLInputElement>(null);
   // El área scrolleable de productos y, adentro, la grilla. La grilla se
@@ -695,6 +699,21 @@ export function PosTerminal({
                   </span>
                 </button>
               )}
+              {ofrecerCarga && (
+                <button
+                  type="button"
+                  onClick={() => abrirVentaLibre(searchQuery.trim())}
+                  className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border p-2.5 transition-colors hover:border-primary hover:bg-primary/5 cursor-pointer"
+                >
+                  <Receipt className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-semibold text-foreground">
+                    Vender &quot;{searchQuery.trim()}&quot; sin cargarlo
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    solo el precio · V
+                  </span>
+                </button>
+              )}
             </>
           ) : (
             <div
@@ -867,6 +886,26 @@ export function PosTerminal({
                   </span>
                   <span className="text-[11px] text-muted-foreground leading-tight">
                     Lo creás y seguís cobrando
+                  </span>
+                </button>
+              )}
+              {/* La alternativa barata: cobrarlo sin darlo de alta. Va AL
+                  LADO de "Cargar" y no en vez de: cargar deja stock y
+                  precio para la próxima; esto solo cobra hoy. */}
+              {ofrecerCarga && (
+                <button
+                  type="button"
+                  onClick={() => abrirVentaLibre(searchQuery.trim())}
+                  className="flex flex-col items-center justify-center text-center gap-2 rounded-lg border border-dashed border-border hover:border-primary hover:bg-primary/5 transition-colors h-full min-h-44 p-3 cursor-pointer"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+                    <Receipt className="w-5 h-5 text-muted-foreground" />
+                  </span>
+                  <span className="text-xs sm:text-sm font-semibold text-foreground line-clamp-2">
+                    Vender &quot;{searchQuery.trim()}&quot; sin cargarlo
+                  </span>
+                  <span className="text-[11px] text-muted-foreground leading-tight">
+                    Solo ponés el precio · V
                   </span>
                 </button>
               )}

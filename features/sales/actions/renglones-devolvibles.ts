@@ -2,6 +2,7 @@
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
+import { detalleRenglon, nombreRenglon } from "../lib/nombre-renglon";
 
 /**
  * Qué se puede devolver de una venta, y cuánto queda de cada renglón.
@@ -39,7 +40,7 @@ export async function getRenglonesDevolviblesAction(
     const { data: items, error } = await supabase
       .from("ventas_items")
       .select(
-        "id, producto_id, variante, variante_id, cantidad, cantidad_devuelta, precio_final, producto:productos(nombre)",
+        "id, producto_id, variante, variante_id, cantidad, cantidad_devuelta, precio_final, es_venta_libre, producto:productos(nombre)",
       )
       .eq("venta_id", ventaId);
 
@@ -71,8 +72,8 @@ export async function getRenglonesDevolviblesAction(
 
       return {
         ventaItemId: item.id as string,
-        producto: (producto?.nombre as string) || "Producto eliminado",
-        variante: item.variante as string,
+        producto: nombreRenglon(producto?.nombre as string | null, item),
+        variante: detalleRenglon(item),
         precioFinal: Number(item.precio_final || 0),
         cantidad,
         cantidadDevuelta: devuelta,

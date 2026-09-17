@@ -22,6 +22,9 @@ export interface VentaItem {
   descuento_monto?: number;
   precio_final?: number;
   promocion_nombre?: string | null;
+  /** Renglón cobrado sin producto (venta libre): `variante` es la
+   * descripción tipeada. Ver `features/sales/lib/nombre-renglon.ts`. */
+  es_venta_libre?: boolean | null;
   producto?: VentaProducto | null;
   /** Unidad física vendida en esta línea (IMEI / número de serie). Ausente
    * o null en todo lo que no es serializado, que es el caso normal. */

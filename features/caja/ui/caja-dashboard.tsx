@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { Badge } from "@/shared/ui/badge";
 import {
   Banknote,
@@ -100,7 +101,9 @@ export function CajaDashboard({
       // Se marca en el texto porque abajo aparece su egreso de devolución: sin
       // esto se ve una salida de plata sin la entrada que la explica.
       const conceptoVenta = `${anulada ? "Venta anulada" : "Venta"}: ${
-        primerProducto?.nombre || "Varios"
+        primerItem
+          ? nombreRenglon(primerProducto?.nombre, primerItem)
+          : "Varios"
       }`;
 
       if (pagos.length > 0) {

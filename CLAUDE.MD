@@ -230,6 +230,26 @@ tiene 11.
 - Precios se revalidan server-side en create-sale.ts (nunca confiar en
   el precio que manda el cliente). Mismo criterio para todo lo que toque
   plata: validación espejo en el server siempre.
+  **La única excepción declarada es la VENTA LIBRE** (`20260917120000`):
+  un renglón que no es ningún producto (`ventas_items.producto_id` y
+  `variante_id` null, descripción tipeada en `variante`, marca
+  `es_venta_libre = true`). Nació para el cotillón —"12 globos sueltos" que
+  nadie va a dar de alta con la clienta esperando— y el precio lo pone la
+  vendedora porque no hay contra qué revalidarlo; lo que se valida es la
+  forma (`features/pos/lib/venta-libre.ts`, compartida por POS y server) y
+  un CHECK en la base impide que un renglón marcado libre apunte a un
+  producto: no sirve para cobrar mercadería real a otro precio. No mueve
+  stock, costo cero (margen = precio, y `margen_realizado` lo cuenta como
+  "sin costo", que es la verdad), no entra en promos por categoría ni en
+  listas de precios. Se descartó el producto oculto "Venta libre" por negocio
+  porque `productos` la leen 54 consultas (fotos pendientes, plan, búsqueda,
+  remitos) y todas tendrían que aprender a esconderlo; un renglón sin
+  producto ya es un estado que todo el sistema maneja. La marca es columna y
+  NO heurística: hay 15 renglones históricos con producto y variante null que
+  son productos BORRADOS. Todo lo que nombra un renglón pasa por
+  `features/sales/lib/nombre-renglon.ts`. Entradas: la tecla V, el botón al pie del
+  ticket, y "Vender 'X' sin cargarlo" en la grilla cuando la búsqueda no
+  encuentra nada (`useVentaLibreStore`).
 - RBAC: roles ADMIN/ENCARGADO/VENDEDOR + tabla permisos + función
   `tiene_permiso(clave)` (generaliza `is_admin()`, que sigue vigente).
   perfiles.rol (texto legacy) se mantiene sincronizado — ENCARGADO se

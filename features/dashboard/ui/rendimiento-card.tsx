@@ -1,5 +1,6 @@
 import { Flame, Trophy, ShoppingBag } from "lucide-react";
 import Link from "next/link";
+import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { formatearMoneda, formatearHora } from "@/shared/utils/formatters";
 import { getSupabaseRelation, type Venta } from "@/entities/ventas/types";
@@ -121,8 +122,11 @@ export function RendimientoCard({
                 >
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-foreground leading-tight truncate">
-                      {getSupabaseRelation(venta.ventas_items?.[0]?.producto)
-                        ?.nombre || "Producto eliminado"}
+                      {nombreRenglon(
+                        getSupabaseRelation(venta.ventas_items?.[0]?.producto)
+                          ?.nombre,
+                        venta.ventas_items?.[0] ?? {},
+                      )}
                     </p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">
                       {formatearHora(venta.fecha_venta)} · {venta.cantidad} u.

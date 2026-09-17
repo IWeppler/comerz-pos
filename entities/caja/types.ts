@@ -55,6 +55,8 @@ export interface VentaCaja {
     nombre?: string | null;
   } | { nombre?: string | null }[] | null;
   ventas_items?: {
+    variante?: string | null;
+    es_venta_libre?: boolean | null;
     producto?:
       | {
           nombre?: string | null;

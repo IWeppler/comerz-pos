@@ -127,7 +127,7 @@ export default async function CajaPage() {
       supabase
         .from("ventas")
         .select(
-          "id, total, metodo_pago, fecha_venta, turno_caja_id, cliente_id, clientes(nombre), monto_cobrado, monto_pendiente, estado_pago, estado_operacion, perfiles(nombre), ventas_items(producto:productos(nombre)), venta_pagos(metodo_nombre, metodo_tipo, monto_bruto, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento)",
+          "id, total, metodo_pago, fecha_venta, turno_caja_id, cliente_id, clientes(nombre), monto_cobrado, monto_pendiente, estado_pago, estado_operacion, perfiles(nombre), ventas_items(variante, es_venta_libre, producto:productos(nombre)), venta_pagos(metodo_nombre, metodo_tipo, monto_bruto, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento)",
         )
         .eq("turno_caja_id", turnoPropio.id)
         // Las ANULADAS entran: su efectivo lo saca el egreso de devolución, no

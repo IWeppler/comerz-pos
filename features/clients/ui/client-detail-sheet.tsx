@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { useQuery } from "@tanstack/react-query";
 import {
   Sheet,
@@ -58,6 +59,8 @@ interface VentaResumen {
   fecha_venta: string;
   ventas_items?: {
     cantidad: number | string;
+    variante?: string | null;
+    es_venta_libre?: boolean | null;
     producto?: SupabaseRelation<{
       nombre?: string | null;
       tipo?: string | null;
@@ -419,10 +422,11 @@ export function ClientDetailSheet({
                                 {venta.ventas_items
                                   ?.map(
                                     (item) =>
-                                      `${item.cantidad}x ${
+                                      `${item.cantidad}x ${nombreRenglon(
                                         getSupabaseRelation(item.producto)
-                                          ?.nombre || "Producto eliminado"
-                                      }`,
+                                          ?.nombre,
+                                        item,
+                                      )}`,
                                   )
                                   .join(", ")}
                               </div>

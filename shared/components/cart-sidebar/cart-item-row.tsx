@@ -73,8 +73,11 @@ export function CartItemRow({
             <p className="truncate text-xs font-bold uppercase tracking-wide text-foreground">
               {item.nombre}
             </p>
+            {/* En la venta libre `variante` es la misma descripción que
+                `nombre`: repetirla no dice nada, y "Venta libre" sí — es lo
+                que avisa que este renglón no descuenta stock. */}
             <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-              {item.variante}
+              {item.ventaLibre ? "Venta libre" : item.variante}
             </p>
             {/* Producto serializado: hasta que no se elija el aparato, la
                 venta no se puede confirmar. El badge es el acceso al

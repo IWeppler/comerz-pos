@@ -204,6 +204,7 @@ const ATAJOS: {
     soloEnPos: true,
   },
   { teclas: "F8", que: "Carga rápida ↔ Vender", soloEnPos: true },
+  { teclas: "V", que: "Venta libre (cobrar algo sin cargarlo)", soloEnPos: true },
   { teclas: "F4", que: "Ir al paso de pago", soloEnPos: true },
   { teclas: "F7", que: "Elegir cliente", soloEnPos: true },
   {
