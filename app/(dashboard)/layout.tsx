@@ -151,7 +151,6 @@ export default async function DashboardLayout({
         planName={etiquetaPlan(contextoPlan.planActual)}
         negocios={negocios}
         negocioActivoId={negocioActivoId}
-        puedeCobrarCuentaCorriente={puedeCobrarCc}
         puedeOperarCaja={puedeOperarCajaEsta}
       />
 
@@ -180,7 +179,6 @@ export default async function DashboardLayout({
           <DashboardNavbar
             modoCaja={systemBranding.modo_caja || "UNICA"}
             userId={user.id}
-            puedeCobrarCuentaCorriente={puedeCobrarCc}
             puedeOperarCaja={puedeOperarCajaEsta}
             userName={perfil?.nombre || undefined}
           />

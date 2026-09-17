@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import {
   Sheet,
   SheetContent,
@@ -26,27 +26,22 @@ import {
 import { TicketData } from "@/entities/ventas/types";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { TicketPrintable } from "./ticket-printable";
-import { useQrFiscal } from "./use-qr-fiscal";
+import { useEntregaComprobante } from "./use-entrega-comprobante";
 import {
   fechaCorta,
   numeroComprobanteFiscal,
   tituloComprobante,
 } from "@/shared/lib/comprobante-fiscal-ticket";
-import { buildWhatsappMessage } from "../utils/whatsapp-helper";
 import {
   formatTicketMoney,
   getTicketFinancialSummary,
   getTicketSubtotal,
 } from "./ticket-utils";
-import { toast } from "sonner";
 import {
   cssImpresionTicket,
   normalizarAnchoTicket,
 } from "@/shared/lib/ancho-ticket";
-import {
-  registrarEntregaComprobanteAction,
-  type OrigenEntregaComprobante,
-} from "../actions/registrar-uso";
+import type { OrigenEntregaComprobante } from "../actions/registrar-uso";
 
 interface TicketSheetProps {
   ticket: TicketData | null;
@@ -66,21 +61,20 @@ export function TicketSheet({
   onClose,
   origen = "POS",
 }: Readonly<TicketSheetProps>) {
-  const [isDownloading, setIsDownloading] = useState(false);
-
-  // Con factura: el QR de ARCA, generado en el navegador. Null en el ticket
-  // interno, que no lo lleva. Va al papel impreso y al PDF.
   const fiscal = ticket?.fiscal ?? null;
-  const qrDataUrl = useQrFiscal(ticket, config?.cuit);
+  const {
+    qrDataUrl,
+    isDownloading,
+    compartirWhatsapp,
+    imprimir,
+    precargarPdf,
+    descargarPdf,
+  } = useEntregaComprobante(ticket, config, origen);
 
   // El ancho del papel del comercio. Sin configurar son 80mm, que es lo que
   // se imprimía antes de que esto existiera.
   const anchoTicket = normalizarAnchoTicket(config?.ancho_ticket_mm);
 
-  /** Se registra y se sigue: la telemetría nunca bloquea la entrega. */
-  const registrarUso = (metodo: "PDF" | "WHATSAPP" | "IMPRESION") => {
-    void registrarEntregaComprobanteAction(metodo, origen);
-  };
   const subtotalCarrito = getTicketSubtotal(ticket);
   const { esFiado, montoCobrado, montoPendiente } =
     getTicketFinancialSummary(ticket);
@@ -99,67 +93,6 @@ export function TicketSheet({
       ? "Pendiente de pago"
       : "Cuenta corriente"
     : "Pagado";
-
-  const compartirRecibo = () => {
-    if (!ticket) return;
-
-    const mensaje = buildWhatsappMessage(ticket, config, subtotalCarrito);
-    const url = `https://wa.me/?text=${encodeURIComponent(mensaje)}`;
-    window.open(url, "_blank");
-    registrarUso("WHATSAPP");
-  };
-
-  /**
-   * Imprimir es el diálogo del sistema sobre el template de 58/80mm.
-   *
-   * Se cuenta ANTES de abrirlo: `window.print()` bloquea el hilo hasta que la
-   * persona cierra el diálogo, y no devuelve si imprimió o canceló. O sea que
-   * este evento significa "abrió el diálogo", no "salió el papel" — y así hay
-   * que leerlo.
-   */
-  const imprimirTicket = () => {
-    if (!ticket) return;
-    registrarUso("IMPRESION");
-    window.print();
-  };
-
-  /**
-   * `@react-pdf/renderer` se carga recién cuando hace falta.
-   *
-   * Es la dependencia más pesada de la app —342 kB gzip entre sus dos chunks—
-   * y entraba al bundle de /pos por esta pantalla, o sea que TODA vendedora la
-   * bajaba en cada carga de la terminal por si alguna vez tocaba este botón.
-   * Con el import acá adentro, la paga solo quien descarga un comprobante.
-   *
-   * `precargarPdf` la trae al pasar el mouse o al enfocar el botón: en desktop
-   * llega antes del click y en mobile arranca con el primer toque. El módulo
-   * queda cacheado, así que llamarlo dos veces no lo baja dos veces.
-   */
-  const precargarPdf = () => {
-    void import("./download-sale-receipt-pdf");
-  };
-
-  const handleDownloadPDF = async () => {
-    if (!ticket) return;
-
-    setIsDownloading(true);
-    const { downloadSaleReceiptPdf } =
-      await import("./download-sale-receipt-pdf");
-    const success = await downloadSaleReceiptPdf(ticket, config, qrDataUrl);
-    setIsDownloading(false);
-
-    // El éxito no se avisa: el navegador ya muestra la descarga y el archivo
-    // aparece solo. El error SÍ, que es el único caso en que no pasa nada
-    // visible y hay que decir por qué.
-    if (!success) {
-      toast.error("Ocurrió un error al generar el PDF");
-      return;
-    }
-
-    // Solo cuando el archivo se generó de verdad: contar el intento fallido
-    // como uso inflaría justo el número que hay que decidir.
-    registrarUso("PDF");
-  };
 
   /**
    * P para imprimir, con el ticket abierto.
@@ -185,7 +118,7 @@ export function TicketSheet({
       if (editando) return;
 
       e.preventDefault();
-      imprimirTicket();
+      imprimir();
     };
 
     window.addEventListener("keydown", alTeclado);
@@ -446,7 +379,7 @@ export function TicketSheet({
                 <Button
                   variant="outline"
                   className="flex-1 gap-2 h-11 text-sm font-semibold"
-                  onClick={handleDownloadPDF}
+                  onClick={descargarPdf}
                   onPointerEnter={precargarPdf}
                   onFocus={precargarPdf}
                   disabled={isDownloading || !ticket}
@@ -460,7 +393,7 @@ export function TicketSheet({
                 </Button>
                 <Button
                   className="flex-1 gap-2 h-11 text-sm font-semibold bg-[#25D366] hover:bg-[#1ebe5d] text-white border-0"
-                  onClick={compartirRecibo}
+                  onClick={compartirWhatsapp}
                 >
                   <Share2 className="w-4 h-4" />
                   WhatsApp
@@ -475,7 +408,7 @@ export function TicketSheet({
                   variant="outline"
                   size="icon"
                   className="h-11 w-11 shrink-0"
-                  onClick={imprimirTicket}
+                  onClick={imprimir}
                   disabled={!ticket}
                   title="Imprimir ticket (P)"
                   aria-label="Imprimir ticket"

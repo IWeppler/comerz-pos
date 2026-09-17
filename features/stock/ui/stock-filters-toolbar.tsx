@@ -529,7 +529,7 @@ export function StockFiltersToolbar({
                       href="/stock/carga-rapida"
                       className="w-full block sm:hidden"
                     >
-                      <button className="w-full flex items-center justify-start h-9 px-2 text-sm font-medium cursor-pointer text-foreground hover:bg-muted rounded-md transition-colors">
+                      <button className="w-full flex items-center justify-start h-9 px-2 text-sm font-medium cursor-pointer text-muted-foreground hover:bg-muted rounded-md transition-colors">
                         <ScanBarcode className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
                         Carga rápida
                       </button>

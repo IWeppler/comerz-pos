@@ -199,7 +199,7 @@ export default async function CajaPage() {
     tieneTurnoPropioAbierto || turnos.some((t) => t.vendedor_id === user.id);
 
   return (
-    <div className="space-y-6 mx-auto pb-12 p-4">
+    <div className="space-y-6 mx-auto pb-12 p-2 sm:p-4">
       <CajaVistas
         esCajera={esCajera}
         vistaInicial={tieneTurnoPropioAbierto ? "hoy" : "dinero"}

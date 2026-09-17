@@ -10,9 +10,6 @@ import { usePaletaStore } from "@/shared/store/paleta-store";
 interface DashboardNavbarProps {
   modoCaja: string;
   userId: string;
-  /** Permiso `clientes.cobrar_cc`, para el acceso al cobro desde el modal de
-   * caja. Ver CajaQuickModal. */
-  puedeCobrarCuentaCorriente?: boolean;
   /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
   puedeOperarCaja?: boolean;
   /** Nombre del perfil, para saludar en el panel. Ausente = saludo sin nombre. */
@@ -22,7 +19,6 @@ interface DashboardNavbarProps {
 export function DashboardNavbar({
   modoCaja,
   userId,
-  puedeCobrarCuentaCorriente = false,
   puedeOperarCaja = true,
   userName,
 }: Readonly<DashboardNavbarProps>) {
@@ -143,7 +139,6 @@ export function DashboardNavbar({
         <CajaStatusButton
           modoCaja={modoCaja}
           userId={userId}
-          puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
         />
       )}
     </header>

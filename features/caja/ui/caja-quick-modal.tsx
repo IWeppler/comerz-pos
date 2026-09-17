@@ -9,7 +9,6 @@ import {
   Unlock,
   Clock,
   TrendingDown,
-  HandCoins,
 } from "lucide-react";
 import {
   Dialog,
@@ -27,7 +26,6 @@ import {
   useFrenoVentasPendientes,
 } from "@/features/caja/ui/freno-ventas-pendientes";
 import { useCajaStatusStore } from "@/shared/store/caja-status-store";
-import { useCobroCcStore } from "@/shared/store/cobro-cc-store";
 import { CajaActionState } from "@/entities/caja/types";
 import { formatearMoneda } from "@/shared/utils/formatters";
 
@@ -39,10 +37,6 @@ interface CajaQuickModalProps {
   /** Abre el modal de egreso (cerrando este). El egreso es plata que sale
    * del cajón: su lugar es acá, no en el header del panel. */
   onAnotarGasto: () => void;
-  /** Muestra el acceso a cobrar cuenta corriente. Lo resuelve el server
-   * (permiso `clientes.cobrar_cc`); esconderlo NO es el control de acceso, que
-   * vive dentro de `registrarPagoDeudaAction`. */
-  puedeCobrarCuentaCorriente?: boolean;
 }
 
 /**
@@ -59,10 +53,8 @@ export function CajaQuickModal({
   modoCaja,
   userId,
   onAnotarGasto,
-  puedeCobrarCuentaCorriente = false,
 }: Readonly<CajaQuickModalProps>) {
   const router = useRouter();
-  const abrirCobroCc = useCobroCcStore((state) => state.abrir);
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const turno = useCajaStatusStore((state) => state.turno);
   const notifyCajaChanged = useCajaStatusStore(
@@ -112,9 +104,10 @@ export function CajaQuickModal({
   // que se entra a este modal. Cierran este diálogo ANTES de abrir el otro —
   // dos Dialog anidados de Radix se pelean el foco y el scroll-lock.
   //
-  // Gasto y cobro de cuenta corriente son las dos caras del mismo movimiento:
-  // plata que sale del cajón y plata que entra sin ser una venta. Por eso
-  // viven juntas acá, además de tener cada una su acceso propio donde se usa.
+  // El gasto es plata que sale del cajón sin ser una venta: por eso vive acá,
+  // además de su acceso propio en /caja. El cobro de cuenta corriente NO va
+  // acá a propósito: tiene su lugar en el POS y en Clientes, y desde el
+  // navbar solo agregaba un tercer camino a lo mismo.
   const accionesSecundarias = (
     <div className="flex flex-col gap-1 border-t border-border px-6 py-3">
       <Button
@@ -129,24 +122,6 @@ export function CajaQuickModal({
         <TrendingDown className="mr-2 h-4 w-4" />
         Anotar gasto
       </Button>
-
-      {/* Solo con turno abierto: el cobro entra al arqueo de un turno, y la
-          action lo rechaza sin él. Ofrecerlo en la pantalla de "Abrir turno"
-          sería ofrecer algo que no puede funcionar. */}
-      {puedeCobrarCuentaCorriente && mostrarCierre && (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
-            onOpenChange(false);
-            abrirCobroCc();
-          }}
-          className="h-9 w-full justify-center text-muted-foreground"
-        >
-          <HandCoins className="mr-2 h-4 w-4" />
-          Cobrar cuenta corriente
-        </Button>
-      )}
     </div>
   );
 

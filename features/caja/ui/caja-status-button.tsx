@@ -18,9 +18,6 @@ interface CajaStatusButtonProps {
   modoCaja: string;
   userId: string;
   className?: string;
-  /** Permiso `clientes.cobrar_cc`, resuelto en el layout. Solo decide si el
-   * modal de caja ofrece el acceso al cobro. */
-  puedeCobrarCuentaCorriente?: boolean;
 }
 
 /**
@@ -33,7 +30,6 @@ export function CajaStatusButton({
   modoCaja,
   userId,
   className = "",
-  puedeCobrarCuentaCorriente = false,
 }: Readonly<CajaStatusButtonProps>) {
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const turno = useCajaStatusStore((state) => state.turno);
@@ -97,7 +93,6 @@ export function CajaStatusButton({
         modoCaja={modoCaja}
         userId={userId}
         onAnotarGasto={() => setIsEgresoOpen(true)}
-        puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
       />
 
       <EgresoModal

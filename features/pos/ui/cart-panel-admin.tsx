@@ -31,7 +31,6 @@ import type {
   UnidadSeleccionada,
 } from "@/entities/ventas/unidades-serie-types";
 import { crearReservaAction } from "@/features/reservations/actions/manage-reservations";
-import { TicketSheet } from "@/features/sales/ui/ticket-sheet";
 import { TicketData, CreateSalePaymentInput } from "@/entities/ventas/types";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { formatearNumeroComprobante } from "@/shared/lib/facturacion";
@@ -61,6 +60,7 @@ import {
 } from "../../../shared/components/cart-sidebar/cart-sidebar-utils";
 import { ClienteBasico } from "../../../shared/components/cart-sidebar/client-selector";
 import { AtajosCarrito } from "./atajos-carrito";
+import { VentaExitosa } from "./venta-exitosa";
 import type { TipoVenta } from "./atajos-carrito";
 import { esFraccionable } from "@/shared/lib/unidad-venta";
 import { rubroUsaReservas } from "@/features/pos/lib/reservas-por-rubro";
@@ -442,6 +442,12 @@ export function CartPanelAdmin({
    * apaga antes para que no llegue a ofrecerse.
    */
   const promocionesPermitidas = admitePromociones(listaActiva);
+  /**
+   * La venta que ACABA de cerrarse. Mientras está, el panel del ticket deja
+   * de mostrar el carrito (vacío, recién cobrado) y muestra "venta
+   * realizada" en su lugar: mismo panel, mismo sheet en tablet, mismo drawer
+   * en celular. El catálogo sigue a la vista y usable.
+   */
   const [ventaExitosa, setVentaExitosa] = useState<TicketData | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("CART");
   const [clienteSeleccionado, setClienteSeleccionado] =
@@ -1233,10 +1239,10 @@ export function CartPanelAdmin({
           return;
         }
 
-        // Sin toast de éxito: lo que sigue es abrir el ticket con el número de
-        // comprobante, que es la confirmación de verdad y no se puede perder de
-        // vista. Un cartel encima diciendo lo mismo tapa parte de esa pantalla
-        // y hay que esperar a que se vaya para seguir cobrando.
+        // Sin toast de éxito: lo que sigue es la pantalla de "venta realizada"
+        // (`VentaExitosa`, en el lugar del catálogo), que es la confirmación
+        // de verdad y no se puede perder de vista. Un cartel encima diciendo
+        // lo mismo es ruido.
         const nombreMetodoMostrar =
           pagosToSubmit.length > 1
             ? `Pago mixto (${pagosToSubmit
@@ -1552,6 +1558,24 @@ export function CartPanelAdmin({
     </>
   );
 
+  /**
+   * Lo que va adentro del panel del ticket, sea cual sea el envase (columna
+   * fija, sheet o drawer): el carrito, o la confirmación de la venta que
+   * recién se cobró. "Nueva venta" vuelve al carrito, que ya está vacío.
+   */
+  const PanelContent = ventaExitosa ? (
+    <VentaExitosa
+      ticket={ventaExitosa}
+      config={branding}
+      onNuevaVenta={() => {
+        setVentaExitosa(null);
+        closeSidebar();
+      }}
+    />
+  ) : (
+    CartContent
+  );
+
   return (
     <>
       {/* El panel fijo de escritorio. `hidden lg:flex` lo ESCONDE pero no lo
@@ -1571,21 +1595,24 @@ export function CartPanelAdmin({
           duplicado: los mismos `name` de formulario y los mismos ids, dos
           veces. */}
       <div className="hidden lg:flex flex-col w-100 shrink-0 border-l border-border bg-background h-full z-20">
-        {!isMobileLayout && CartContent}
+        {!isMobileLayout && PanelContent}
       </div>
 
       {/* Tablet (640-1023px): sin cambios — sheet lateral derecho, se sigue
           abriendo solo por `isOpen` del store (auto-apertura al agregar). */}
       <Sheet
-        open={isMobileLayout && !isPhoneLayout && isOpen}
-        onOpenChange={setIsOpen}
+        open={isMobileLayout && !isPhoneLayout && (isOpen || ventaExitosa !== null)}
+        onOpenChange={(open) => {
+          setIsOpen(open);
+          if (!open) setVentaExitosa(null);
+        }}
       >
         <SheetContent
           side="right"
           showCloseButton={false}
           className="lg:hidden w-full sm:max-w-sm gap-0 p-0"
         >
-          {CartContent}
+          {PanelContent}
         </SheetContent>
       </Sheet>
 
@@ -1628,13 +1655,16 @@ export function CartPanelAdmin({
         // de tocar un control. Cerrar sigue estando a mano: la agarradera,
         // tocar afuera y Esc.
         handleOnly
-        open={isPhoneLayout && phoneCartOpen}
+        open={isPhoneLayout && (phoneCartOpen || ventaExitosa !== null)}
         onOpenChange={(open) => {
           if (open) setPhoneCartOpen(true);
-          else closeSidebar();
+          else {
+            setVentaExitosa(null);
+            closeSidebar();
+          }
         }}
       >
-        <DrawerContent>{CartContent}</DrawerContent>
+        <DrawerContent>{PanelContent}</DrawerContent>
       </Drawer>
 
       {/* Montado solo cuando está abierto: así arranca con estado limpio y
@@ -1657,11 +1687,6 @@ export function CartPanelAdmin({
         />
       )}
 
-      <TicketSheet
-        ticket={ventaExitosa}
-        config={branding || ({} as ConfiguracionPOS)}
-        onClose={() => setVentaExitosa(null)}
-      />
     </>
   );
 }

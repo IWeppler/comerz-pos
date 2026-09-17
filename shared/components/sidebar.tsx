@@ -94,9 +94,6 @@ interface SidebarProps {
   /** Negocios a los que pertenece el usuario. Con uno solo no hay switcher. */
   negocios?: MembresiaNegocio[];
   negocioActivoId?: string;
-  /** Permiso `clientes.cobrar_cc`. Solo viaja hasta el modal de caja, que es
-   * donde vive uno de los dos accesos al cobro. */
-  puedeCobrarCuentaCorriente?: boolean;
   /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
   puedeOperarCaja?: boolean;
 }
@@ -109,7 +106,6 @@ export function Sidebar({
   planName = "Sin plan",
   negocios = [],
   negocioActivoId,
-  puedeCobrarCuentaCorriente = false,
   puedeOperarCaja = true,
 }: Readonly<SidebarProps>) {
   const pathname = usePathname();
@@ -209,7 +205,6 @@ export function Sidebar({
               modoCaja={branding.modo_caja || "UNICA"}
               userId={userId}
               className="mr-1"
-              puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
             />
           )}
           <span className="hidden sm:block">
