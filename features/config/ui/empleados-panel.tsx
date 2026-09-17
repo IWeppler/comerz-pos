@@ -7,7 +7,12 @@ import {
   InvitacionesPanel,
   type InvitacionPendiente,
 } from "./invitaciones-panel";
-import type { Permiso, PerfilConRol, Rol, RolPermiso } from "@/entities/roles/types";
+import type {
+  Permiso,
+  PerfilConRol,
+  Rol,
+  RolPermiso,
+} from "@/entities/roles/types";
 import type { UsoDelPlan } from "@/features/planes/actions/uso-del-plan";
 import { PaywallModulo } from "@/features/planes/ui/paywall-modulo";
 import {
@@ -15,7 +20,6 @@ import {
   useTieneFeature,
 } from "@/features/planes/ui/plan-provider";
 import { EmpleadosMaqueta } from "./empleados-maqueta";
-import { CobroCentralizado } from "@/features/pedidos/ui/cobro-centralizado";
 
 interface EmpleadosPanelProps {
   isAdmin: boolean;
@@ -27,8 +31,6 @@ interface EmpleadosPanelProps {
   invitaciones?: InvitacionPendiente[];
   /** Uso real de los límites, contado igual que el trigger de la base. */
   uso?: UsoDelPlan | null;
-  /** `configuracion_pos.pedidos_a_caja`: varios puestos, una caja. */
-  pedidosACaja?: boolean;
 }
 
 export function EmpleadosPanel({
@@ -40,7 +42,6 @@ export function EmpleadosPanel({
   rolPermisos,
   invitaciones = [],
   uso,
-  pedidosACaja = false,
 }: Readonly<EmpleadosPanelProps>) {
   const contexto = useContextoPlan();
   const tieneRoles = useTieneFeature("roles");
@@ -87,7 +88,6 @@ export function EmpleadosPanel({
         uso={uso}
         maxUsuarios={maxUsuarios}
       />
-      <CobroCentralizado activo={pedidosACaja} />
       <PermisosMatriz
         roles={roles}
         permisos={permisos}

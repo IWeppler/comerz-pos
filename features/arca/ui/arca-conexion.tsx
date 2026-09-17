@@ -160,8 +160,7 @@ export function ArcaConexion({ puedeEditar }: Readonly<Props>) {
         </RadioGroup>
         <p className="text-xs text-muted-foreground">
           En homologación los CAE no tienen valor fiscal: sirven para probar el
-          circuito entero antes de facturar de verdad. Pasar a producción exige
-          un certificado de producción vigente.
+          circuito entero antes de facturar de verdad.
         </p>
       </div>
 

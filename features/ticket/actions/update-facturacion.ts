@@ -7,13 +7,11 @@ import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { normalizarTratamientoIva } from "@/shared/lib/fiscal-producto";
 import { normalizarRiAMonotributo } from "@/shared/lib/determinar-comprobante";
 import {
-  comprobanteDefectoEsValido,
-  ETIQUETA_COMPROBANTE,
   normalizarModoFacturacion,
-  normalizarTipoComprobante,
   parsePuntoVenta,
   emiteComprobanteFiscal,
 } from "@/shared/lib/facturacion";
+import { normalizarAnchoTicket } from "@/shared/lib/ancho-ticket";
 
 export interface EstadoFacturacion {
   error: string | null;
@@ -55,11 +53,27 @@ export async function updateFacturacionAction(
   const modo_facturacion = normalizarModoFacturacion(
     formData.get("modo_facturacion"),
   );
-  const comprobante_defecto = normalizarTipoComprobante(
-    formData.get("comprobante_defecto"),
+  // Ya no es una elección: la letra la calcula la matriz fiscal en cada
+  // venta (determinar-comprobante.ts), por condición de IVA de emisor y
+  // receptor. Esta columna solo importa para el CHECK de la base, que exige
+  // 'TICKET' fuera de modo ARCA — y TICKET siempre es válido en cualquier
+  // modo/condición, así que fijarlo acá no bloquea ningún guardado real.
+  const comprobante_defecto = "TICKET" as const;
+
+  // Igual que en Comercio: vacío es "sin mensaje", no cadena vacía. El ancho
+  // siempre viaja (el <select> no es condicional) y cae en 80 ante cualquier
+  // valor raro — mismo criterio fail-closed que tenía en config-actions.ts.
+  const mensajeCrudo = (
+    (formData.get("mensaje_ticket") as string) ?? ""
+  ).trim();
+  const mensaje_ticket = mensajeCrudo === "" ? null : mensajeCrudo;
+  const ancho_ticket_mm = normalizarAnchoTicket(
+    formData.get("ancho_ticket_mm"),
   );
 
-  const puntoVentaCrudo = ((formData.get("punto_venta") as string) ?? "").trim();
+  const puntoVentaCrudo = (
+    (formData.get("punto_venta") as string) ?? ""
+  ).trim();
   // El hidden solo se monta con modo ARCA; en los otros modos no hay switch
   // y el valor guardado no importa, así que se deja como está.
   const facturarCrudo = formData.get("facturar_por_defecto");
@@ -79,14 +93,18 @@ export async function updateFacturacionAction(
   const topeCrudo = formData.get("arca_tope_consumidor_final");
   let arca_tope_consumidor_final: number | null | undefined = undefined;
   if (topeCrudo !== null) {
-    const limpio = String(topeCrudo).replaceAll(/[.\s$]/g, "").replace(",", ".").trim();
+    const limpio = String(topeCrudo)
+      .replaceAll(/[.\s$]/g, "")
+      .replace(",", ".")
+      .trim();
     if (limpio === "") {
       arca_tope_consumidor_final = null;
     } else {
       const n = Number(limpio);
       if (!Number.isFinite(n) || n <= 0) {
         return {
-          error: "El tope a consumidor final tiene que ser un importe mayor a 0, o vacío.",
+          error:
+            "El tope a consumidor final tiene que ser un importe mayor a 0, o vacío.",
           success: false,
         };
       }
@@ -116,56 +134,34 @@ export async function updateFacturacionAction(
     };
   }
 
-  // La condición de IVA sale de la BASE, no del formulario: es la que decide
-  // qué letras puede emitir el comercio y se edita en otra pantalla. Confiar
-  // en un campo del cliente acá sería dejar elegir Factura A a un
-  // monotributista mandando el form a mano.
-  const { data: configActual, error: errorLectura } = await supabase
-    .from("configuracion_pos")
-    .select("condicion_iva")
-    .eq("id", id)
-    .single();
-
-  if (errorLectura || !configActual) {
-    console.error("Error leyendo la configuración fiscal:", errorLectura);
-    return { error: "No se pudo leer la configuración del comercio.", success: false };
-  }
-
-  if (
-    !comprobanteDefectoEsValido(
-      modo_facturacion,
-      comprobante_defecto,
-      configActual.condicion_iva,
-    )
-  ) {
-    return {
-      error: `Tu comercio no puede emitir ${ETIQUETA_COMPROBANTE[comprobante_defecto]} con la configuración actual. Revisá la condición de IVA en la pestaña Comercio.`,
-      success: false,
-    };
-  }
-
-  // Las tres columnas viajan SIEMPRE juntas en el mismo UPDATE. El CHECK de la
-  // base cruza modo y comprobante, así que mandar una sola falla: pasar de ARCA
-  // a INTERNO con 'FACTURA_B' todavía guardado es una violación de CHECK aunque
-  // el usuario solo haya tocado el modo. El formulario ya manda TICKET en ese
-  // caso; esto deja escrito por qué no se puede "optimizar" a un update parcial.
+  // modo_facturacion y comprobante_defecto viajan siempre juntas. El CHECK de
+  // la base cruza las dos, y como comprobante_defecto quedó fijo en 'TICKET'
+  // (ver arriba), la combinación es válida para cualquier modo — pero sigue
+  // siendo una sola columna lógica y no vale separarla en un update parcial.
   const { error } = await supabase
     .from("configuracion_pos")
     .update({
       modo_facturacion,
       comprobante_defecto,
       punto_venta,
+      mensaje_ticket,
+      ancho_ticket_mm,
       ...(facturar_por_defecto === undefined ? {} : { facturar_por_defecto }),
       ...(arca_recargos_iva === undefined ? {} : { arca_recargos_iva }),
       ...(arca_ri_a_monotributo === undefined ? {} : { arca_ri_a_monotributo }),
-      ...(arca_tope_consumidor_final === undefined ? {} : { arca_tope_consumidor_final }),
+      ...(arca_tope_consumidor_final === undefined
+        ? {}
+        : { arca_tope_consumidor_final }),
       updated_at: new Date().toISOString(),
     })
     .eq("id", id);
 
   if (error) {
     console.error("Error al guardar la configuración de facturación:", error);
-    return { error: "No se pudo guardar la configuración fiscal.", success: false };
+    return {
+      error: "No se pudo guardar la configuración fiscal.",
+      success: false,
+    };
   }
 
   revalidatePath("/", "layout");

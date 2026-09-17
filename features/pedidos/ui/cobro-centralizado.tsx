@@ -10,19 +10,18 @@ import { useTieneFeature } from "@/features/planes/ui/plan-provider";
 import { configurarPedidosACajaAction } from "../actions/configurar";
 
 /**
- * "Varios puestos, una caja", en Empleados y Permisos.
+ * "Varios puestos, una caja", en Caja y Turnos.
  *
- * Vive acá y no en Caja porque lo que cambia es QUIÉN hace qué: al
- * prenderlo, VENDEDOR deja de cobrar (pierde `ventas.cobrar`) y solo manda
- * pedidos; ENCARGADO y ADMIN cobran desde "Por cobrar". Un toggle en Caja
- * que dejara los permisos como estaban dejaba la feature a medias.
+ * Aunque vive en Caja, lo que cambia al prenderlo es QUIÉN hace qué: el rol
+ * VENDEDOR deja de cobrar (pierde `ventas.cobrar`) y solo manda pedidos;
+ * ENCARGADO y ADMIN cobran desde "Por cobrar". No es una regla de caja como
+ * el modo único/multicaja de al lado — es un cambio de permisos que se
+ * ejecuta desde acá.
  *
  * El ajuste fino (una vendedora puntual que sí cobra) sigue siendo la
- * matriz de permisos de abajo, que es la fuente de verdad.
+ * matriz de permisos de Empleados y Permisos, que es la fuente de verdad.
  */
-export function CobroCentralizado({
-  activo,
-}: Readonly<{ activo: boolean }>) {
+export function CobroCentralizado({ activo }: Readonly<{ activo: boolean }>) {
   const [valor, setValor] = useState(activo);
   const [pendiente, startTransition] = useTransition();
   const router = useRouter();
@@ -56,13 +55,11 @@ export function CobroCentralizado({
           </Label>
           <p className="text-xs text-muted-foreground leading-relaxed max-w-prose">
             Las vendedoras arman el ticket en su puesto y lo{" "}
-            <strong className="text-foreground">envían a la caja</strong> con
-            un número; el encargado lo abre en &quot;Por cobrar&quot; y cobra.
-            Al prenderlo, el rol <strong className="text-foreground">Vendedor</strong>{" "}
-            deja de cobrar y de operar la caja (no ve el botón de turno);
-            Encargado y Administrador cobran. Podés afinar quién hace qué con
-            &quot;Cobrar en el mostrador&quot; y &quot;Operar la caja&quot; en la
-            matriz de abajo.
+            <strong className="text-foreground">envían a la caja</strong> con un
+            número; el encargado lo abre en &quot;Por cobrar&quot; y cobra. Al
+            prenderlo, el rol{" "}
+            <strong className="text-foreground">Vendedor</strong> deja de cobrar
+            y de operar la caja.
           </p>
           {!incluido && (
             <p className="text-xs text-warning">
@@ -71,7 +68,9 @@ export function CobroCentralizado({
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {pendiente && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          {pendiente && (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          )}
           <Switch
             checked={valor}
             disabled={pendiente || (!incluido && !valor)}

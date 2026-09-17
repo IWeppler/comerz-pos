@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { Textarea } from "@/shared/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -23,28 +22,12 @@ import {
   Store,
   Phone,
   MapPin,
-  Printer,
-  ReceiptText,
   Building2,
   Briefcase,
   Calendar,
 } from "lucide-react";
-import {
-  ANCHOS_TICKET,
-  ETIQUETA_ANCHO_TICKET,
-  normalizarAnchoTicket,
-} from "@/shared/lib/ancho-ticket";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/ui/card";
-import {
-  ImagenError,
-  optimizarImagen,
-} from "@/shared/utils/image-optimizer";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
+import { ImagenError, optimizarImagen } from "@/shared/utils/image-optimizer";
 import { useRouter } from "next/navigation";
 import { CuitInput } from "@/shared/components/cuit-input";
 
@@ -107,77 +90,88 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
   };
 
   return (
-    <Card className="border-border">
-      <CardHeader>
-        <CardTitle className="text-xl flex items-center gap-2">
+    <div className="space-y-6 animate-in fade-in-50 duration-300">
+      <div className="border-b border-border pb-4">
+        <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
           <Building2 className="w-5 h-5 text-primary" />
           Datos de la Empresa
-        </CardTitle>
-        <CardDescription>
+        </h2>
+        <p className="text-sm text-muted-foreground mt-1">
           Esta información se utilizará para la identidad visual, facturación y
           tickets del punto de venta.
-        </CardDescription>
-      </CardHeader>
+        </p>
+      </div>
 
-      <CardContent>
-        <form action={handleSubmit} className="space-y-8">
-          <input type="hidden" name="id" value={config.id} />
+      <form action={handleSubmit} className="space-y-6">
+        <input type="hidden" name="id" value={config.id} />
 
-          {/* === SECCIÓN 1: IDENTIDAD VISUAL === */}
-          <div className="space-y-4">
-            <Label>Logo del Comercio</Label>
-            <div className="flex items-center gap-4 sm:gap-6">
-              <div className="w-20 h-20 rounded-lg border border-border overflow-hidden bg-muted shrink-0 flex items-center justify-center">
-                {logoFile ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={URL.createObjectURL(logoFile)}
-                    alt="Preview Logo"
-                    className="object-cover w-full h-full"
-                  />
-                ) : config.posLogo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={config.posLogo}
-                    alt="Logo Actual"
-                    className="object-cover w-full h-full"
-                  />
-                ) : (
-                  <Store className="w-8 h-8 text-muted-foreground/30" />
-                )}
-              </div>
-
-              <Label
-                htmlFor="logo"
-                className="flex flex-col items-center justify-center h-20 px-6 border-2 border-dashed border-border rounded-lg cursor-pointer bg-muted/20 hover:bg-primary/5 hover:border-primary transition-colors flex-1 sm:flex-none"
-              >
-                <div className="flex flex-col items-center justify-center text-center">
-                  <span className="font-semibold text-primary text-sm">
-                    Cambiar Logo
-                  </span>
-                  <span className="text-xs text-muted-foreground hidden sm:block">
-                    PNG, JPG, WEBP
-                  </span>
+        {/* === SECCIÓN 1: IDENTIDAD VISUAL === */}
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Store className="w-4 h-4 text-muted-foreground" />
+              Identidad Visual
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <Label>Logo del Comercio</Label>
+              <div className="flex items-center gap-4 sm:gap-6">
+                <div className="w-20 h-20 rounded-lg border border-border overflow-hidden bg-muted shrink-0 flex items-center justify-center">
+                  {logoFile ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={URL.createObjectURL(logoFile)}
+                      alt="Preview Logo"
+                      className="object-cover w-full h-full"
+                    />
+                  ) : config.posLogo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={config.posLogo}
+                      alt="Logo Actual"
+                      className="object-cover w-full h-full"
+                    />
+                  ) : (
+                    <Store className="w-8 h-8 text-muted-foreground/30" />
+                  )}
                 </div>
-                <Input
-                  id="logo"
-                  name="logo"
-                  type="file"
-                  accept="image/png, image/jpeg, image/webp"
-                  className="hidden"
-                  onChange={handleFileChange}
-                />
-              </Label>
-            </div>
-          </div>
 
-          {/* === SECCIÓN 2: DATOS FISCALES Y COMERCIALES === */}
-          <div className="space-y-6 pt-6 border-t border-border/50">
-            <h3 className="text-sm font-semibold text-foreground/80 uppercase tracking-wider flex items-center gap-2">
+                <Label
+                  htmlFor="logo"
+                  className="flex flex-col items-center justify-center h-20 px-6 border-2 border-dashed border-border rounded-lg cursor-pointer bg-muted/20 hover:bg-primary/5 hover:border-primary transition-colors flex-1 sm:flex-none"
+                >
+                  <div className="flex flex-col items-center justify-center text-center">
+                    <span className="font-semibold text-primary text-sm">
+                      Cambiar Logo
+                    </span>
+                    <span className="text-xs text-muted-foreground hidden sm:block">
+                      PNG, JPG, WEBP
+                    </span>
+                  </div>
+                  <Input
+                    id="logo"
+                    name="logo"
+                    type="file"
+                    accept="image/png, image/jpeg, image/webp"
+                    className="hidden"
+                    onChange={handleFileChange}
+                  />
+                </Label>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* === SECCIÓN 2: DATOS FISCALES Y COMERCIALES === */}
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
               <Briefcase className="w-4 h-4 text-muted-foreground" />
               Información Comercial
-            </h3>
-
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <Label htmlFor="posName">
@@ -197,7 +191,6 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
                 <Input
                   id="razon_social"
                   name="razon_social"
-                  
                   defaultValue={config.razon_social || ""}
                   placeholder="Ej: Carlos Pérez S.A."
                 />
@@ -213,7 +206,6 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
                 {/* Implementación de Shadcn Select que inyecta automáticamente el input hidden con el name para el formData */}
                 <Select
                   name="condicion_iva"
-                  
                   defaultValue={config.condicion_iva || undefined}
                 >
                   <SelectTrigger
@@ -247,20 +239,22 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
                   id="inicio_actividades"
                   name="inicio_actividades"
                   type="date"
-                  
                   defaultValue={config.inicio_actividades || ""}
                 />
               </div>
             </div>
-          </div>
+          </CardContent>
+        </Card>
 
-          {/* === SECCIÓN 3: UBICACIÓN === */}
-          <div className="space-y-6 pt-6 border-t border-border/50">
-            <h3 className="text-sm font-semibold text-foreground/80 uppercase tracking-wider flex items-center gap-2">
+        {/* === SECCIÓN 3: UBICACIÓN Y CONTACTO === */}
+        <Card className="border-border">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
               <MapPin className="w-4 h-4 text-muted-foreground" />
-              Ubicación Física
-            </h3>
-
+              Ubicación y Contacto
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="grid grid-cols-1 sm:grid-cols-6 gap-6">
               <div className="space-y-2 sm:col-span-6">
                 <Label htmlFor="direccion">Dirección Fiscal / Local</Label>
@@ -277,7 +271,6 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
                 <Input
                   id="provincia"
                   name="provincia"
-                  
                   defaultValue={config.provincia || ""}
                   placeholder="Ej: Santa Fe"
                 />
@@ -288,24 +281,14 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
                 <Input
                   id="localidad"
                   name="localidad"
-                  
                   defaultValue={config.localidad || ""}
                   placeholder="Ej: Rosario"
                 />
               </div>
-            </div>
-          </div>
 
-          {/* === SECCIÓN 4: CONTACTO Y OPERACIÓN === */}
-          <div className="space-y-6 pt-6 border-t border-border/50">
-            <h3 className="text-sm font-semibold text-foreground/80 uppercase tracking-wider flex items-center gap-2">
-              <Phone className="w-4 h-4 text-muted-foreground" />
-              Contacto y Operación
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <Label htmlFor="whatsapp">
+              <div className="space-y-2 sm:col-span-6">
+                <Label htmlFor="whatsapp" className="flex items-center gap-2">
+                  <Phone className="w-4 h-4 text-muted-foreground" />
                   Teléfono / WhatsApp<span className="text-danger">*</span>
                 </Label>
                 {/* El name TIENE que ser "whatsapp": es lo que lee la action y
@@ -323,80 +306,28 @@ export function ConfigForm({ config }: Readonly<{ config: ConfiguracionPOS }>) {
                 </p>
               </div>
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2 pt-2">
-              <Label
-                htmlFor="mensaje_ticket"
-                className="flex items-center gap-2"
-              >
-                <ReceiptText className="w-4 h-4 text-muted-foreground" />
-                Mensaje personalizado en el Ticket
-              </Label>
-              {/* Implementación de Shadcn Textarea */}
-              <Textarea
-                id="mensaje_ticket"
-                name="mensaje_ticket"
-                rows={3}
-                defaultValue={config.mensaje_ticket || ""}
-                placeholder="¡Gracias por elegirnos! Vuelva pronto."
-                className="resize-y"
-              />
-            </div>
-
-            {/* El ancho del papel de la impresora. Va acá, al lado del
-                mensaje del ticket, y no en "Ticket de Venta": esa sección es
-                fiscal y está detrás del permiso `configuracion.facturacion`.
-                Elegir 58 u 80 no es una decisión fiscal, es qué impresora
-                compró el comercio. */}
-            <div className="space-y-2 pt-2">
-              <Label
-                htmlFor="ancho_ticket_mm"
-                className="flex items-center gap-2"
-              >
-                <Printer className="w-4 h-4 text-muted-foreground" />
-                Ancho del ticket impreso
-              </Label>
-              <select
-                id="ancho_ticket_mm"
-                name="ancho_ticket_mm"
-                defaultValue={String(
-                  normalizarAnchoTicket(config.ancho_ticket_mm),
-                )}
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-none outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-              >
-                {ANCHOS_TICKET.map((ancho) => (
-                  <option key={ancho} value={ancho}>
-                    {ETIQUETA_ANCHO_TICKET[ancho]}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-muted-foreground">
-                Solo afecta la impresión térmica. Si no sabés cuál tenés,
-                dejá 80: es la medida más común y la que se venía usando.
-              </p>
-            </div>
-          </div>
-
-          {/* === BOTÓN DE GUARDADO === */}
-          <div className="flex justify-end pt-6 border-t border-border">
-            <Button
-              type="submit"
-              disabled={isPending || isCompressing}
-              className="w-full sm:w-auto min-w-37"
-            >
-              {isPending || isCompressing ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Guardando...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" /> Guardar Cambios
-                </>
-              )}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+        {/* === BOTÓN DE GUARDADO === */}
+        <div className="flex justify-end pt-2">
+          <Button
+            type="submit"
+            disabled={isPending || isCompressing}
+            className="w-full sm:w-auto min-w-37"
+          >
+            {isPending || isCompressing ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Guardando...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" /> Guardar Cambios
+              </>
+            )}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }

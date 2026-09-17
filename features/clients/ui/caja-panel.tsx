@@ -17,6 +17,7 @@ import { Calculator, Loader2, Lock, Users, Store } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/shared/config/supabase/client";
 import { PaywallGate } from "@/features/planes/ui/paywall-gate";
+import { CobroCentralizado } from "@/features/pedidos/ui/cobro-centralizado";
 
 interface CajaConfigPanelProps {
   config: ConfiguracionPOS;
@@ -100,46 +101,46 @@ export function CajaConfigPanel({ config }: Readonly<CajaConfigPanelProps>) {
               {/* Multicaja es del plan Gestión para arriba: acá el dueño se
                   entera antes de intentarlo, no cuando le rebota. */}
               <PaywallGate feature="multicaja" className="w-full">
-              <Select
-                value={formData.modo_caja}
-                onValueChange={(val) => handleChange("modo_caja", val)}
-              >
-                <SelectTrigger className="h-14 rounded-xl border-border bg-muted/20 font-semibold">
-                  <SelectValue placeholder="Selecciona el modo..." />
-                </SelectTrigger>
-                <SelectContent className="rounded-xl border-border">
-                  <SelectItem value="UNICA" className="py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 bg-info/10 text-info rounded-md">
-                        <Store className="w-4 h-4" />
+                <Select
+                  value={formData.modo_caja}
+                  onValueChange={(val) => handleChange("modo_caja", val)}
+                >
+                  <SelectTrigger className="h-14 rounded-xl border-border bg-muted/20 font-semibold">
+                    <SelectValue placeholder="Selecciona el modo..." />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl border-border">
+                    <SelectItem value="UNICA" className="py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-1.5 bg-info/10 text-info rounded-md">
+                          <Store className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="font-bold text-foreground text-sm">
+                            Caja Única (General)
+                          </span>
+                          <span className="text-xs text-muted-foreground font-normal">
+                            Todas las ventas van al mismo turno de caja.
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex flex-col text-left">
-                        <span className="font-bold text-foreground text-sm">
-                          Caja Única (General)
-                        </span>
-                        <span className="text-xs text-muted-foreground font-normal">
-                          Todas las ventas van al mismo turno de caja.
-                        </span>
+                    </SelectItem>
+                    <SelectItem value="POR_USUARIO" className="py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-1.5 bg-emerald-50 text-success rounded-md">
+                          <Users className="w-4 h-4" />
+                        </div>
+                        <div className="flex flex-col text-left">
+                          <span className="font-bold text-foreground text-sm">
+                            Caja por Usuario (Multicaja)
+                          </span>
+                          <span className="text-xs text-muted-foreground font-normal">
+                            Cada vendedor abre y cierra su propio turno.
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="POR_USUARIO" className="py-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-1.5 bg-emerald-50 text-success rounded-md">
-                        <Users className="w-4 h-4" />
-                      </div>
-                      <div className="flex flex-col text-left">
-                        <span className="font-bold text-foreground text-sm">
-                          Caja por Usuario (Multicaja)
-                        </span>
-                        <span className="text-xs text-muted-foreground font-normal">
-                          Cada vendedor abre y cierra su propio turno.
-                        </span>
-                      </div>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </PaywallGate>
             </div>
           </div>
@@ -193,10 +194,11 @@ export function CajaConfigPanel({ config }: Readonly<CajaConfigPanelProps>) {
                 className="mt-1"
               />
             </div>
-
           </div>
         </div>
       </div>
+
+      <CobroCentralizado activo={config.pedidos_a_caja ?? false} />
     </div>
   );
 }

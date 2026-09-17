@@ -227,7 +227,6 @@ export function SettingsManager({
             rolPermisos={rolPermisos}
             uso={uso}
             invitaciones={invitaciones}
-            pedidosACaja={Boolean(config?.pedidos_a_caja)}
           />
         );
       case "clientes":

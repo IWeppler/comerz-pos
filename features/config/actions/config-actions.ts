@@ -3,7 +3,6 @@
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { normalizarAnchoTicket } from "@/shared/lib/ancho-ticket";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { errorDeCuit, normalizarCuit } from "@/shared/lib/cuit";
 import { validarSlugNegocio } from "@/shared/lib/slug-negocio";
@@ -62,14 +61,6 @@ export async function updateConfiguracionAction(
   const localidad = textoOpcional("localidad");
   const whatsapp = ((formData.get("whatsapp") as string) ?? "").trim();
   const direccion = textoOpcional("direccion");
-  const mensaje_ticket = textoOpcional("mensaje_ticket");
-  // Fail-closed: un valor que no sea 58 u 80 cae en 80, que es lo que se
-  // imprimía antes de que este campo existiera. El CHECK de la base es el
-  // freno real; esto evita que un form raro lo haga rebotar como violación
-  // de constraint.
-  const ancho_ticket_mm = normalizarAnchoTicket(
-    formData.get("ancho_ticket_mm"),
-  );
   const logoFile = formData.get("logo") as File | null;
 
   // El id sale de un input hidden: si falta no es que el usuario olvidó algo,
@@ -115,7 +106,10 @@ export async function updateConfiguracionAction(
     // fuera de ella, y así el logo de un comercio no pisa el de otro.
     const { data: negocioId } = await supabase.rpc("negocio_actual");
     if (!negocioId) {
-      return { error: "No hay un negocio activo en esta sesión.", success: false };
+      return {
+        error: "No hay un negocio activo en esta sesión.",
+        success: false,
+      };
     }
 
     const fileExt = logoFile.name.split(".").pop();
@@ -148,8 +142,6 @@ export async function updateConfiguracionAction(
     inicio_actividades,
     provincia,
     localidad,
-    mensaje_ticket,
-    ancho_ticket_mm,
     updated_at: new Date().toISOString(),
   };
 
@@ -178,7 +170,8 @@ export async function updateConfiguracionAction(
 
   if (!filasTocadas || filasTocadas.length === 0) {
     return {
-      error: "Solo un administrador puede cambiar la configuración del comercio.",
+      error:
+        "Solo un administrador puede cambiar la configuración del comercio.",
       success: false,
     };
   }
@@ -241,7 +234,10 @@ export async function cambiarSlugTiendaAction(slugCrudo: string): Promise<{
       return { error: "No hay un negocio activo en esta sesión.", slug: null };
     }
 
-    return { error: "No se pudo cambiar la dirección de la tienda.", slug: null };
+    return {
+      error: "No se pudo cambiar la dirección de la tienda.",
+      slug: null,
+    };
   }
 
   // El slug viaja en el layout (NegocioActivo) y es la clave con la que la RLS
