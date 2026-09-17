@@ -552,7 +552,7 @@ tiene 11.
   create-sale.ts, NO la base. Si se va a escribir ahí, hay que poner el guard
   de verdad primero.
 - `rentabilidad_por_metodo` (`20260823180705`, gateada por
-  `caja.ver_gerencial`): primera señal de Comerz Insights. Recargo cobrado
+  `caja.ver_gerencial`): primera señal de Comerz Intelligence. Recargo cobrado
   menos comisión pagada, sobre la base, por medio. Deja ver que **recargo
   igual a comisión pierde plata**: la comisión se cobra sobre el bruto y el
   recargo se calcula sobre la base, así que 15% y 15% sobre 100 dan bruto 115,

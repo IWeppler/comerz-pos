@@ -594,7 +594,9 @@ export async function crearClienteAction(
     })
     // El POS necesita el cliente recién creado para dejarlo seleccionado en el
     // ticket sin volver a consultar la lista entera.
-    .select("id, nombre, telefono, exceptuado_entrega_minima, lista_precio_id")
+    .select(
+      "id, nombre, telefono, exceptuado_entrega_minima, lista_precio_id, condicion_iva",
+    )
     .single();
 
   if (error || !cliente) {

@@ -40,6 +40,9 @@ import { CartSidebarFooter } from "../../../shared/components/cart-sidebar/cart-
 import { CartSidebarHeader } from "../../../shared/components/cart-sidebar/cart-sidebar-header";
 import { CartStepCheckout } from "../../../shared/components/cart-sidebar/cart-step-checkout";
 import { CartStepItems } from "../../../shared/components/cart-sidebar/cart-step-items";
+import { SelectorComprobante } from "../../../shared/components/cart-sidebar/selector-comprobante";
+import { determinarComprobanteFiscal } from "@/shared/lib/determinar-comprobante";
+import { ETIQUETA_COMPROBANTE } from "@/shared/lib/facturacion";
 import { posSinImagenes } from "@/features/pos/lib/vista-por-rubro";
 import type { Rubro } from "@/entities/config/types";
 import { Sheet, SheetContent } from "@/shared/ui/sheet";
@@ -443,6 +446,21 @@ export function CartPanelAdmin({
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("CART");
   const [clienteSeleccionado, setClienteSeleccionado] =
     useState<ClienteBasico | null>(null);
+  // Qué letra saldría si se factura, con la MISMA matriz que aplica el
+  // server al cobrar: emisor + cliente elegido + preferencias. Sin el corte
+  // por conexión con ARCA, que acá no se conoce; si al cobrar ARCA no está,
+  // create-sale lo dice y ofrece cobrar con ticket. Se recalcula al cambiar
+  // el cliente: a un RI le corresponde A y a consumidor final B.
+  const comprobanteFiscal = facturacionActiva
+    ? determinarComprobanteFiscal({
+        operacion: "VENTA",
+        modoFacturacion: branding?.modo_facturacion,
+        condicionIvaEmisor: branding?.condicion_iva,
+        condicionIvaReceptor: clienteSeleccionado?.condicion_iva,
+        comprobanteDefecto: branding?.comprobante_defecto,
+        riAMonotributo: branding?.arca_ri_a_monotributo,
+      })
+    : null;
   // Controlado desde acá solo para que F7 pueda abrirlo sin un click. Cuando
   // se maneja con el mouse, el selector sigue haciendo lo suyo.
   const [selectorClienteAbierto, setSelectorClienteAbierto] = useState(false);
@@ -1396,6 +1414,23 @@ export function CartPanelAdmin({
             ? () => setCheckoutStep("CART")
             : undefined
         }
+        comprobante={
+          effectiveCheckoutStep === "PAYMENT" &&
+          comprobanteFiscal &&
+          comprobanteFiscal.tipo !== "TICKET" &&
+          !comprobanteFiscal.tipo.startsWith("NOTA_") ? (
+            <SelectorComprobante
+              facturar={facturar}
+              etiquetaFactura={
+                ETIQUETA_COMPROBANTE[
+                  comprobanteFiscal.tipo as keyof typeof ETIQUETA_COMPROBANTE
+                ]
+              }
+              onChange={puedeElegirComprobante ? setFacturarElegido : undefined}
+              motivoBloqueo="No tenés permiso para elegir el comprobante."
+            />
+          ) : undefined
+        }
         accion={
           // La cola es de la caja: quien no cobra no la ve, solo manda. En
           // tablet/celular va como botón flotante (ver más abajo).
@@ -1456,12 +1491,6 @@ export function CartPanelAdmin({
           totalFinal={totalFinal}
           isCuentaCorriente={isCuentaCorriente}
           onCuentaCorrienteChange={handleCuentaCorrienteChange}
-          facturar={facturacionActiva ? facturar : undefined}
-          onFacturarChange={
-            facturacionActiva && puedeElegirComprobante
-              ? setFacturarElegido
-              : undefined
-          }
           isReserva={usaReservas && isReserva}
           // Sin `onReservaChange` el paso de pago no dibuja el botón
           // "Reservado" y la fila queda en dos columnas. Es el mismo mecanismo

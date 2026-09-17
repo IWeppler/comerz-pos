@@ -106,7 +106,7 @@ export function AdvisorMiniList({ insights }: Readonly<AdvisorMiniListProps>) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
         <Lightbulb className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Comerz Insights
+          Comerz Intelligence
         </span>
       </div>
 

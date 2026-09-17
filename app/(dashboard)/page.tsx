@@ -108,7 +108,7 @@ const ETIQUETA_RANKING: Record<PeriodoPanel, string> = {
 // quedan muy espaciadas y sobra aire.
 const INSIGHTS_EN_PANEL = 5;
 
-// Ventana de Comerz Insights (DIAS_INSIGHTS). NO es la del selector, y eso es
+// Ventana de Comerz Intelligence (DIAS_INSIGHTS). NO es la del selector, y eso es
 // el punto: lo que necesita tu atención no cambia porque alguien haya
 // clickeado "Hoy".
 //
@@ -195,7 +195,7 @@ export default async function DashboardPage({
     // Devuelve null si no es ADMIN: el gate vive en la RPC, así que acá no hay
     // que preguntar el rol por separado.
     getEstadoActivacionAction(),
-    // Las seis señales gerenciales de Comerz Insights, en paralelo adentro.
+    // Las seis señales gerenciales de Comerz Intelligence, en paralelo adentro.
     // Cada una viene en null si el usuario no tiene permiso gerencial.
     getSenalesInsightsAction(
       formatearFechaISO(rangoInsights.inicio),

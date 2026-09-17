@@ -182,6 +182,7 @@ export default async function DashboardLayout({
             userId={user.id}
             puedeCobrarCuentaCorriente={puedeCobrarCc}
             puedeOperarCaja={puedeOperarCajaEsta}
+            userName={perfil?.nombre || undefined}
           />
 
           {/* Montado UNA vez para toda la app: lo abren el botón del POS y el

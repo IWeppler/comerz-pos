@@ -41,8 +41,7 @@ export function AvisoDatosGuardados({
       <span>
         {hayConexion ? (
           <>
-            {que} de {antiguedadEnPalabras(actualizadoEn!)}. Todavía no se
-            pudieron actualizar.
+            {que} de {antiguedadEnPalabras(actualizadoEn!)}.
           </>
         ) : (
           <>

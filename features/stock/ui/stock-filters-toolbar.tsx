@@ -306,12 +306,13 @@ export function StockFiltersToolbar({
                 e.preventDefault();
                 onSearchEnter(searchQuery);
               }}
-              className={`pl-9 h-10 text-sm rounded-lg border-border bg-muted w-full ${atajoBusqueda ? "pr-12" : ""}`}
+              className={`pl-9 h-10 text-sm rounded-lg border-border bg-muted w-full ${atajoBusqueda ? "sm:pr-12" : ""}`}
             />
             {/* Se esconde con texto escrito: el badge no puede taparle a la
-                vendedora lo que está buscando. */}
+                vendedora lo que está buscando. Y no existe en celular: no hay
+                teclado físico donde apretar la F. */}
             {atajoBusqueda && !searchQuery && (
-              <kbd className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded border border-border/70 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <kbd className="pointer-events-none absolute right-3 hidden sm:block top-1/2 -translate-y-1/2 rounded border border-border/70 bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 {atajoBusqueda}
               </kbd>
             )}
@@ -419,7 +420,7 @@ export function StockFiltersToolbar({
               <ScanBarcode
                 className={`h-4 w-4 sm:mr-2 ${cargaRapidaActiva ? "" : "text-muted-foreground"}`}
               />
-              <span className="hidden sm:inline font-semibold">
+              <span className="hidden sm:inline font-medium">
                 {cargaRapidaActiva ? "Volver a vender" : "Carga rápida"}
               </span>
             </Button>
@@ -432,7 +433,7 @@ export function StockFiltersToolbar({
                 title="Carga rápida de mercadería"
               >
                 <ScanBarcode className="h-4 w-4 sm:mr-2 text-muted-foreground" />
-                <span className="hidden sm:inline font-semibold">
+                <span className="hidden sm:inline font-medium text-muted-foreground">
                   Carga rápida
                 </span>
               </Button>
@@ -451,7 +452,7 @@ export function StockFiltersToolbar({
               title="Cobrar un saldo de cuenta corriente"
             >
               <HandCoins className="h-4 w-4 sm:mr-2 text-muted-foreground" />
-              <span className="hidden sm:inline font-semibold">
+              <span className="hidden sm:inline font-medium text-muted-foreground">
                 Cobrar deuda
               </span>
             </Button>
@@ -485,7 +486,15 @@ export function StockFiltersToolbar({
               porque en mobile es el único acceso a Carga rápida, que es para
               todos los roles; para un vendedor el menú tiene solo esa entrada
               y por eso se oculta en desktop (ahí ya tiene su botón propio). */}
-          <div className="flex items-center gap-1.5 sm:gap-2 sm:ml-2 sm:pl-4 sm:border-l sm:border-border shrink-0">
+          {/* Sin admin, en desktop este bloque queda VACÍO (el trigger es
+              sm:hidden y el botón de crear no existe) pero seguía ocupando
+              margen + padding + borde: un hueco con una raya después de
+              "Cobrar deuda" en el POS. Se esconde entero. */}
+          <div
+            className={`flex items-center gap-1.5 sm:gap-2 sm:ml-2 sm:pl-4 sm:border-l sm:border-border shrink-0 ${
+              isAdmin ? "" : "sm:hidden"
+            }`}
+          >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -496,9 +505,7 @@ export function StockFiltersToolbar({
                   }`}
                 >
                   <MoreHorizontal className="h-4 w-4 sm:mr-2 text-muted-foreground" />
-                  <span className="hidden sm:inline font-semibold">
-                    Acciones
-                  </span>
+                  <span className="hidden sm:inline font-medium">Acciones</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
@@ -627,7 +634,7 @@ export function StockFiltersToolbar({
       mixto: si ningún elemento de categoriasDisponibles trae `hijos`, esto
       degrada exactamente a la fila plana de siempre. */}
       {filaSecundaria !== undefined ? (
-        <div className="flex w-full min-w-0 items-center gap-2 mt-4 md:mt-2 px-2 pb-2">
+        <div className="flex w-full min-w-0 items-center gap-2 mt-2 px-2 pb-2">
           {filaSecundaria}
         </div>
       ) : (
@@ -639,7 +646,7 @@ export function StockFiltersToolbar({
           });
 
           return (
-            <div className="flex w-full min-w-0 items-start gap-2 overflow-hidden mt-4 md:mt-2 px-2">
+            <div className="flex w-full min-w-0 items-start gap-2 overflow-hidden mt-2 px-2">
               <div
                 ref={filaCategoriasRef}
                 {...dragCategorias}

@@ -34,11 +34,6 @@ interface CartStepCheckoutProps {
   totalFinal: number;
   isCuentaCorriente: boolean;
   onCuentaCorrienteChange: (value: boolean) => void;
-  /** Con qué comprobante sale la venta. `undefined` = el comercio no
-   * factura con ARCA y la sección no se muestra. */
-  facturar?: boolean;
-  /** Ausente = se muestra el estado pero no se puede cambiar (sin permiso). */
-  onFacturarChange?: (value: boolean) => void;
   isReserva?: boolean;
   onReservaChange?: (value: boolean) => void;
   modoMixto: boolean;
@@ -70,8 +65,6 @@ export function CartStepCheckout({
   totalFinal,
   isCuentaCorriente,
   onCuentaCorrienteChange,
-  facturar,
-  onFacturarChange,
   isReserva = false,
   onReservaChange,
   modoMixto,
@@ -247,39 +240,8 @@ export function CartStepCheckout({
             </div>
           </section>
 
-          {/* COMPROBANTE: factura con CAE o ticket interno */}
-          {facturar !== undefined ? (
-            <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                Comprobante
-              </h3>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  type="button"
-                  variant={facturar ? "default" : "outline"}
-                  disabled={!onFacturarChange}
-                  onClick={() => onFacturarChange?.(true)}
-                  className="h-11"
-                >
-                  Factura
-                </Button>
-                <Button
-                  type="button"
-                  variant={!facturar ? "default" : "outline"}
-                  disabled={!onFacturarChange}
-                  onClick={() => onFacturarChange?.(false)}
-                  className="h-11"
-                >
-                  Ticket interno
-                </Button>
-              </div>
-              {!facturar ? (
-                <p className="text-xs text-muted-foreground">
-                  Sale como comprobante interno, sin validez fiscal.
-                </p>
-              ) : null}
-            </section>
-          ) : null}
+          {/* El comprobante (factura / sin factura) ya no va acá: vive en el
+              header del ticket, ver SelectorComprobante. */}
 
           {/* SELECTOR DE CLIENTES */}
           <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
@@ -324,7 +286,7 @@ export function CartStepCheckout({
                   Sin metodos de pago activos.
                 </div>
               ) : !modoMixto ? (
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {metodosPagoDB.map((metodo) => {
                     const Icon = getPaymentIcon(metodo.tipo);
                     const isSelected = pagos[0]?.metodoPagoId === metodo.id;

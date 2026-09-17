@@ -14,6 +14,13 @@ interface CartSidebarHeaderProps {
   onBack?: () => void;
   /** Un control extra a la derecha del título (el POS pone "Por cobrar"). */
   accion?: ReactNode;
+  /**
+   * Factura / sin factura, solo en el paso de cobro del POS
+   * (`SelectorComprobante`). Va pegado al título y no en el formulario: es
+   * una decisión de la venta entera, como volver o cerrar, y el header es el
+   * único lugar que está igual en desktop y en el sheet de celular.
+   */
+  comprobante?: ReactNode;
 }
 
 export function CartSidebarHeader({
@@ -21,6 +28,7 @@ export function CartSidebarHeader({
   onClose,
   onBack,
   accion,
+  comprobante,
 }: Readonly<CartSidebarHeaderProps>) {
   return (
     <div className="shrink-0 flex items-center justify-between p-4 border-b border-border">
@@ -50,6 +58,9 @@ export function CartSidebarHeader({
         )}
         <span className="truncate">{isPOSMode ? "Ticket" : "Tu Carrito"}</span>
       </h2>
+      {comprobante ? (
+        <div className="ml-auto mr-2 flex min-w-0 items-center">{comprobante}</div>
+      ) : null}
       {accion}
       <button
         type="button"

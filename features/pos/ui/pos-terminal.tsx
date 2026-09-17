@@ -814,11 +814,18 @@ export function PosTerminal({
 
                             {resumen.tieneVariantes &&
                               resumen.variantes.map((v) => (
+                                // "14 ×1" y no "14 1": dos números pegados
+                                // no dicen cuál es el talle y cuál la
+                                // cantidad. El × lo dice sin rotular
+                                // "Talles:", que sería mentira cuando el
+                                // primer atributo es color o estampado.
                                 <span
                                   key={v.etiqueta}
                                   className="rounded bg-muted px-1 py-px font-mono tabular-nums"
                                 >
-                                  {v.etiqueta} {v.stock}
+                                  {v.etiqueta}
+                                  <span className="opacity-60">×</span>
+                                  {v.stock}
                                 </span>
                               ))}
 

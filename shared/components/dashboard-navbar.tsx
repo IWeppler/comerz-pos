@@ -15,6 +15,8 @@ interface DashboardNavbarProps {
   puedeCobrarCuentaCorriente?: boolean;
   /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
   puedeOperarCaja?: boolean;
+  /** Nombre del perfil, para saludar en el panel. Ausente = saludo sin nombre. */
+  userName?: string;
 }
 
 export function DashboardNavbar({
@@ -22,6 +24,7 @@ export function DashboardNavbar({
   userId,
   puedeCobrarCuentaCorriente = false,
   puedeOperarCaja = true,
+  userName,
 }: Readonly<DashboardNavbarProps>) {
   const { toggleSidebar } = useSidebarStore();
   const pathname = usePathname();
@@ -34,21 +37,26 @@ export function DashboardNavbar({
   // suscribirse.
   const esMac = useSyncExternalStore(
     () => () => {},
-    () => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent),
+    () =>
+      /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent),
     () => false,
   );
 
   const getPageInfo = () => {
-    if (pathname === "/")
+    // El panel saluda en vez de titularse: es la pantalla a la que la dueña
+    // entra a la mañana, no una sección. Solo el primer nombre — "Hola,
+    // Romina" y no "Hola, Carneiro Romina".
+    if (pathname === "/") {
+      const primerNombre = userName?.trim().split(/s+/)[0];
       return {
-        title: "Panel",
-        description: "Bienvenido al puesto de mando. Resumen del negocio vivo.",
+        title: primerNombre ? `Hola, ${primerNombre} 👋` : "Hola 👋",
+        description: "",
       };
+    }
     if (pathname.startsWith("/pos"))
       return {
         title: "Realizar Venta",
-        description:
-          "Carga productos, aplica descuentos, registra el pago y descuenta el stock automáticamente.",
+        description: "Una venta. Todo conectado.",
       };
     if (pathname.startsWith("/stock"))
       return {
