@@ -73,15 +73,20 @@ describe("emitirComprobante", () => {
     expect(rpcLlamadas[0].args).not.toHaveProperty("p_numero");
   });
 
-  it("usa el punto de venta configurado cuando existe", async () => {
+  it("el ticket interno NO toma el punto de venta de ARCA: siempre serie 1", async () => {
     const { supabase, rpcLlamadas } = fakeSupabase({ numero: 1 });
 
+    // Estilo Bonito con su punto 5 dado de alta para facturar: el recibo
+    // interno no puede decir "punto de venta 5".
     await emitirComprobante(supabase, {
       ...BASE,
-      config: { punto_venta: 4 },
+      config: { punto_venta: 5 },
     });
 
-    expect(rpcLlamadas[0].args).toMatchObject({ p_punto_venta: 4 });
+    expect(rpcLlamadas[0].args).toMatchObject({
+      p_tipo: "TICKET",
+      p_punto_venta: 1,
+    });
   });
 
   it("cae a la serie interna 1 si el punto de venta guardado es inválido", async () => {

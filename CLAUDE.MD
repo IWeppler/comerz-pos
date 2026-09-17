@@ -1085,6 +1085,14 @@ tiene 11.
   número no salga nunca de un `select max(numero) + 1`, y es autoridad SOLO
   para TICKET: en los fiscales el último número autorizado lo dice ARCA
   (FECompUltimoAutorizado), no esta base.
+  **El TICKET interno va siempre en la serie 1, desacoplado del punto de venta
+  de ARCA** (18/9/2026, `emitir-comprobante.ts`). Antes seguía al
+  `punto_venta` configurado: cuando Estilo Bonito dio de alta su punto 5 para
+  facturar, los recibos internos pasaron a "00005-…" —un papel que dice
+  "punto de venta 5" con un número que en ARCA no existe— y cada cambio de
+  punto reiniciaba la serie (1 → 2 → 5 en dos días). El ticket es un recibo
+  de control interno y el punto de venta es de lo fiscal; no se mezclan. El
+  formato impreso se mantiene igual a propósito (decisión del 18/9).
 - Exportaciones para el contador (pestaña en /reportes), NO "Contabilidad":
   Comerz no lleva la contabilidad, prepara la información para que la lleve el
   contador. El catálogo (`features/exportaciones/lib/catalogo-exportaciones.ts`)

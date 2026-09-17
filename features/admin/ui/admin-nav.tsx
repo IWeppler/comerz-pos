@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   CreditCard,
   LayoutDashboard,
   Menu,
@@ -12,6 +13,7 @@ import {
 
 const SECCIONES = [
   { href: "/admincomerz", nombre: "Dashboard", icono: LayoutDashboard },
+  { href: "/admincomerz/metricas", nombre: "Métricas", icono: BarChart3 },
   { href: "/admincomerz/planes", nombre: "Planes", icono: CreditCard },
 ] as const;
 

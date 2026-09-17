@@ -188,14 +188,14 @@ export function requiereNotaCredito(
 }
 
 /**
- * Punto de venta con el que se numera un ticket interno cuando el comercio no
- * tiene ninguno dado de alta en ARCA — que es el caso de los 4 negocios.
+ * Serie con la que se numera el ticket interno, SIEMPRE — tenga o no el
+ * comercio un punto de venta de ARCA.
  *
  * La columna es NOT NULL porque un comprobante sin punto de venta no se puede
  * identificar. El 1 acá no pretende ser un punto de venta fiscal: es la serie
- * interna del comercio, y como la numeración es por (punto_venta, tipo), el
- * día que se dé de alta un punto de venta real los TICKET siguen su propia
- * cuenta sin chocar con las facturas.
+ * interna del comercio, y como la numeración es por (punto_venta, tipo), las
+ * facturas van por el punto real y los TICKET por esta, sin chocar. Hasta el
+ * 18/9/2026 el ticket seguía al punto configurado; ver emitir-comprobante.ts.
  */
 export const PUNTO_VENTA_INTERNO_DEFAULT = 1;
 

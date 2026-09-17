@@ -86,11 +86,24 @@ export async function emitirComprobante(
     operacion: input.operacion,
   });
 
-  // El punto de venta configurado manda; si no hay ninguno (los 4 negocios
-  // hoy), el ticket interno se numera en la serie 1. parsePuntoVenta protege
-  // de un valor inválido que se haya colado por fuera del panel.
+  // El TICKET interno va SIEMPRE en su serie propia, desacoplada del punto de
+  // venta de ARCA (18/9/2026). Hasta acá tomaba el configurado, y eso mezclaba
+  // dos cosas que tienen que verse distintas: cuando Estilo Bonito dio de alta
+  // su punto 5 para facturar, los recibos internos pasaron a numerarse
+  // "00005-…" — un papel que dice "punto de venta 5" con un número que en ARCA
+  // no existe. El ticket es un recibo de control interno; el punto de venta es
+  // de lo fiscal. Además, cada cambio de punto reiniciaba la serie (Estilo
+  // Bonito pasó por 1 → 2 → 5 en dos días).
+  //
+  // El configurado queda para los comprobantes fiscales, que hoy no pasan por
+  // acá (van por `registrar_venta_facturada` con el CAE ya pedido) pero
+  // podrían el día que se emita algo fiscal sin ARCA en el medio.
+  // parsePuntoVenta protege de un valor inválido colado por fuera del panel.
   const puntoVenta =
-    parsePuntoVenta(input.config?.punto_venta) ?? PUNTO_VENTA_INTERNO_DEFAULT;
+    tipo === "TICKET"
+      ? PUNTO_VENTA_INTERNO_DEFAULT
+      : (parsePuntoVenta(input.config?.punto_venta) ??
+        PUNTO_VENTA_INTERNO_DEFAULT);
 
   const fallo = (etapa: string, error: unknown): ResultadoComprobante => {
     console.error("[COMPROBANTE] No se pudo emitir", {
