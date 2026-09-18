@@ -272,14 +272,16 @@ const ReceiptDocument = ({
             return (
               <View style={styles.tableRow} key={idx}>
                 <Text style={[styles.colQty, styles.rowTextBold]}>
-                  {esFraccionable(item.unidadMedida)
+                  {!item.presentacionNombre && esFraccionable(item.unidadMedida)
                     ? formatearCantidad(item.cantidad, item.unidadMedida)
                     : item.cantidad}
                 </Text>
                 <View style={styles.colDesc}>
                   <Text style={styles.rowTextBold}>{item.nombre}</Text>
                   <Text style={{ fontSize: 9, color: "#64748b", marginTop: 2 }}>
-                    {item.variante}
+                    {[item.variante, item.presentacionNombre]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </Text>
                 </View>
                 <Text style={[styles.colPrice, styles.rowText]}>

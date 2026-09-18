@@ -23,6 +23,14 @@ import {
   type ListaDePrecios,
 } from "@/shared/lib/precio-de-lista";
 import { mensajeSinStock } from "../lib/mensaje-sin-stock";
+import { agruparStockLegacy } from "../lib/agrupar-stock-legacy";
+import {
+  cantidadBase,
+  costoBaseDePresentacion,
+  normalizarCantidadEnForma,
+  precioDePresentacion,
+  type Presentacion,
+} from "@/shared/lib/presentaciones";
 import {
   esIdVentaLibre,
   validarVentaLibre,
@@ -65,6 +73,20 @@ type ItemResuelto = {
   costoServer: number;
   tratamientoIva: string | null;
   esVentaLibre: boolean;
+  /**
+   * Presentación vendida (Balde 4,7 kg), resuelta contra la base. null =
+   * unidad base. Con presentación, `cantidad` YA está en unidad base
+   * (cantidadPresentacion × factor) y `precioServer` es por unidad base
+   * (precio / factor): el resto del camino no distingue. Lo que sí se guarda
+   * aparte es lo exacto: cuántas presentaciones y a qué precio cada una.
+   */
+  presentacion: {
+    id: string;
+    nombre: string;
+    factor: number;
+    cantidadPresentacion: number;
+    precioPresentacion: number;
+  } | null;
 };
 
 /** La marca viaja en el item del carrito; el id local (`libre:…`) es el
@@ -341,6 +363,7 @@ export async function registrarVentaAction(
     { data: stockFilas },
     { data: variantesFilas },
     { listaData, overridePorProducto },
+    { data: presentacionesFilas },
   ] = await Promise.all([
     resolverTurnoActivo(supabase, user.id, configVenta),
     // Columnas explícitas y no `*`: es la fila que arma cada pago del ticket,
@@ -370,6 +393,16 @@ export async function registrarVentaAction(
       .select("id, precio, costo, producto_id, nombre_display")
       .in("producto_id", productoIds),
     cargarLista(),
+    // Las presentaciones de los productos del ticket. Se traen todas y se
+    // resuelven por id ADENTRO del producto, igual que las variantes: un id
+    // de presentación de otro producto no matchea y el renglón falla.
+    supabase
+      .from("producto_presentaciones")
+      .select(
+        "id, producto_id, variante_id, nombre, factor, regla_precio, precio, costo, activa",
+      )
+      .in("producto_id", productoIds)
+      .eq("activa", true),
   ]);
 
   // BLOQUEO Y ASIGNACIÓN DE CAJA (MODO DINÁMICO)
@@ -391,6 +424,9 @@ export async function registrarVentaAction(
   const variantePorId = new Map((variantesFilas ?? []).map((v) => [v.id, v]));
   const variantePorNombre = new Map(
     (variantesFilas ?? []).map((v) => [`${v.producto_id}|${v.nombre_display}`, v]),
+  );
+  const presentacionPorId = new Map(
+    (presentacionesFilas ?? []).map((p) => [p.id as string, p]),
   );
 
   const itemsResueltos: ItemResuelto[] = [];
@@ -439,6 +475,7 @@ export async function registrarVentaAction(
         costoServer: 0,
         tratamientoIva: null,
         esVentaLibre: true,
+        presentacion: null,
       });
       continue;
     }
@@ -509,7 +546,7 @@ export async function registrarVentaAction(
       });
     }
 
-    const costoServer =
+    const costoBaseServer =
       varianteData?.costo != null ? Number(varianteData.costo) : costoProducto;
 
     // El precio de siempre: la cascada de toda la vida, ahora en un solo
@@ -528,7 +565,7 @@ export async function registrarVentaAction(
     // extra, igual que el resto de las lecturas de esta action.
     const resueltoPorLista = precioDeLista({
       precioBase: precioBaseServer,
-      precioCosto: costoServer,
+      precioCosto: costoBaseServer,
       lista: listaData,
       override: overridePorProducto.get(productoIdReal) ?? null,
     });
@@ -550,9 +587,84 @@ export async function registrarVentaAction(
       };
     }
 
-    const precioServer = resueltoPorLista.precio;
+    // --- PRESENTACIÓN: "1 balde" en vez de "4,7 kg" ---
+    //
+    // El carrito manda el id; el factor y el precio salen de la fila que
+    // acabamos de leer, resuelta ADENTRO del producto (y de la variante, si
+    // la presentación está atada a una). Con FIJO la lista de precios NO
+    // aplica: $45.000 es un número que alguien fijó, no una regla. Con
+    // HEREDADO es la base —ya con lista— por el factor.
+    //
+    // Lo que sigue del camino trabaja en UNIDAD BASE: `cantidad` = baldes ×
+    // 4,7 y `precioServer` = $45.000 / 4,7, así el stock, el costo, las
+    // promos y los reportes no distinguen. Lo exacto (1 balde, $45.000) viaja
+    // aparte en `presentacion` y queda congelado en el renglón.
+    const presentacionPedida = item.presentacionId
+      ? presentacionPorId.get(item.presentacionId)
+      : null;
+    if (item.presentacionId && !presentacionPedida) {
+      console.error("[VENTA PRESENTACION INEXISTENTE]", {
+        vendedorId: user.id,
+        productoId: productoIdReal,
+        presentacionId: item.presentacionId,
+      });
+      return {
+        error: `La presentación de "${item.nombre ?? item.variante}" ya no existe: sacala del ticket y volvé a agregar el producto.`,
+        success: false,
+      };
+    }
+    if (
+      presentacionPedida &&
+      (presentacionPedida.producto_id !== productoIdReal ||
+        (presentacionPedida.variante_id &&
+          presentacionPedida.variante_id !== (varianteData?.id ?? null)))
+    ) {
+      console.error("[VENTA PRESENTACION DE OTRO PRODUCTO]", {
+        vendedorId: user.id,
+        productoId: productoIdReal,
+        presentacionId: item.presentacionId,
+      });
+      return {
+        error: `La presentación de "${item.nombre ?? item.variante}" no corresponde a ese producto.`,
+        success: false,
+      };
+    }
 
-    const precioCliente = Number(item.precioUnitario ?? item.precio ?? 0);
+    const factor = presentacionPedida ? Number(presentacionPedida.factor) : 1;
+    const precioPresentacionServer = presentacionPedida
+      ? precioDePresentacion(
+          presentacionPedida as Pick<Presentacion, "regla_precio" | "precio" | "factor">,
+          resueltoPorLista.precio,
+        )
+      : null;
+    if (presentacionPedida && precioPresentacionServer === null) {
+      return {
+        error: `"${presentacionPedida.nombre}" de "${item.nombre ?? item.variante}" no tiene precio cargado: no se puede vender.`,
+        success: false,
+      };
+    }
+
+    // El costo por unidad base: si la presentación tiene costo propio
+    // ("el balde me cuesta $30.000"), se prorratea; si no, el de siempre.
+    const costoServer = presentacionPedida
+      ? costoBaseDePresentacion(
+          { costo: presentacionPedida.costo as number | null, factor },
+          costoBaseServer,
+        )
+      : costoBaseServer;
+
+    // Por unidad BASE. Con presentación es un derivado ($45.000 / 4,7); sin
+    // ella es el precio de siempre.
+    const precioServer = presentacionPedida
+      ? precioPresentacionServer! / factor
+      : resueltoPorLista.precio;
+
+    // El cliente manda el precio en la unidad en que VENDE: por presentación
+    // cuando hay una, por unidad base si no. Se compara en esa misma unidad.
+    const precioClienteEnForma = Number(item.precioUnitario ?? item.precio ?? 0);
+    const precioCliente = presentacionPedida
+      ? precioClienteEnForma / factor
+      : precioClienteEnForma;
     if (Math.abs(precioCliente - precioServer) > 0.01) {
       console.error("[VENTA PRECIO MISMATCH]", {
         vendedorId: user.id,
@@ -586,12 +698,22 @@ export async function registrarVentaAction(
     // Con la cantidad decimal el chequeo además tiene que saber QUÉ producto
     // es: 0,750 es una venta válida de fiambre y una imposible de remeras.
     const unidadMedida = productoData?.unidad_medida;
-    const cantidadValidada = normalizarCantidadVendible(
+    //
+    // Con presentación la cantidad que tipeó la vendedora es en PRESENTACIONES
+    // (entera siempre) y lo que sigue necesita la base: baldes × 4,7.
+    const cantidadEnForma = normalizarCantidadEnForma(
       item.cantidad ?? 1,
       unidadMedida,
+      presentacionPedida ? { factor } : null,
     );
+    const cantidadValidada =
+      cantidadEnForma === null
+        ? null
+        : presentacionPedida
+          ? cantidadBase(cantidadEnForma, factor)
+          : cantidadEnForma;
 
-    if (cantidadValidada === null) {
+    if (cantidadValidada === null || cantidadEnForma === null) {
       console.error("[VENTA CANTIDAD INVALIDA]", {
         vendedorId: user.id,
         productoId: productoIdReal,
@@ -623,6 +745,19 @@ export async function registrarVentaAction(
       cantidad: cantidadValidada,
       stockActual,
       precioServer: precioUsado,
+      presentacion: presentacionPedida
+        ? {
+            id: presentacionPedida.id as string,
+            nombre: presentacionPedida.nombre as string,
+            factor,
+            cantidadPresentacion: cantidadEnForma,
+            // Lo cobrado por presentación, exacto: el del server, o el del
+            // cliente si la venta es offline (mismo criterio que precioUsado).
+            precioPresentacion: esVentaOffline
+              ? precioClienteEnForma
+              : precioPresentacionServer!,
+          }
+        : null,
       // Cuánto se apartó del precio vigente, por unidad. Cero en toda venta
       // online, donde `precioUsado` ES el del server.
       desfasajeUnitario: precioUsado - precioServer,
@@ -859,6 +994,7 @@ export async function registrarVentaAction(
       descuentoMonto: itemDescuentoMonto,
       precioFinal: itemPrecioFinal,
       tratamientoIva: item.tratamientoIva,
+      presentacion: item.presentacion,
     });
   }
 
@@ -1480,17 +1616,21 @@ export async function registrarVentaAction(
     // renglón no es ningún producto, para que el historial no lo muestre como
     // "Producto eliminado".
     es_venta_libre: item.esVentaLibre,
+    // Qué presentación se vendió, congelada. Ver 20260918120000.
+    presentacion_id: item.presentacion?.id ?? null,
+    presentacion_nombre: item.presentacion?.nombre ?? null,
+    factor: item.presentacion?.factor ?? 1,
+    cantidad_presentacion: item.presentacion?.cantidadPresentacion ?? null,
+    precio_presentacion: item.presentacion?.precioPresentacion ?? null,
   }));
 
   // El espejo legacy va por DELTA (cuánto restarle), no con el valor final: el
   // valor que se mandaba antes salía de una lectura hecha al principio de la
   // venta y dos cajas concurrentes escribían las dos sobre la misma foto.
-  const stockLegacy = itemsProcesados
-    .filter((item) => item.stockId)
-    .map((item) => ({
-      stock_id: item.stockId,
-      cantidad: item.cantidad,
-    }));
+  // La unidad base y una presentación de la misma variante son renglones
+  // distintos, pero apuntan a UNA fila legacy. PostgreSQL no suma fuentes
+  // duplicadas en UPDATE ... FROM: el payload tiene que llegar agrupado.
+  const stockLegacy = agruparStockLegacy(itemsProcesados);
 
   const ticketCorto = ventaId.split("-")[0].toUpperCase();
 

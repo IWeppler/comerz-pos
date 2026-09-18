@@ -5,6 +5,21 @@ import { toast } from "sonner";
 import { Producto } from "@/entities/productos/types";
 import type { Rubro } from "@/entities/config/types";
 import {
+  UNIDAD_MEDIDA_DEFAULT,
+  normalizarUnidadMedida,
+  type UnidadMedida,
+} from "@/shared/lib/fiscal-producto";
+import {
+  normalizarCantidadVendible,
+  parsearCantidadDeEntrada,
+  redondearCantidad,
+} from "@/shared/lib/unidad-venta";
+import {
+  normalizarCantidadEnForma,
+  presentacionesDeVariante,
+  type Presentacion,
+} from "@/shared/lib/presentaciones";
+import {
   matchPorNombre,
   matchSkuExacto,
   normalizarQuery,
@@ -59,8 +74,7 @@ type AltaRapidaPendiente = {
 export type CampoDeFoco =
   | "nombre"
   | "codigo"
-  | "talle"
-  | "color"
+  | `atributo:${string}`
   | "precioCompra"
   | "precioVenta"
   | "cantidad";
@@ -73,6 +87,12 @@ type VarianteResuelta = {
   sku: string | null;
   precioCosto: number;
   precioVenta: number;
+  /** `productos.unidad_medida` tal cual viene del catálogo; se normaliza al
+   * armar la línea. */
+  unidadMedida: string | null | undefined;
+  /** `productos.producto_presentaciones` del catálogo; se resuelven para la
+   * variante al armar la línea. */
+  presentaciones: Presentacion[] | null | undefined;
 };
 
 /** Heurística simple: un código/SKU escaneado no tiene espacios; un
@@ -176,6 +196,12 @@ export function useCargaRapida(
         cantidad: 1,
         precioCosto: payload.precioCosto,
         precioVenta: payload.precioVenta,
+        unidadMedida: normalizarUnidadMedida(payload.unidadMedida),
+        presentaciones: presentacionesDeVariante(
+          payload.presentaciones,
+          payload.varianteId,
+        ),
+        presentacionId: null,
       };
       return [...prev, nueva];
     });
@@ -197,7 +223,7 @@ export function useCargaRapida(
               i === 0
                 ? {
                     ...v,
-                    stock: String((Number.parseInt(v.stock, 10) || 0) + 1),
+                    stock: String(parsearCantidadDeEntrada(v.stock) + 1),
                   }
                 : v,
             ),
@@ -274,10 +300,10 @@ export function useCargaRapida(
         precioCompra: 0,
         precioVenta: 0,
         idMaster: null,
+        unidadMedida: UNIDAD_MEDIDA_DEFAULT,
         tieneVariantes: false,
         cantidad: 1,
-        talle: null,
-        color: null,
+        atributos: {},
       },
     ]);
     setQuery("");
@@ -313,6 +339,8 @@ export function useCargaRapida(
         sku: variantes[0].sku ?? null,
         precioCosto: variantes[0].costo ?? producto.precio_costo ?? 0,
         precioVenta: variantes[0].precio ?? producto.precio,
+        unidadMedida: producto.unidad_medida,
+        presentaciones: producto.producto_presentaciones,
       });
       return;
     }
@@ -349,6 +377,7 @@ export function useCargaRapida(
       precioCompra: 0,
       precioVenta: 0,
       idMaster: prefill.idMaster,
+      unidadMedida: UNIDAD_MEDIDA_DEFAULT,
     };
 
     // Sin atributos en el maestro no hay combinación que congelar: es un
@@ -366,8 +395,7 @@ export function useCargaRapida(
             ...base,
             tieneVariantes: false,
             cantidad: 1,
-            talle: null,
-            color: null,
+            atributos: {},
           };
 
     setLineas((prev) => [...prev, nueva]);
@@ -435,6 +463,8 @@ export function useCargaRapida(
         sku: m.variante.sku ?? null,
         precioCosto: m.variante.costo ?? m.producto.precio_costo ?? 0,
         precioVenta: m.variante.precio ?? m.producto.precio,
+        unidadMedida: m.producto.unidad_medida,
+        presentaciones: m.producto.producto_presentaciones,
       });
       setQuery("");
       return;
@@ -590,6 +620,9 @@ export function useCargaRapida(
       // Se preserva al reeditar una línea que ya venía del maestro.
       idMaster:
         altaRapida.maestro?.idMaster ?? altaRapida.editando?.idMaster ?? null,
+      // Se elige inline en la fila, no en el modal: al reeditar hay que
+      // preservarla o guardar el modal la devolvería a UNIDAD sin avisar.
+      unidadMedida: altaRapida.editando?.unidadMedida ?? UNIDAD_MEDIDA_DEFAULT,
     };
     const nueva: LineaCargaNueva = datos.tieneVariantes
       ? {
@@ -602,17 +635,13 @@ export function useCargaRapida(
           ...base,
           tieneVariantes: false,
           cantidad: datos.cantidad,
-          // El modal no edita talle/color (son inline en la fila): al
-          // reeditar una línea simple hay que preservar lo que ya se cargó,
-          // o guardar el modal se los comería sin avisar.
-          talle:
+          // El modal no edita los atributos inline de la fila: al reeditar
+          // una línea simple hay que preservar lo que ya se cargó, o guardar
+          // el modal se los comería sin avisar.
+          atributos:
             altaRapida.editando && !altaRapida.editando.tieneVariantes
-              ? altaRapida.editando.talle
-              : null,
-          color:
-            altaRapida.editando && !altaRapida.editando.tieneVariantes
-              ? altaRapida.editando.color
-              : null,
+              ? altaRapida.editando.atributos
+              : {},
         };
 
     setLineas((prev) =>
@@ -629,6 +658,10 @@ export function useCargaRapida(
     // Se acepta 0 para que el campo inline se pueda vaciar y retipear; la
     // línea queda marcada como incompleta y `confirmar` la frena.
     if (!Number.isFinite(cantidad) || cantidad < 0) return;
+    // Al gramo, que es lo que guarda la base. Un producto por unidad no
+    // debería recibir decimales, pero eso lo frena `confirmar` con el nombre
+    // de la línea puesto, no un redondeo silencioso acá.
+    cantidad = redondearCantidad(cantidad);
     setLineas((prev) =>
       prev.map((l) => {
         if (l.clienteLineaId !== clienteLineaId) return l;
@@ -648,6 +681,44 @@ export function useCargaRapida(
         // no significa nada — para eso está el botón de quitar.
         if (cantidad <= 0) return l;
         return { ...l, cantidad };
+      }),
+    );
+  }
+
+  /**
+   * Por qué se vende el producto NUEVO. Solo para líneas nuevas: la de un
+   * producto que ya existe la trae del catálogo y se cambia editando el
+   * producto, no desde una recepción de stock.
+   */
+  function updateUnidadLinea(clienteLineaId: string, unidad: UnidadMedida) {
+    setLineas((prev) =>
+      prev.map((l) =>
+        l.clienteLineaId === clienteLineaId && l.kind === "NUEVA"
+          ? { ...l, unidadMedida: normalizarUnidadMedida(unidad) }
+          : l,
+      ),
+    );
+  }
+
+  /**
+   * En qué FORMA entra el stock de un producto que ya existe: la unidad base
+   * (null) o una de sus presentaciones ("3 baldes"). Cambiar de forma
+   * redondea la cantidad a entero cuando pasa a presentación: 2,5 baldes no
+   * existen, y dejar el decimal solo trasladaría el rechazo a Confirmar.
+   */
+  function updateFormaLinea(clienteLineaId: string, presentacionId: string | null) {
+    setLineas((prev) =>
+      prev.map((l) => {
+        if (l.clienteLineaId !== clienteLineaId || l.kind !== "EXISTENTE") return l;
+        const valida =
+          presentacionId === null ||
+          l.presentaciones.some((p) => p.id === presentacionId);
+        if (!valida) return l;
+        const cantidad =
+          presentacionId === null
+            ? l.cantidad
+            : Math.max(1, Math.round(l.cantidad));
+        return { ...l, presentacionId, cantidad };
       }),
     );
   }
@@ -721,21 +792,22 @@ export function useCargaRapida(
   }
 
   /**
-   * Edición inline de los campos de texto de una línea nueva: nombre, código,
-   * talle y color.
+   * Edición inline de los campos de texto de una línea nueva: nombre, código
+   * y los atributos de variante del rubro (`atributo:<clave>`, ej.
+   * `atributo:talle`, `atributo:peso`).
    *
    * `nombre` es string y puede quedar vacío mientras se tipea (la fila se
-   * marca y `confirmar` la frena). Los otros tres guardan null cuando quedan
-   * vacíos: talle y color son opcionales y un string vacío llegaría al alta
-   * como un atributo sin valor.
+   * marca y `confirmar` la frena). El código guarda null cuando queda vacío y
+   * un atributo vacío se saca del mapa: son opcionales y un string vacío
+   * llegaría al alta como un atributo sin valor.
    *
-   * Talle, color y código solo aplican a líneas sin variantes. Las que traen
+   * Atributos y código solo aplican a líneas sin variantes. Las que traen
    * grilla (o variante fija del maestro) ya tienen sus atributos y su sku ahí
    * adentro: un talle suelto al lado sería un segundo lugar diciendo lo mismo.
    */
   function updateTextoLinea(
     clienteLineaId: string,
-    campo: "nombre" | "codigo" | "talle" | "color",
+    campo: "nombre" | "codigo" | `atributo:${string}`,
     valor: string,
   ) {
     setLineas((prev) =>
@@ -743,7 +815,14 @@ export function useCargaRapida(
         if (l.clienteLineaId !== clienteLineaId || l.kind !== "NUEVA") return l;
         if (campo === "nombre") return { ...l, nombre: valor };
         if (l.tieneVariantes) return l;
-        return { ...l, [campo]: valor.trim() ? valor : null };
+        if (campo === "codigo") {
+          return { ...l, codigo: valor.trim() ? valor : null };
+        }
+        const clave = campo.slice("atributo:".length);
+        const atributos = { ...l.atributos };
+        if (valor.trim()) atributos[clave] = valor;
+        else delete atributos[clave];
+        return { ...l, atributos };
       }),
     );
   }
@@ -784,13 +863,40 @@ export function useCargaRapida(
       if (l.precioVenta <= 0) return true;
       if (l.tieneVariantes) {
         if (!l.varianteFijaLabel) return false;
-        return (Number.parseInt(l.variantes[0]?.stock ?? "0", 10) || 0) <= 0;
+        return (
+          normalizarCantidadVendible(
+            l.variantes[0]?.stock ?? "0",
+            l.unidadMedida,
+          ) === null
+        );
       }
-      return l.cantidad <= 0;
+      return normalizarCantidadVendible(l.cantidad, l.unidadMedida) === null;
     });
     if (incompleta) {
       toast.error(
         `Completá precio de venta y cantidad de "${incompleta.nombre}" antes de confirmar.`,
+      );
+      return;
+    }
+
+    // Un producto que ya existe se vende por lo que dice su ficha: 0,5 de
+    // crema por kilo es medio kilo, pero 0,5 de una remera no es nada.
+    // Y con presentación ("3 baldes") la cantidad es entera siempre, aunque
+    // el producto sea por kilo: medio balde no es una presentación.
+    const existenteMal = lineas.find(
+      (l): l is LineaCargaExistente =>
+        l.kind === "EXISTENTE" &&
+        normalizarCantidadEnForma(
+          l.cantidad,
+          l.unidadMedida,
+          l.presentaciones.find((p) => p.id === l.presentacionId) ?? null,
+        ) === null,
+    );
+    if (existenteMal) {
+      toast.error(
+        existenteMal.presentacionId
+          ? `"${existenteMal.nombreProducto}": la cantidad de presentaciones tiene que ser entera.`
+          : `"${existenteMal.nombreProducto}" se vende por unidad: la cantidad tiene que ser entera.`,
       );
       return;
     }
@@ -830,6 +936,7 @@ export function useCargaRapida(
   }
 
   return {
+    rubro,
     lineas,
     query,
     setQuery,
@@ -857,6 +964,8 @@ export function useCargaRapida(
         precioCosto:
           seleccion.costo ?? variantSelectorProducto.precio_costo ?? 0,
         precioVenta: seleccion.precio ?? variantSelectorProducto.precio,
+        unidadMedida: variantSelectorProducto.unidad_medida,
+        presentaciones: variantSelectorProducto.producto_presentaciones,
       });
     },
     maestroCandidatos,
@@ -869,6 +978,8 @@ export function useCargaRapida(
     onEditarLineaNueva: abrirEdicionLineaNueva,
     agregarLineaNueva,
     updateCantidad,
+    updateUnidadLinea,
+    updateFormaLinea,
     updatePrecioLinea,
     updateTextoLinea,
     removeLinea,

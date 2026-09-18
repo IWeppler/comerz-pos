@@ -1,3 +1,5 @@
+import type { Presentacion } from "@/shared/lib/presentaciones";
+
 export interface ProductoStock {
   id: string;
   producto_id?: string;
@@ -107,6 +109,14 @@ export interface Producto {
   stock?: ProductoStock[];
   producto_variantes?: ProductoVariante[];
   /**
+   * Formas comerciales de vender el stock (Balde 4,7 kg, Pack x10). Sin stock
+   * propio: consumen `producto_variantes.stock` por `factor`. Vacío o ausente
+   * = se vende solo en la unidad base, que es el caso de todo el catálogo
+   * hasta 20260918120000. Lo traen el catálogo del panel y el índice de
+   * /stock; NO el público (todavía). Ver shared/lib/presentaciones.ts.
+   */
+  producto_presentaciones?: Presentacion[];
+  /**
    * El precio que REALMENTE se cobra: el de las variantes cuando todas
    * coinciden, el de cabecera si no. `precio` y `precio_efectivo` son números
    * distintos en 30 productos de los cuatro negocios, y el que gana en la
@@ -180,6 +190,8 @@ export type ProductoIndice = Pick<
     ProductoVariante,
     "id" | "sku" | "nombre_display" | "precio" | "costo" | "stock" | "atributos"
   >[];
+  /** La ficha las edita; el catálogo del panel las trae completas. */
+  producto_presentaciones?: Presentacion[];
 };
 
 /**

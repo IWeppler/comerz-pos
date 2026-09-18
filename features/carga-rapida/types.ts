@@ -3,6 +3,8 @@ import type {
   ProductoCreado,
   VarianteInput,
 } from "@/features/stock/types";
+import type { UnidadMedida } from "@/shared/lib/fiscal-producto";
+import type { Presentacion } from "@/shared/lib/presentaciones";
 
 export type LineaCargaExistente = {
   kind: "EXISTENTE";
@@ -15,6 +17,21 @@ export type LineaCargaExistente = {
   cantidad: number;
   precioCosto: number;
   precioVenta: number;
+  /** La del producto que ya existe. Decide si `cantidad` admite fracción
+   * (0,5 kg de crema) y con qué abreviatura se muestra. */
+  unidadMedida: UnidadMedida;
+  /**
+   * Las presentaciones que aplican a ESTA variante (resueltas con
+   * `presentacionesDeVariante`), para que la fila ofrezca "kg | Balde 4,7 kg".
+   * Vacío = solo se recibe en la unidad base.
+   */
+  presentaciones: Presentacion[];
+  /**
+   * En qué forma viene `cantidad`: null = unidad base; un id = esa
+   * presentación, y entonces `cantidad` es entera y el stock que entra es
+   * `cantidad × factor`. El factor se vuelve a leer en el server.
+   */
+  presentacionId: string | null;
 };
 
 type LineaCargaNuevaBase = {
@@ -30,6 +47,13 @@ type LineaCargaNuevaBase = {
   categoriaId: string | null;
   precioCompra: number;
   precioVenta: number;
+  /**
+   * Por qué se vende: unidad, kilo, litro… Se elige inline en la fila y viaja
+   * a `crearProductoAction` como `unidad_medida`. Sin esto la carga rápida
+   * creaba todo por UNIDAD: "1" de crema era una crema, no un kilo, y después
+   * no se podía vender de a 0,250 sin ir a editar el producto.
+   */
+  unidadMedida: UnidadMedida;
   /** Referencia al producto del maestro del que se precargó, si hubo match.
    * Los datos ya están COPIADOS en los campos de arriba: esto es solo
    * trazabilidad, nada de la venta depende de poder resolverlo después. */
@@ -39,8 +63,10 @@ type LineaCargaNuevaBase = {
 /** Producto nuevo simple: una sola línea, cantidad editable inline en la
  * lista, igual que hoy.
  *
- * `talle` y `color` son OPCIONALES y se cargan inline en la fila, junto con
- * el código. Si alguno viene cargado, la línea deja de crear un producto
+ * `atributos` son los de variante que el RUBRO carga inline en la fila
+ * (`atributos-inline-por-rubro.ts`: talle y color en indumentaria, peso en
+ * un kiosco, medida y material en ferretería), por clave de planilla y
+ * OPCIONALES. Si alguno viene cargado, la línea deja de crear un producto
  * "Único" y crea UNA combinación con esos atributos (ver procesarLineaNueva
  * en confirmar-carga.ts). No se guardan como texto suelto: viajan como
  * opción + variante, así pasan por la MISMA canonicalización de atributos
@@ -48,8 +74,7 @@ type LineaCargaNuevaBase = {
 export type LineaCargaNuevaSimple = LineaCargaNuevaBase & {
   tieneVariantes: false;
   cantidad: number;
-  talle: string | null;
-  color: string | null;
+  atributos: Record<string, string>;
 };
 
 /** Producto nuevo con variantes (talle/color/etc): el stock y precio

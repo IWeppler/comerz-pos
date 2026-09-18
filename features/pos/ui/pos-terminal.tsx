@@ -31,6 +31,7 @@ import {
   productoCargadoAProducto,
   resolverImagenPrincipal,
   resolverVariantesVendibles,
+  formaInicialDeLinea,
   type VarianteVendible,
 } from "../lib/producto-a-carrito";
 import { useCargaRapida } from "@/features/carga-rapida/hooks/use-carga-rapida";
@@ -320,21 +321,30 @@ export function PosTerminal({
       precioCosto: producto.precio_costo,
     });
 
+    // La forma: presentación default si hay, unidad base si no. El precio
+    // de la línea sale en esa forma; `precioBase` sigue por unidad base.
+    const forma = formaInicialDeLinea(producto, variante.varianteId, precio);
+
     addItem({
       productoId: producto.id,
       nombre: producto.nombre || "Sin nombre",
       tipo: producto.tipo || "",
       variante: variante.variante,
       varianteId: variante.varianteId,
-      precio,
+      precio: forma.precio,
       // El base y el costo viajan en la línea para que cambiar de lista pueda
       // re-preciar el ticket sin volver a mirar el catálogo: el carrito se
       // dibuja en otro componente que a propósito no recibe los ~2 MB de
       // productos.
       precioBase,
+      precioBaseEfectivo: precio,
       costoBase: producto.precio_costo ?? null,
       cantidad: 1,
       unidadMedida: producto.unidad_medida,
+      presentacionId: forma.presentacionId,
+      presentacionNombre: forma.presentacionNombre,
+      factor: forma.factor,
+      presentaciones: forma.presentaciones,
       imagenUrl: resolverImagenPrincipal(producto),
       stockMaximo: variante.cantidad,
     });

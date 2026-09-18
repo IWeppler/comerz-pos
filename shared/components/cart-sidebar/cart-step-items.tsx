@@ -11,8 +11,21 @@ interface CartStepItemsProps {
     productoId: string,
     variante: string,
     cantidad: number,
+    presentacionId?: string | null,
   ) => void;
-  onRemoveItem: (productoId: string, variante: string) => void;
+  onRemoveItem: (
+    productoId: string,
+    variante: string,
+    presentacionId?: string | null,
+  ) => void;
+  /** Cambiar la forma de venta de una línea (kilo suelto ↔ balde). Sin esto
+   * la línea muestra la forma como texto fijo. */
+  onCambiarForma?: (
+    productoId: string,
+    variante: string,
+    presentacionIdActual: string | null,
+    presentacionIdNueva: string | null,
+  ) => void;
   totalCarrito: number;
   onContinueToPayment: () => void;
   continueLabel?: string;
@@ -54,6 +67,7 @@ export function CartStepItems({
   items,
   onUpdateQuantity,
   onRemoveItem,
+  onCambiarForma,
   totalCarrito,
   onContinueToPayment,
   continueLabel = "Continuar al Pago",
@@ -102,7 +116,7 @@ export function CartStepItems({
           <div className="space-y-3">
             {items.map((item) => (
               <CartItemRow
-                key={`${item.productoId}-${item.variante}`}
+                key={`${item.productoId}-${item.variante}-${item.presentacionId ?? ""}`}
                 item={item}
                 mostrarImagen={mostrarImagenes}
                 esSerializada={
@@ -116,9 +130,31 @@ export function CartStepItems({
                 }
                 onElegirUnidad={onElegirUnidad}
                 onUpdateQuantity={(cantidad) =>
-                  onUpdateQuantity(item.productoId, item.variante, cantidad)
+                  onUpdateQuantity(
+                    item.productoId,
+                    item.variante,
+                    cantidad,
+                    item.presentacionId ?? null,
+                  )
                 }
-                onRemove={() => onRemoveItem(item.productoId, item.variante)}
+                onRemove={() =>
+                  onRemoveItem(
+                    item.productoId,
+                    item.variante,
+                    item.presentacionId ?? null,
+                  )
+                }
+                onCambiarForma={
+                  onCambiarForma
+                    ? (nueva) =>
+                        onCambiarForma(
+                          item.productoId,
+                          item.variante,
+                          item.presentacionId ?? null,
+                          nueva,
+                        )
+                    : undefined
+                }
               />
             ))}
             {pieDeLineas && <div className="pt-1">{pieDeLineas}</div>}

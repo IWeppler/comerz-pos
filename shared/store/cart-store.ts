@@ -2,6 +2,32 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CartItemStore } from "@/entities/cart/types";
 import { pasoCantidad, redondearCantidad } from "@/shared/lib/unidad-venta";
+import {
+  precioEnForma,
+  topeCantidadEnForma,
+} from "@/shared/lib/presentaciones";
+
+/**
+ * Qué hace que dos líneas sean LA MISMA: producto + variante + forma. El kilo
+ * suelto y el balde de la misma crema son dos renglones, con precio y
+ * cantidad propios. Es la clave de los mapas de re-precio y la que usan
+ * remove/update para encontrar la línea.
+ */
+export function claveLinea(item: {
+  productoId: string;
+  variante: string;
+  presentacionId?: string | null;
+}): string {
+  return `${item.productoId}|${item.variante}|${item.presentacionId ?? ""}`;
+}
+
+/** Cuánto acepta la línea como máximo, en la unidad en que se vende. */
+function topeDeLinea(item: CartItemStore): number {
+  return topeCantidadEnForma(
+    item.stockMaximo,
+    item.presentacionId ? { factor: item.factor ?? 1 } : null,
+  );
+}
 
 interface CartState {
   items: CartItemStore[];
@@ -26,17 +52,36 @@ interface CartState {
   setPedidoActivo: (pedido: CartState["pedidoActivo"]) => void;
 
   addItem: (item: CartItemStore) => void;
-  removeItem: (productoId: string, variante: string) => void;
+  removeItem: (
+    productoId: string,
+    variante: string,
+    presentacionId?: string | null,
+  ) => void;
   updateQuantity: (
     productoId: string,
     variante: string,
     cantidad: number,
+    presentacionId?: string | null,
+  ) => void;
+  /**
+   * Cambia la FORMA de una línea: de kilo suelto a balde o al revés. Es otra
+   * identidad, así que si ya hay una línea en la forma nueva se funde con
+   * ella. La cantidad vuelve a 1: 2,35 kg no son "2,35 baldes".
+   */
+  cambiarForma: (
+    productoId: string,
+    variante: string,
+    presentacionIdActual: string | null,
+    presentacionIdNueva: string | null,
   ) => void;
   clearCart: () => void;
   sincronizarNegocio: (negocioId: string | null) => void;
   setListaPrecio: (
     listaPrecioId: string | null,
-    preciosPorLinea: Record<string, { precio: number; precioBase: number }>,
+    preciosPorLinea: Record<
+      string,
+      { precio: number; precioBase: number; precioBaseEfectivo?: number }
+    >,
   ) => void;
 
   toggleCart: () => void;
@@ -59,9 +104,7 @@ export const useCartStore = create<CartState>()(
       addItem: (newItem) => {
         set((state) => {
           const existingItemIndex = state.items.findIndex(
-            (item) =>
-              item.productoId === newItem.productoId &&
-              item.variante === newItem.variante,
+            (item) => claveLinea(item) === claveLinea(newItem),
           );
 
           if (existingItemIndex >= 0) {
@@ -74,7 +117,7 @@ export const useCartStore = create<CartState>()(
             const newQuantity = redondearCantidad(
               Math.min(
                 currentItem.cantidad + newItem.cantidad,
-                currentItem.stockMaximo,
+                topeDeLinea(currentItem),
               ),
             );
 
@@ -100,32 +143,100 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      removeItem: (productoId, variante) => {
+      removeItem: (productoId, variante, presentacionId = null) => {
+        const clave = claveLinea({ productoId, variante, presentacionId });
         set((state) => ({
-          items: state.items.filter(
-            (item) =>
-              !(item.productoId === productoId && item.variante === variante),
-          ),
+          items: state.items.filter((item) => claveLinea(item) !== clave),
         }));
       },
 
-      updateQuantity: (productoId, variante, cantidad) => {
+      updateQuantity: (productoId, variante, cantidad, presentacionId = null) => {
+        const clave = claveLinea({ productoId, variante, presentacionId });
         set((state) => ({
           items: state.items.map((item) => {
-            if (item.productoId === productoId && item.variante === variante) {
+            if (claveLinea(item) === clave) {
               // No pasar el stock máximo ni bajar del mínimo vendible. Ese
               // mínimo YA NO es siempre 1: en un producto por peso es un
               // gramo, y clavarlo en 1 obligaría a vender de a kilos enteros
               // justo en el rubro donde nadie compra un kilo redondo.
-              const minimo = pasoCantidad(item.unidadMedida);
+              // Por presentación es al revés: entera siempre, y el tope es
+              // cuántas presentaciones entran en el stock.
+              const enPresentacion = !!item.presentacionId;
+              const minimo = enPresentacion
+                ? 1
+                : pasoCantidad(item.unidadMedida);
+              const pedida = enPresentacion ? Math.round(cantidad) : cantidad;
               const safeQuantity = redondearCantidad(
-                Math.max(minimo, Math.min(cantidad, item.stockMaximo)),
+                Math.max(minimo, Math.min(pedida, topeDeLinea(item))),
               );
               return { ...item, cantidad: safeQuantity };
             }
             return item;
           }),
         }));
+      },
+
+      cambiarForma: (productoId, variante, actual, nueva) => {
+        if ((actual ?? null) === (nueva ?? null)) return;
+        const claveActual = claveLinea({
+          productoId,
+          variante,
+          presentacionId: actual,
+        });
+        set((state) => {
+          const origen = state.items.find(
+            (i) => claveLinea(i) === claveActual,
+          );
+          if (!origen) return {};
+          const presentacion =
+            nueva === null
+              ? null
+              : (origen.presentaciones?.find((p) => p.id === nueva) ?? null);
+          // Una forma que la línea no conoce no se puede elegir.
+          if (nueva !== null && !presentacion) return {};
+
+          const precioBase = origen.precioBase ?? origen.precio;
+          // No derivarlo del precio de la presentación: una FIJA de $45.000
+          // no revela si el kilo vigente por lista vale $12.000 o $10.000.
+          const precioBaseEfectivo =
+            origen.precioBaseEfectivo ??
+            (origen.presentacionId ? precioBase : origen.precio);
+          const cambiada: CartItemStore = {
+            ...origen,
+            presentacionId: presentacion?.id ?? null,
+            presentacionNombre: presentacion?.nombre ?? null,
+            factor: presentacion?.factor ?? 1,
+            precio: precioEnForma(precioBaseEfectivo, presentacion),
+            precioBase,
+            precioBaseEfectivo,
+            cantidad: 1,
+          };
+
+          const claveNueva = claveLinea(cambiada);
+          const destino = state.items.find(
+            (i) => claveLinea(i) === claveNueva,
+          );
+          if (destino) {
+            // Ya había una línea en esa forma: se suma ahí y la de origen se va.
+            return {
+              items: state.items
+                .filter((i) => claveLinea(i) !== claveActual)
+                .map((i) =>
+                  claveLinea(i) === claveNueva
+                    ? {
+                        ...i,
+                        cantidad: Math.min(i.cantidad + 1, topeDeLinea(i)),
+                      }
+                    : i,
+                ),
+            };
+          }
+          return {
+            items: state.items.map((i) =>
+              claveLinea(i) === claveActual ? cambiada : i,
+            ),
+          };
+        });
       },
 
       clearCart: () => set({ items: [], pedidoActivo: null }),
@@ -139,9 +250,11 @@ export const useCartStore = create<CartState>()(
        * escrituras habría un render con la lista nueva y los precios viejos, y
        * ese es justo el instante en el que alguien confirma la venta.
        *
-       * La clave del mapa es `productoId|variante`, que es la misma con la que
-       * el carrito identifica una línea. Una línea sin entrada en el mapa
-       * queda como está.
+       * La clave del mapa es `claveLinea(item)` (producto|variante|forma), la
+       * misma con la que el carrito identifica una línea. Una línea sin
+       * entrada en el mapa queda como está. `precio` viene YA en la forma de
+       * la línea (por balde si es balde); `precioBase` es el precio de lista
+       * base y `precioBaseEfectivo` el vigente después de aplicar la lista.
        *
        * Se escribe TAMBIÉN `precioBase`, y eso no es un extra: una línea que
        * entró al carrito desde otra pantalla (Inventario, la ficha de un
@@ -153,10 +266,16 @@ export const useCartStore = create<CartState>()(
         set((state) => ({
           listaPrecioId,
           items: state.items.map((item) => {
-            const nuevo = preciosPorLinea[`${item.productoId}|${item.variante}`];
+            const nuevo = preciosPorLinea[claveLinea(item)];
             return nuevo === undefined
               ? item
-              : { ...item, precio: nuevo.precio, precioBase: nuevo.precioBase };
+              : {
+                  ...item,
+                  precio: nuevo.precio,
+                  precioBase: nuevo.precioBase,
+                  precioBaseEfectivo:
+                    nuevo.precioBaseEfectivo ?? nuevo.precioBase,
+                };
           }),
         }));
       },

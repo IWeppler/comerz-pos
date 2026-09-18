@@ -7,6 +7,13 @@ import { invalidarCatalogoDeSesion } from "@/shared/lib/cache-catalogo";
 import { crearProductoAction } from "@/features/stock/actions/create-product";
 import { buildVariantKey } from "@/features/stock/utils/parse-legacy-variant";
 import type { Opcion, VarianteInput } from "@/features/stock/types";
+import { normalizarUnidadMedida } from "@/shared/lib/fiscal-producto";
+import { etiquetaDeAtributoInline } from "@/features/carga-rapida/lib/atributos-inline-por-rubro";
+import { normalizarCantidadVendible } from "@/shared/lib/unidad-venta";
+import {
+  cantidadBase,
+  normalizarCantidadEnForma,
+} from "@/shared/lib/presentaciones";
 import type {
   ConfirmarCargaResponse,
   LineaCarga,
@@ -16,12 +23,28 @@ import type {
 
 type SupabaseDb = ReturnType<typeof createClient>;
 
+// La cantidad se valida contra la unidad de la línea con el MISMO criterio
+// que la venta (`normalizarCantidadVendible`): por kilo admite 0,250, por
+// unidad no. La unidad de una línea EXISTENTE viene del cliente y no se
+// vuelve a leer del catálogo a propósito: es stock que ENTRA, no plata, y el
+// peor caso es un decimal en un producto por unidad, que se muestra igual.
+function cantidadInvalida(cantidad: unknown, unidad: unknown): string | null {
+  return normalizarCantidadVendible(cantidad, unidad) === null
+    ? "La cantidad tiene que ser mayor a 0 (y entera si se vende por unidad)."
+    : null;
+}
+
 function validarLinea(linea: LineaCarga): string | null {
   if (linea.kind === "EXISTENTE") {
-    if (!Number.isFinite(linea.cantidad) || linea.cantidad <= 0) {
-      return "La cantidad tiene que ser mayor a 0.";
-    }
-    return null;
+    // Con presentación la cantidad es entera; el factor real se lee de la
+    // base al procesar, acá solo importa la forma.
+    return normalizarCantidadEnForma(
+      linea.cantidad,
+      linea.unidadMedida,
+      linea.presentacionId ? { factor: 1 } : null,
+    ) === null
+      ? "La cantidad tiene que ser mayor a 0 (y entera si se vende por unidad o por presentación)."
+      : null;
   }
 
   if (!linea.nombre.trim()) return "Falta el nombre del producto.";
@@ -39,8 +62,8 @@ function validarLinea(linea: LineaCarga): string | null {
     if (linea.opciones.length === 0 || linea.variantes.length === 0) {
       return "Las variantes no tienen propiedades o valores válidos.";
     }
-  } else if (!Number.isFinite(linea.cantidad) || linea.cantidad <= 0) {
-    return "La cantidad tiene que ser mayor a 0.";
+  } else {
+    return cantidadInvalida(linea.cantidad, linea.unidadMedida);
   }
   return null;
 }
@@ -53,6 +76,7 @@ function validarLinea(linea: LineaCarga): string | null {
 async function sincronizarStockLegacy(
   supabase: SupabaseDb,
   linea: LineaCargaExistente,
+  delta: number,
 ) {
   try {
     const { data: stockExistente, error: stockSelectError } = await supabase
@@ -68,7 +92,7 @@ async function sincronizarStockLegacy(
       const { error } = await supabase
         .from("productos_stock")
         .update({
-          cantidad: Number(stockExistente.cantidad || 0) + linea.cantidad,
+          cantidad: Number(stockExistente.cantidad || 0) + delta,
         })
         .eq("id", stockExistente.id);
       if (error) throw error;
@@ -76,7 +100,7 @@ async function sincronizarStockLegacy(
       const { error } = await supabase.from("productos_stock").insert({
         producto_id: linea.productoId,
         variante: linea.nombreDisplay,
-        cantidad: linea.cantidad,
+        cantidad: delta,
       });
       if (error) throw error;
     }
@@ -92,11 +116,41 @@ async function procesarLineaExistente(
   supabase: SupabaseDb,
   linea: LineaCargaExistente,
 ): Promise<ResultadoLineaCarga> {
+  // Cuánto stock entra. Con presentación ("3 baldes") es cantidad × factor, y
+  // el factor se lee de la BASE por id, nunca del cliente: mismo criterio que
+  // el precio en la venta. La RLS filtra por negocio, así que un id ajeno o
+  // borrado vuelve vacío y la línea falla con nombre en vez de cargar 3 kg
+  // donde iban 14,1.
+  let delta = linea.cantidad;
+  if (linea.presentacionId) {
+    const { data: presentacion, error } = await supabase
+      .from("producto_presentaciones")
+      .select("id, factor, activa")
+      .eq("id", linea.presentacionId)
+      .eq("producto_id", linea.productoId)
+      .maybeSingle();
+    if (error || !presentacion || !presentacion.activa) {
+      return {
+        clienteLineaId: linea.clienteLineaId,
+        ok: false,
+        error: "Esa presentación ya no existe: cargá la cantidad en la unidad base.",
+      };
+    }
+    delta = cantidadBase(linea.cantidad, Number(presentacion.factor));
+    if (delta <= 0) {
+      return {
+        clienteLineaId: linea.clienteLineaId,
+        ok: false,
+        error: "La cantidad de presentaciones tiene que ser mayor a 0.",
+      };
+    }
+  }
+
   const { data: ajustado, error: ajusteError } = await supabase.rpc(
     "ajustar_stock_variante",
     {
       p_variante_id: linea.varianteId,
-      p_delta: linea.cantidad,
+      p_delta: delta,
       p_origen: "CARGA_RAPIDA",
     },
   );
@@ -109,7 +163,7 @@ async function procesarLineaExistente(
     };
   }
 
-  await sincronizarStockLegacy(supabase, linea);
+  await sincronizarStockLegacy(supabase, linea, delta);
 
   return {
     clienteLineaId: linea.clienteLineaId,
@@ -122,38 +176,42 @@ async function procesarLineaExistente(
       nombre: linea.nombreProducto,
       tipo: "",
       precio: linea.precioVenta,
+      unidad_medida: linea.unidadMedida,
       variantes: [
         {
           id: linea.varianteId,
           nombre_display: linea.nombreDisplay,
           precio: linea.precioVenta,
-          stock: Number(ajustado[0]?.stock ?? linea.cantidad),
+          stock: Number(ajustado[0]?.stock ?? delta),
         },
       ],
+      presentaciones: linea.presentaciones,
     },
   };
 }
 
 /**
- * Talle y color cargados inline en una línea simple: se convierten en UNA
- * combinación (opciones + una variante), que es la misma forma que manda el
- * modal de alta y el prefill del maestro.
+ * Atributos cargados inline en una línea simple (talle y color en
+ * indumentaria, peso en un kiosco…): se convierten en UNA combinación
+ * (opciones + una variante), que es la misma forma que manda el modal de alta
+ * y el prefill del maestro.
  *
  * Se hace acá y no en el cliente para que exista UN solo lugar que decida
- * cómo se escribe un atributo tipeado al vuelo. La canonicalización de
- * "Talle"/"Color" y de sus valores la sigue haciendo crearProductoAction
+ * cómo se escribe un atributo tipeado al vuelo. El nombre del atributo sale
+ * de la clave de planilla (`etiquetaDeAtributoInline`), y la canonicalización
+ * de ese nombre y de sus valores la sigue haciendo crearProductoAction
  * (construirCacheAtributos), igual que en el alta completa: acá solo se arma
  * el payload.
  *
- * Devuelve null cuando la línea no trae ninguno de los dos — ahí sigue siendo
- * un producto "Único" con stock a nivel línea, exactamente como antes.
+ * Devuelve null cuando la línea no trae ninguno — ahí sigue siendo un
+ * producto "Único" con stock a nivel línea, exactamente como antes.
  */
-function variantesDesdeTalleColor(
+function variantesDesdeAtributosInline(
   linea: Extract<LineaCarga, { kind: "NUEVA"; tieneVariantes: false }>,
 ): { opciones: Opcion[]; variantes: VarianteInput[] } | null {
-  const entradas: [string, string][] = [];
-  if (linea.talle?.trim()) entradas.push(["Talle", linea.talle.trim()]);
-  if (linea.color?.trim()) entradas.push(["Color", linea.color.trim()]);
+  const entradas: [string, string][] = Object.entries(linea.atributos ?? {})
+    .filter(([, valor]) => valor?.trim())
+    .map(([clave, valor]) => [etiquetaDeAtributoInline(clave), valor.trim()]);
   if (entradas.length === 0) return null;
 
   const valores = Object.fromEntries(entradas);
@@ -192,18 +250,21 @@ async function procesarLineaNueva(
   formData.set("id_master", linea.idMaster ?? "");
   formData.set("categoria_id", linea.categoriaId ?? "");
   formData.set("descripcion", "");
+  // Sin esto `crearProductoAction` cae al default del rubro (UNIDAD) y la
+  // crema queda para venderse de a una, no de a 0,250 kg.
+  formData.set("unidad_medida", normalizarUnidadMedida(linea.unidadMedida));
   formData.set("precio", String(linea.precioVenta));
   formData.set("precio_costo", String(linea.precioCompra));
   // Una línea simple con talle o color deja de ser simple: se manda como
   // combinación única, con el mismo payload que el alta completa.
-  const desdeTalleColor = linea.tieneVariantes
+  const desdeAtributos = linea.tieneVariantes
     ? null
-    : variantesDesdeTalleColor(linea);
+    : variantesDesdeAtributosInline(linea);
 
-  if (linea.tieneVariantes || desdeTalleColor) {
+  if (linea.tieneVariantes || desdeAtributos) {
     const { opciones, variantes } = linea.tieneVariantes
       ? linea
-      : desdeTalleColor!;
+      : desdeAtributos!;
     formData.set("tieneVariantes", "true");
     formData.set("opciones", JSON.stringify(opciones));
     formData.set("variantes", JSON.stringify(variantes));

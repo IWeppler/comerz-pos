@@ -1,3 +1,6 @@
+import type { Presentacion } from "@/shared/lib/presentaciones";
+import type { UnidadMedida } from "@/shared/lib/fiscal-producto";
+
 export type Opcion = {
   id: string;
   nombre: string;
@@ -43,6 +46,8 @@ export type ProductoCreado = {
   nombre: string;
   tipo: string;
   precio: number;
+  /** Necesaria para usar el producto inmediatamente sin esperar el refetch. */
+  unidad_medida: UnidadMedida;
   variantes: {
     id: string;
     nombre_display: string;
@@ -50,6 +55,9 @@ export type ProductoCreado = {
     precio: number | null;
     stock: number;
   }[];
+  /** Las presentaciones del producto que ya existía, para que la línea que
+   * vuelve al POS pueda venderse en su forma. Ausente en un alta nueva. */
+  presentaciones?: Presentacion[];
 };
 
 export type ProductActionState = {

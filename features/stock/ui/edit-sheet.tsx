@@ -67,6 +67,7 @@ import { ProductPriceSection } from "./create-product/product-price-section";
 import { ProductVariantsSection } from "./create-product/product-variants-section";
 import { ProductFiscalSection } from "./create-product/product-fiscal-section";
 import { ProductListasSection } from "./create-product/product-listas-section";
+import { ProductPresentacionesSection } from "./create-product/product-presentaciones-section";
 import { ShareButton } from "@/shared/components/share-button";
 import {
   construirUrlProducto,
@@ -436,6 +437,9 @@ function EditProductForm({
       // producto sí se guardó, pero tampoco puede pasar en silencio.
       if (result.preciosLista) {
         toast.warning(result.preciosLista);
+      }
+      if (result.presentaciones) {
+        toast.warning(result.presentaciones);
       }
 
       if (result.imagenes.success && result.variantes.success) {
@@ -945,6 +949,23 @@ function EditProductForm({
             productoId={producto.id}
             precioVenta={precioVenta}
             precioCosto={precioCosto}
+          />
+
+          {/* Presentaciones comerciales (Balde, Pack x10): UN stock, varias
+              formas de venderlo. Colapsada; el conjunto viaja como JSON con
+              centinela, mismo mecanismo que precios por lista. Las variantes
+              que ve son las GUARDADAS: una presentación atada a una variante
+              recién agregada en este mismo guardado no se puede elegir
+              todavía, porque esa variante no tiene id hasta que se guarde. */}
+          <ProductPresentacionesSection
+            presentacionesIniciales={producto.producto_presentaciones}
+            unidadMedida={producto.unidad_medida}
+            precioVenta={precioVenta}
+            variantes={(producto.producto_variantes ?? []).map((v) => ({
+              id: v.id,
+              nombre_display: v.nombre_display,
+              stock: Number(v.stock) || 0,
+            }))}
           />
 
           {/* Colapsada. Mientras esté cerrada NO monta sus inputs, y la

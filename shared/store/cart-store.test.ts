@@ -13,6 +13,14 @@ const item = (productoId: string): CartItemStore =>
     stockMaximo: 10,
   }) as CartItemStore;
 
+const balde = {
+  id: "balde-47",
+  nombre: "Balde 4,7 kg",
+  factor: 4.7,
+  regla_precio: "FIJO" as const,
+  precio: 45000,
+};
+
 const EVENS = "44468525-8381-4c83-a558-eb7209e386b5";
 const CLICKTOSTADO = "1844badf-1a9a-457c-bfee-4d10122337e8";
 
@@ -95,7 +103,7 @@ describe("setListaPrecio", () => {
     useCartStore.setState({ items: [item("a")] });
 
     useCartStore.getState().setListaPrecio(MAYORISTA, {
-      "a|M": { precio: 9600, precioBase: 12000 },
+      "a|M|": { precio: 9600, precioBase: 12000 },
     });
 
     const estado = useCartStore.getState();
@@ -114,7 +122,7 @@ describe("setListaPrecio", () => {
       const linea = useCartStore.getState().items[0];
       const base = linea.precioBase ?? linea.precio;
       useCartStore.getState().setListaPrecio(MAYORISTA, {
-        "a|M": { precio: Math.round(base * 0.8), precioBase: base },
+        "a|M|": { precio: Math.round(base * 0.8), precioBase: base },
       });
     };
 
@@ -132,7 +140,7 @@ describe("setListaPrecio", () => {
     });
 
     useCartStore.getState().setListaPrecio(null, {
-      "a|M": { precio: 12000, precioBase: 12000 },
+      "a|M|": { precio: 12000, precioBase: 12000 },
     });
 
     expect(useCartStore.getState().listaPrecioId).toBeNull();
@@ -143,7 +151,7 @@ describe("setListaPrecio", () => {
     useCartStore.setState({ items: [item("a"), item("b")] });
 
     useCartStore.getState().setListaPrecio(MAYORISTA, {
-      "a|M": { precio: 9600, precioBase: 12000 },
+      "a|M|": { precio: 9600, precioBase: 12000 },
     });
 
     expect(useCartStore.getState().items[1].precio).toBe(12000);
@@ -167,5 +175,122 @@ describe("setListaPrecio", () => {
 
     expect(useCartStore.getState().items).toEqual([]);
     expect(useCartStore.getState().listaPrecioId).toBeNull();
+  });
+});
+
+describe("presentaciones en el carrito", () => {
+  beforeEach(() => {
+    useCartStore.setState({
+      items: [],
+      negocioId: EVENS,
+      listaPrecioId: null,
+      isOpen: false,
+    });
+  });
+
+  it("mantiene separados el kilo suelto y el balde de la misma variante", () => {
+    const base = { ...item("crema"), variante: "Unico", unidadMedida: "KG" };
+    useCartStore.getState().addItem(base);
+    useCartStore.getState().addItem({
+      ...base,
+      precio: 45000,
+      presentacionId: balde.id,
+      presentacionNombre: balde.nombre,
+      factor: balde.factor,
+      presentaciones: [balde],
+    });
+
+    expect(useCartStore.getState().items).toHaveLength(2);
+  });
+
+  it("limita la cantidad de baldes a los que entran en el stock base", () => {
+    useCartStore.setState({
+      items: [
+        {
+          ...item("crema"),
+          variante: "Unico",
+          unidadMedida: "KG",
+          stockMaximo: 9.4,
+          presentacionId: balde.id,
+          presentacionNombre: balde.nombre,
+          factor: balde.factor,
+          presentaciones: [balde],
+        },
+      ],
+    });
+
+    useCartStore
+      .getState()
+      .updateQuantity("crema", "Unico", 9, balde.id);
+
+    expect(useCartStore.getState().items[0].cantidad).toBe(2);
+  });
+
+  it("al cambiar de una presentación fija a una heredada conserva la lista activa", () => {
+    const heredada = {
+      id: "pack-2",
+      nombre: "Pack x2",
+      factor: 2,
+      regla_precio: "HEREDADO" as const,
+      precio: null,
+    };
+    useCartStore.setState({
+      listaPrecioId: "mayorista",
+      items: [
+        {
+          ...item("crema"),
+          variante: "Unico",
+          precio: 45000,
+          precioBase: 12000,
+          precioBaseEfectivo: 10000,
+          presentacionId: balde.id,
+          presentacionNombre: balde.nombre,
+          factor: balde.factor,
+          presentaciones: [balde, heredada],
+        },
+      ],
+    });
+
+    useCartStore
+      .getState()
+      .cambiarForma("crema", "Unico", balde.id, heredada.id);
+
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      presentacionId: heredada.id,
+      precio: 20000,
+      precioBase: 12000,
+      precioBaseEfectivo: 10000,
+    });
+  });
+
+  it("sella el precio base efectivo aunque una presentación fija no cambie de precio", () => {
+    useCartStore.setState({
+      items: [
+        {
+          ...item("crema"),
+          variante: "Unico",
+          precio: 45000,
+          precioBase: 12000,
+          presentacionId: balde.id,
+          presentacionNombre: balde.nombre,
+          factor: balde.factor,
+          presentaciones: [balde],
+        },
+      ],
+    });
+
+    useCartStore.getState().setListaPrecio("mayorista", {
+      [`crema|Unico|${balde.id}`]: {
+        precio: 45000,
+        precioBase: 12000,
+        precioBaseEfectivo: 10000,
+      },
+    });
+
+    expect(useCartStore.getState().items[0]).toMatchObject({
+      precio: 45000,
+      precioBase: 12000,
+      precioBaseEfectivo: 10000,
+    });
   });
 });

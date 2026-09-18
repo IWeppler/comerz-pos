@@ -19,4 +19,4 @@
  * interpolación les da ParserError. Mismo motivo que en columnas-publicas.ts.
  */
 export const COLUMNAS_CATALOGO_PANEL =
-  "id, negocio_id, nombre, slug, tipo, categoria_id, precio, precio_costo, unidad_medida, descripcion, marca, modelo, genero, atributos_globales, imagen_url, thumbnail_url, grid_url, publicado, creado_en, destacado_en, categoria:categorias(id, nombre, slug), producto_variantes(id, sku, nombre_display, precio, costo, stock, atributos)";
+  "id, negocio_id, nombre, slug, tipo, categoria_id, precio, precio_costo, unidad_medida, descripcion, marca, modelo, genero, atributos_globales, imagen_url, thumbnail_url, grid_url, publicado, creado_en, destacado_en, categoria:categorias(id, nombre, slug), producto_variantes(id, sku, nombre_display, precio, costo, stock, atributos), producto_presentaciones(id, variante_id, nombre, factor, regla_precio, precio, costo, sku, es_default, visible_catalogo, activa, orden)";

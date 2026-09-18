@@ -13,7 +13,10 @@ import { toast } from "sonner";
 import { Layers } from "lucide-react";
 import { parseRawVariantString } from "@/entities/productos/lib/parse-variant-attributes";
 import { resolverAtributosVariante } from "@/entities/productos/lib/build-propiedades-filtro";
-import { resolverImagenPrincipal } from "../lib/producto-a-carrito";
+import {
+  formaInicialDeLinea,
+  resolverImagenPrincipal,
+} from "../lib/producto-a-carrito";
 
 interface VarianteSeleccionada {
   varianteId: string | undefined;
@@ -210,21 +213,32 @@ function QuickAddModalContent({
             stockDisponible: stockDeVariante.cantidad,
           });
         } else {
+          const precioBase = stockDeVariante.precio ?? producto.precio;
+          const forma = formaInicialDeLinea(
+            producto,
+            stockDeVariante.varianteId,
+            precioBase,
+          );
           addItem({
             productoId: producto.id,
             nombre: producto.nombre || "Sin nombre",
             tipo: producto.tipo || "",
             variante: stockDeVariante.variante,
             varianteId: stockDeVariante.varianteId,
-            // El precio de siempre. Si hay una lista activa, el ticket
-            // re-precia esta línea en cuanto entra (ver el guard de
-            // `cart-panel-admin`); `precioBase` es lo que le permite hacerlo
-            // sin tomar un precio ya descontado como base.
-            precio: stockDeVariante.precio ?? producto.precio,
-            precioBase: stockDeVariante.precio ?? producto.precio,
+            // El precio de siempre, en la forma de la línea. Si hay una lista
+            // activa, el ticket re-precia esta línea en cuanto entra (ver el
+            // guard de `cart-panel-admin`); `precioBase` es lo que le
+            // permite hacerlo sin tomar un precio ya descontado como base.
+            precio: forma.precio,
+            precioBase,
+            precioBaseEfectivo: precioBase,
             costoBase: stockDeVariante.costo ?? producto.precio_costo ?? null,
             cantidad: 1,
             unidadMedida: producto.unidad_medida,
+            presentacionId: forma.presentacionId,
+            presentacionNombre: forma.presentacionNombre,
+            factor: forma.factor,
+            presentaciones: forma.presentaciones,
             imagenUrl: resolverImagenPrincipal(producto),
             stockMaximo: stockDeVariante.cantidad,
           });

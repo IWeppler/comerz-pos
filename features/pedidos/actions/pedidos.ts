@@ -5,6 +5,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { FEATURES, tieneFeatureServer } from "@/features/planes/lib/tiene-feature-server";
 import type { CartItemStore } from "@/entities/cart/types";
+import type { PresentacionCarrito } from "@/shared/lib/presentaciones";
 
 /**
  * Pedidos por cobrar: el carrito viaja del punto de venta a la caja.
@@ -23,11 +24,17 @@ export interface PedidoItem {
   varianteId?: string;
   precio: number;
   precioBase?: number;
+  precioBaseEfectivo?: number;
   cantidad: number;
   unidadMedida?: string | null;
   imagenUrl?: string | null;
   /** Renglón de venta libre: sin producto ni stock. Ver `venta-libre.ts`. */
   ventaLibre?: boolean;
+  /** Forma de venta (Balde 4,7 kg). Ver CartItemStore. */
+  presentacionId?: string | null;
+  presentacionNombre?: string | null;
+  factor?: number;
+  presentaciones?: PresentacionCarrito[];
 }
 
 /**
@@ -80,10 +87,15 @@ function aItemPedido(i: CartItemStore): PedidoItem {
     varianteId: i.varianteId,
     precio: i.precio,
     precioBase: i.precioBase,
+    precioBaseEfectivo: i.precioBaseEfectivo,
     cantidad: i.cantidad,
     unidadMedida: i.unidadMedida ?? null,
     imagenUrl: i.imagenUrl ?? null,
     ventaLibre: i.ventaLibre,
+    presentacionId: i.presentacionId ?? null,
+    presentacionNombre: i.presentacionNombre ?? null,
+    factor: i.factor ?? 1,
+    presentaciones: i.presentaciones,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   normalizarUnidadMedida,
 } from "@/shared/lib/fiscal-producto";
 import { esFraccionable, redondearCantidad } from "@/shared/lib/unidad-venta";
+import { topeCantidadEnForma } from "@/shared/lib/presentaciones";
 import {
   parsearCantidadEs,
   parsearImporteEs,
@@ -17,8 +18,15 @@ interface CantidadControlProps {
   /** Precio por unidad de medida (por kilo si la unidad es KG). */
   precio: number;
   unidadMedida?: string | null;
+  /** En unidad BASE (como `CartItemStore.stockMaximo`). */
   stockMaximo: number;
   onChange: (cantidad: number) => void;
+  /**
+   * La línea se vende por presentación (Balde 4,7 kg): la cantidad es entera
+   * siempre —aunque el producto sea por kilo— y el tope es cuántas entran en
+   * el stock. Va el stepper de unidad, no el teclado de peso.
+   */
+  presentacion?: { factor: number } | null;
 }
 
 /**
@@ -82,9 +90,11 @@ export function CantidadControl({
   unidadMedida,
   stockMaximo,
   onChange,
+  presentacion,
 }: Readonly<CantidadControlProps>) {
   const unidad = normalizarUnidadMedida(unidadMedida);
-  const fraccionable = esFraccionable(unidad);
+  const fraccionable = esFraccionable(unidad) && !presentacion;
+  const tope = topeCantidadEnForma(stockMaximo, presentacion ?? null);
 
   if (!fraccionable) {
     return (
@@ -101,7 +111,7 @@ export function CantidadControl({
         </span>
         <BotonPaso
           onClick={() => onChange(cantidad + 1)}
-          deshabilitado={cantidad >= stockMaximo}
+          deshabilitado={cantidad >= tope}
           etiqueta="Agregar una unidad"
         >
           <Plus className="h-3.5 w-3.5" />

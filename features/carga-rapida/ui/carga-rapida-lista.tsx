@@ -1,13 +1,36 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import {
+  ABREVIATURA_UNIDAD,
+  UNIDADES_MEDIDA,
+  normalizarUnidadMedida,
+  type UnidadMedida,
+} from "@/shared/lib/fiscal-producto";
+import {
+  esFraccionable,
+  formatearCantidad,
+  parsearCantidadDeEntrada,
+} from "@/shared/lib/unidad-venta";
 import { useActiveCategories } from "@/features/stock/hooks/use-active-categories";
 import { esNombreVarianteUnica } from "@/features/stock/utils/parse-legacy-variant";
+import type { Rubro } from "@/entities/config/types";
 import type { CampoDeFoco } from "../hooks/use-carga-rapida";
+import { atributosInlineDeRubro } from "../lib/atributos-inline-por-rubro";
+import type { Presentacion } from "@/shared/lib/presentaciones";
 import type { LineaCarga, LineaCargaNueva } from "../types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
+
+const FORMA_BASE = "__unidad_base__";
 
 /** Identifica una celda concreta en el DOM. Es como el hook nombra a dónde
  * mandar el foco sin tener una ref por input: pide "esta línea, este campo" y
@@ -24,13 +47,47 @@ function celdaId(linea: LineaCarga, campo: CampoDeFoco): string {
  *
  * El modal sigue existiendo SOLO para la grilla de combinaciones (5 talles x
  * 3 colores en un producto), que es lo único que no entra en una fila.
+ *
+ * Las columnas de atributo las pone el RUBRO (`atributosInlineDeRubro`): talle
+ * y color en una tienda de ropa, peso en un kiosco, medida y material en una
+ * ferretería. Un rubro sin atributos de variante ("otros") conserva una
+ * columna, porque la variante fija del maestro y el botón de la grilla
+ * necesitan dónde vivir. La plantilla va como estilo inline y no como clase
+ * de Tailwind porque cambia con el rubro y Tailwind solo compila lo que
+ * encuentra escrito.
  */
-const COLUMNAS =
-  "grid-cols-[minmax(180px,1fr)_120px_88px_112px_104px_104px_84px_40px]";
+const ANCHO_ATRIBUTO = 112;
+const ANCHOS_FIJOS = [120, 104, 104, 172, 40];
+const ANCHO_PRODUCTO_MIN = 180;
+const GAP = 8;
+
+function plantillaColumnas(columnasAtributo: number): string {
+  const atributos = Array.from(
+    { length: columnasAtributo },
+    () => `${ANCHO_ATRIBUTO}px`,
+  );
+  const [codigo, ...resto] = ANCHOS_FIJOS;
+  return [
+    `minmax(${ANCHO_PRODUCTO_MIN}px,1fr)`,
+    `${codigo}px`,
+    ...atributos,
+    ...resto.map((ancho) => `${ancho}px`),
+  ].join(" ");
+}
 
 /** Ancho mínimo de la tabla. Abajo de eso el contenedor scrollea en
  * horizontal en vez de apretar las columnas hasta que no se pueda tipear. */
-const ANCHO_MINIMO = "min-w-[832px]";
+function anchoMinimo(columnasAtributo: number): number {
+  const columnas = ANCHOS_FIJOS.length + 1 + columnasAtributo;
+  return (
+    ANCHO_PRODUCTO_MIN +
+    ANCHOS_FIJOS.reduce((a, b) => a + b, 0) +
+    columnasAtributo * ANCHO_ATRIBUTO +
+    (columnas - 1) * GAP +
+    // padding horizontal de la fila (px-4)
+    32
+  );
+}
 
 function formatearPrecio(valor: number): string {
   return `$${valor.toLocaleString("es-AR")}`;
@@ -40,7 +97,7 @@ function totalUnidades(
   linea: Extract<LineaCargaNueva, { tieneVariantes: true }>,
 ) {
   return linea.variantes.reduce(
-    (total, v) => total + (Number.parseInt(v.stock, 10) || 0),
+    (total, v) => total + parsearCantidadDeEntrada(v.stock),
     0,
   );
 }
@@ -50,7 +107,7 @@ function totalUnidades(
 function stockVarianteFija(
   linea: Extract<LineaCargaNueva, { tieneVariantes: true }>,
 ): number {
-  return Number.parseInt(linea.variantes[0]?.stock ?? "0", 10) || 0;
+  return parsearCantidadDeEntrada(linea.variantes[0]?.stock ?? "0");
 }
 
 /**
@@ -78,7 +135,12 @@ function alSalirDeLaCelda(
 }
 
 /** Celda numérica. `value` 0 se muestra vacío: un "0" precargado invita a
- * tipear al lado y terminar cargando 0500. */
+ * tipear al lado y terminar cargando 0500.
+ *
+ * Lo que se muestra es el TEXTO tipeado, no el número de vuelta: con el
+ * número como `value`, tipear "0,5" de crema se cae en el primer "0" (vale 0,
+ * se muestra vacío) y el "0." nunca llega a existir. El texto se resincroniza
+ * solo cuando el valor cambia desde afuera (deshacer, reescaneo). */
 function CeldaNumero({
   value,
   onChange,
@@ -87,6 +149,7 @@ function CeldaNumero({
   titulo,
   onVolver,
   celda,
+  className = "",
 }: Readonly<{
   value: number;
   onChange: (valor: number) => void;
@@ -95,7 +158,21 @@ function CeldaNumero({
   titulo: string;
   onVolver?: () => void;
   celda?: string;
+  className?: string;
 }>) {
+  const [texto, setTexto] = useState(value > 0 ? String(value) : "");
+  // Valor con el que se armó `texto`. Si el de afuera cambió y no es el que
+  // dice el texto, el texto está viejo: se pisa durante el render (patrón de
+  // "guardar el valor del render anterior"), sin efecto de por medio.
+  const [valorVisto, setValorVisto] = useState(value);
+  if (value !== valorVisto) {
+    setValorVisto(value);
+    const tipeado = Number.parseFloat(texto);
+    if ((Number.isNaN(tipeado) ? 0 : tipeado) !== value) {
+      setTexto(value > 0 ? String(value) : "");
+    }
+  }
+
   return (
     <Input
       type="number"
@@ -103,11 +180,12 @@ function CeldaNumero({
       aria-label={titulo}
       min={entero ? 1 : 0}
       step={entero ? 1 : "any"}
-      value={value > 0 ? value : ""}
+      value={texto}
       placeholder="0"
       onKeyDown={alSalirDeLaCelda(onVolver)}
       onChange={(e) => {
         const crudo = e.target.value;
+        setTexto(crudo);
         const parseado = entero
           ? Number.parseInt(crudo, 10)
           : Number.parseFloat(crudo);
@@ -115,8 +193,85 @@ function CeldaNumero({
       }}
       className={`h-9 w-full text-center px-1 ${
         invalido ? "border-destructive focus-visible:ring-destructive" : ""
-      }`}
+      } ${className}`}
     />
+  );
+}
+
+/**
+ * Por qué se vende el producto nuevo, al lado de la cantidad. Va inline y no
+ * en el modal porque el modal es solo para la grilla de combinaciones, y la
+ * crema del nono no tiene talles: tiene kilos.
+ *
+ * Es un `<select>` nativo y no el Select de Radix a propósito: en una grilla
+ * que se recorre con Tab, un popover que captura el foco corta el ciclo
+ * "precio, cantidad, Enter, siguiente producto".
+ */
+function SelectorUnidad({
+  value,
+  onChange,
+}: Readonly<{
+  value: UnidadMedida;
+  onChange: (unidad: UnidadMedida) => void;
+}>) {
+  return (
+    <select
+      aria-label="Se vende por"
+      title="Se vende por"
+      value={value}
+      onChange={(e) => onChange(normalizarUnidadMedida(e.target.value))}
+      className="h-9 w-[52px] shrink-0 rounded-md border border-input bg-background px-1 text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      {UNIDADES_MEDIDA.map((u) => (
+        <option key={u} value={u}>
+          {ABREVIATURA_UNIDAD[u]}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+/**
+ * En qué forma entra el stock de un producto que YA existe y tiene
+ * presentaciones: la unidad base ("kg") o "Balde 4,7 kg". La cantidad de la
+ * fila se lee en esa forma y el server la convierte a stock por el factor.
+ * Usa el mismo Select visual que el resto de la aplicación.
+ */
+function SelectorForma({
+  unidad,
+  presentaciones,
+  value,
+  onChange,
+}: Readonly<{
+  unidad: UnidadMedida;
+  presentaciones: Presentacion[];
+  value: string | null;
+  onChange: (presentacionId: string | null) => void;
+}>) {
+  return (
+    <Select
+      value={value ?? FORMA_BASE}
+      onValueChange={(next) => onChange(next === FORMA_BASE ? null : next)}
+    >
+      <SelectTrigger
+        aria-label="Forma en que entra"
+        title="Forma en que entra el stock"
+        size="sm"
+        className="h-9 w-[92px] shrink-0 text-xs text-muted-foreground"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent position="popper" align="start">
+        <SelectItem value={FORMA_BASE}>
+          {ABREVIATURA_UNIDAD[unidad]}
+        </SelectItem>
+        {presentaciones.map((p) => (
+          <SelectItem key={p.id} value={p.id}>
+            {p.nombre} · ×{p.factor} {ABREVIATURA_UNIDAD[unidad]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -175,8 +330,13 @@ function CeldaTextoFijo({
 }
 
 interface CargaRapidaListaProps {
+  rubro: Rubro;
   lineas: LineaCarga[];
   onUpdateCantidad: (clienteLineaId: string, cantidad: number) => void;
+  onUpdateUnidad: (clienteLineaId: string, unidad: UnidadMedida) => void;
+  /** Forma en que entra el stock de un producto existente: null = unidad
+   * base, id = una de sus presentaciones. */
+  onUpdateForma: (clienteLineaId: string, presentacionId: string | null) => void;
   onUpdatePrecio: (
     clienteLineaId: string,
     campo: "precioCompra" | "precioVenta",
@@ -184,7 +344,7 @@ interface CargaRapidaListaProps {
   ) => void;
   onUpdateTexto: (
     clienteLineaId: string,
-    campo: "nombre" | "codigo" | "talle" | "color",
+    campo: "nombre" | "codigo" | `atributo:${string}`,
     valor: string,
   ) => void;
   /** Devuelve el foco al campo de escaneo: Enter o Escape en cualquier celda. */
@@ -199,8 +359,11 @@ interface CargaRapidaListaProps {
 }
 
 export function CargaRapidaLista({
+  rubro,
   lineas,
   onUpdateCantidad,
+  onUpdateUnidad,
+  onUpdateForma,
   onUpdatePrecio,
   onUpdateTexto,
   onVolverAlBuscador,
@@ -236,6 +399,19 @@ export function CargaRapidaLista({
     );
   }
 
+  // El total del pie suma solo lo que se cuenta de a uno: 3 remeras y 0,5 kg
+  // de crema no son "3,5 u.". Con algo por peso o medida en la lista, el
+  // botón dice solo cuántas líneas hay.
+  const atributos = atributosInlineDeRubro(rubro);
+  const columnasAtributo = Math.max(atributos.length, 1);
+  const estiloGrilla = { gridTemplateColumns: plantillaColumnas(columnasAtributo) };
+  const spanAtributos = { gridColumn: `span ${columnasAtributo}` };
+
+  const hayFraccionables = lineas.some(
+    (l) =>
+      esFraccionable(l.unidadMedida) ||
+      (l.kind === "EXISTENTE" && l.presentacionId !== null),
+  );
   const unidades = lineas.reduce((total, linea) => {
     if (linea.kind === "EXISTENTE") return total + linea.cantidad;
     if (!linea.tieneVariantes) return total + linea.cantidad;
@@ -245,14 +421,22 @@ export function CargaRapidaLista({
   return (
     <div className="flex flex-col gap-4">
       <div className="border border-border rounded-xl overflow-x-auto bg-card">
-        <div className={ANCHO_MINIMO}>
+        <div style={{ minWidth: anchoMinimo(columnasAtributo) }}>
           <div
-            className={`grid ${COLUMNAS} gap-2 px-4 py-2 border-b border-border bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground font-medium`}
+            style={estiloGrilla}
+            className="grid gap-2 px-4 py-2 border-b border-border bg-muted/30 text-[10px] uppercase tracking-wider text-muted-foreground font-medium"
           >
             <span>Producto</span>
             <span className="text-center">Código</span>
-            <span className="text-center">Talle</span>
-            <span className="text-center">Color</span>
+            {atributos.length > 0 ? (
+              atributos.map((a) => (
+                <span key={a.clave} className="text-center">
+                  {a.etiqueta}
+                </span>
+              ))
+            ) : (
+              <span className="text-center">Variante</span>
+            )}
             <span className="text-center">Costo</span>
             <span className="text-center">Venta</span>
             <span className="text-center">Cant.</span>
@@ -291,7 +475,8 @@ export function CargaRapidaLista({
               return (
                 <div
                   key={linea.clienteLineaId}
-                  className={`grid ${COLUMNAS} gap-2 px-4 py-2 items-center`}
+                  style={estiloGrilla}
+                  className="grid gap-2 px-4 py-2 items-center"
                 >
                   {/* Producto */}
                   <div className="min-w-0">
@@ -359,35 +544,36 @@ export function CargaRapidaLista({
                     </CeldaTextoFijo>
                   )}
 
-                  {/* Talle y Color. Con variantes ya resueltas las dos
-                      columnas son una sola celda: los atributos no son
-                      necesariamente talle y color (memoria, medida) y viven
-                      en la grilla, no acá. */}
+                  {/* Atributos del rubro (talle/color, peso, medida…). Con
+                      variantes ya resueltas las columnas son una sola celda:
+                      los atributos viven en la grilla, no acá. */}
                   {nuevaSimple ? (
-                    <>
-                      <CeldaTexto
-                        onVolver={onVolverAlBuscador}
-                        titulo="Talle"
-                        celda={celdaId(linea, "talle")}
-                        value={nuevaSimple.talle ?? ""}
-                        placeholder="—"
-                        onChange={(v) =>
-                          onUpdateTexto(linea.clienteLineaId, "talle", v)
-                        }
-                      />
-                      <CeldaTexto
-                        onVolver={onVolverAlBuscador}
-                        titulo="Color"
-                        celda={celdaId(linea, "color")}
-                        value={nuevaSimple.color ?? ""}
-                        placeholder="—"
-                        onChange={(v) =>
-                          onUpdateTexto(linea.clienteLineaId, "color", v)
-                        }
-                      />
-                    </>
+                    atributos.length > 0 ? (
+                      atributos.map((a) => (
+                        <CeldaTexto
+                          key={a.clave}
+                          onVolver={onVolverAlBuscador}
+                          titulo={a.etiqueta}
+                          celda={celdaId(linea, `atributo:${a.clave}`)}
+                          value={nuevaSimple.atributos[a.clave] ?? ""}
+                          placeholder="—"
+                          onChange={(v) =>
+                            onUpdateTexto(
+                              linea.clienteLineaId,
+                              `atributo:${a.clave}`,
+                              v,
+                            )
+                          }
+                        />
+                      ))
+                    ) : (
+                      <CeldaTextoFijo>—</CeldaTextoFijo>
+                    )
                   ) : varianteFija ? (
-                    <div className="col-span-2 flex items-center justify-center gap-1.5 min-w-0">
+                    <div
+                      style={spanAtributos}
+                      className="flex items-center justify-center gap-1.5 min-w-0"
+                    >
                       <span
                         title="Variante definida por el Catálogo Maestro"
                         className="text-[10px] uppercase font-medium tracking-wider bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border/50 truncate"
@@ -405,7 +591,7 @@ export function CargaRapidaLista({
                       </button>
                     </div>
                   ) : conGrilla ? (
-                    <div className="col-span-2 flex justify-center">
+                    <div style={spanAtributos} className="flex justify-center">
                       <Button
                         type="button"
                         variant="outline"
@@ -417,7 +603,7 @@ export function CargaRapidaLista({
                       </Button>
                     </div>
                   ) : (
-                    <div className="col-span-2">
+                    <div style={spanAtributos}>
                       <CeldaTextoFijo>—</CeldaTextoFijo>
                     </div>
                   )}
@@ -474,20 +660,55 @@ export function CargaRapidaLista({
                       la grilla. */}
                   {conGrilla ? (
                     <CeldaTextoFijo titulo="Unidades de todas las combinaciones">
-                      {cantidad} u.
+                      {formatearCantidad(cantidad, linea.unidadMedida)}
                     </CeldaTextoFijo>
                   ) : (
-                    <CeldaNumero
-                      onVolver={onVolverAlBuscador}
-                      titulo="Cantidad"
-                      celda={celdaId(linea, "cantidad")}
-                      value={cantidad}
-                      entero
-                      invalido={cantidad <= 0}
-                      onChange={(v) =>
-                        onUpdateCantidad(linea.clienteLineaId, v)
-                      }
-                    />
+                    <div className="flex items-center gap-1">
+                      {/* Entera salvo que el producto se venda por peso o
+                          medida: 0,5 remeras no existe, 0,5 kg de crema sí. */}
+                      <CeldaNumero
+                        onVolver={onVolverAlBuscador}
+                        titulo="Cantidad"
+                        celda={celdaId(linea, "cantidad")}
+                        value={cantidad}
+                        entero={
+                          linea.kind === "EXISTENTE" && linea.presentacionId
+                            ? true
+                            : !esFraccionable(linea.unidadMedida)
+                        }
+                        invalido={cantidad <= 0}
+                        onChange={(v) =>
+                          onUpdateCantidad(linea.clienteLineaId, v)
+                        }
+                        className="min-w-0"
+                      />
+                      {/* La unidad de un producto NUEVO se elige acá; la de
+                          uno que ya existe la dice su ficha y solo se lee. */}
+                      {linea.kind === "NUEVA" ? (
+                        <SelectorUnidad
+                          value={linea.unidadMedida}
+                          onChange={(u) =>
+                            onUpdateUnidad(linea.clienteLineaId, u)
+                          }
+                        />
+                      ) : linea.presentaciones.length > 0 ? (
+                        <SelectorForma
+                          unidad={linea.unidadMedida}
+                          presentaciones={linea.presentaciones}
+                          value={linea.presentacionId}
+                          onChange={(id) =>
+                            onUpdateForma(linea.clienteLineaId, id)
+                          }
+                        />
+                      ) : (
+                        <span
+                          title="Se vende por"
+                          className="w-[52px] shrink-0 text-center text-xs text-muted-foreground"
+                        >
+                          {ABREVIATURA_UNIDAD[linea.unidadMedida]}
+                        </span>
+                      )}
+                    </div>
                   )}
 
                   <Button
@@ -517,7 +738,7 @@ export function CargaRapidaLista({
           ? "Confirmando..."
           : `Confirmar carga (${lineas.length} línea${
               lineas.length === 1 ? "" : "s"
-            } · ${unidades} u.)`}
+            }${hayFraccionables ? "" : ` · ${unidades} u.`})`}
         {/* El atajo se anuncia en el botón: un atajo que no está escrito en
             ningún lado lo usa quien lo programó y nadie más. */}
         {isConfirming ? null : (

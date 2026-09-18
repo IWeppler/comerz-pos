@@ -136,10 +136,11 @@ export function TicketPrintable({
                       la "x", porque el cliente controla ese número contra lo
                       que marcó la balanza y "0.75x" no se parece a nada de lo
                       que vio en el mostrador. */}
-                  {esFraccionable(item.unidadMedida)
+                  {!item.presentacionNombre && esFraccionable(item.unidadMedida)
                     ? `${formatearCantidad(item.cantidad, item.unidadMedida)} `
                     : `${item.cantidad}x `}
                   {item.nombre} {item.variante && `(${item.variante})`}
+                  {item.presentacionNombre && ` — ${item.presentacionNombre}`}
                 </p>
                 {/* El IMEI va en el ticket porque es el comprobante con el
                     que el cliente reclama la garantía del aparato. */}
@@ -155,7 +156,7 @@ export function TicketPrintable({
                       se llevó. */}
                   <span>
                     {formatTicketMoney(precioUnitario)}{" "}
-                    {esFraccionable(item.unidadMedida)
+                    {!item.presentacionNombre && esFraccionable(item.unidadMedida)
                       ? `/${ABREVIATURA_UNIDAD[normalizarUnidadMedida(item.unidadMedida)]}`
                       : "c/u"}
                   </span>

@@ -306,9 +306,11 @@ export function TicketSheet({
                               {item.nombre}
                             </p>
                             <p className="text-xs text-muted-foreground mt-0.5">
-                              {item.variante}
+                              {[item.variante, item.presentacionNombre]
+                                .filter(Boolean)
+                                .join(" · ")}
                               {item.cantidad > 1 && (
-                                <span className="font-mono text-muted-foreground/70">
+                                <span className="ml-1 font-mono text-muted-foreground/70">
                                   {formatTicketMoney(precioUnidad)} c/u
                                 </span>
                               )}

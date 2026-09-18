@@ -256,6 +256,7 @@ export async function crearProductoAction(
         nombre,
         tipo,
         precio,
+        unidad_medida,
         variantes: varianteUnica
           ? [
               {
@@ -490,6 +491,7 @@ export async function crearProductoAction(
       nombre,
       tipo,
       precio,
+      unidad_medida,
       variantes: variantesCreadas,
     },
   };

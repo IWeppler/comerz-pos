@@ -64,10 +64,13 @@ export async function getStockAction(): Promise<{
           .from("productos")
           .select(
             `
-        id, nombre, tipo, precio, precio_costo, imagen_url, thumbnail_url, slug, publicado, descripcion, categoria_id, creado_en,
+        id, nombre, tipo, precio, precio_costo, imagen_url, thumbnail_url, slug, publicado, descripcion, categoria_id, creado_en, unidad_medida,
         categoria:categorias(id, nombre, slug),
         producto_variantes(
           id, sku, nombre_display, precio, costo, stock, atributos
+        ),
+        producto_presentaciones(
+          id, variante_id, nombre, factor, regla_precio, precio, costo, sku, es_default, visible_catalogo, activa, orden
         ),
         stock:productos_stock(id, variante, cantidad)
         `,
@@ -295,6 +298,9 @@ export async function getStockDetalleProductoAction(id: string): Promise<{
             atributo:atributos(nombre),
             atributo_valor:atributo_valores(valor)
           )
+        ),
+        producto_presentaciones(
+          id, variante_id, nombre, factor, regla_precio, precio, costo, sku, es_default, visible_catalogo, activa, orden
         ),
         stock:productos_stock(id, variante, cantidad)
         `,

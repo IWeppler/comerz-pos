@@ -8,6 +8,16 @@ import {
   ABREVIATURA_UNIDAD,
   normalizarUnidadMedida,
 } from "@/shared/lib/fiscal-producto";
+import { precioEnForma } from "@/shared/lib/presentaciones";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
+
+const FORMA_BASE = "__unidad_base__";
 
 interface CartItemRowProps {
   item: CartItemStore;
@@ -24,6 +34,12 @@ interface CartItemRowProps {
    * miniaturas: son 96px de alto por renglón que se usan mejor mostrando un
    * ítem más. */
   mostrarImagen?: boolean;
+  /**
+   * Cambiar la forma de venta de la línea (kilo suelto ↔ Balde 4,7 kg). Solo
+   * se dibuja el selector si la línea conoce presentaciones. Sin callback
+   * (catálogo público) la forma se muestra como texto.
+   */
+  onCambiarForma?: (presentacionIdNueva: string | null) => void;
 }
 
 /**
@@ -45,8 +61,25 @@ export function CartItemRow({
   imei,
   onElegirUnidad,
   mostrarImagen = true,
+  onCambiarForma,
 }: Readonly<CartItemRowProps>) {
   const lineSubtotal = item.precio * item.cantidad;
+  const unidad = normalizarUnidadMedida(item.unidadMedida);
+  const presentacion = item.presentacionId
+    ? (item.presentaciones?.find((p) => p.id === item.presentacionId) ?? {
+        id: item.presentacionId,
+        nombre: item.presentacionNombre ?? "Presentación",
+        factor: item.factor ?? 1,
+        regla_precio: "FIJO",
+        precio: item.precio,
+      })
+    : null;
+  const tienePresentaciones = (item.presentaciones?.length ?? 0) > 0;
+  // El precio "de siempre" en la forma de la línea, para el tachado de lista.
+  const precioSinLista =
+    item.precioBase != null
+      ? precioEnForma(item.precioBase, presentacion)
+      : null;
 
   return (
     <div className="flex gap-3">
@@ -76,9 +109,44 @@ export function CartItemRow({
             {/* En la venta libre `variante` es la misma descripción que
                 `nombre`: repetirla no dice nada, y "Venta libre" sí — es lo
                 que avisa que este renglón no descuenta stock. */}
-            <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            {/* <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               {item.ventaLibre ? "Venta libre" : item.variante}
-            </p>
+            </p> */}
+            {/* La FORMA en que se vende: kilo suelto o Balde 4,7 kg. Cambiarla
+                cambia identidad, precio y cantidad de la línea — lo hace el
+                store. */}
+            {tienePresentaciones && onCambiarForma ? (
+              <Select
+                value={item.presentacionId ?? FORMA_BASE}
+                onValueChange={(value) =>
+                  onCambiarForma(value === FORMA_BASE ? null : value)
+                }
+              >
+                <SelectTrigger
+                  aria-label="Forma de venta"
+                  size="sm"
+                  className="mt-1 w-fit max-w-full text-[11px]"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent position="popper" align="start">
+                  <SelectItem value={FORMA_BASE}>
+                    {ABREVIATURA_UNIDAD[unidad] === "u."
+                      ? "Por unidad"
+                      : `Suelto (por ${ABREVIATURA_UNIDAD[unidad]})`}
+                  </SelectItem>
+                  {item.presentaciones!.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : presentacion ? (
+              <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-primary">
+                {presentacion.nombre}
+              </p>
+            ) : null}
             {/* Producto serializado: hasta que no se elija el aparato, la
                 venta no se puede confirmar. El badge es el acceso al
                 selector — sin esto la vendedora lee "requiere elegir unidad"
@@ -118,27 +186,34 @@ export function CartItemRow({
             unidadMedida={item.unidadMedida}
             stockMaximo={item.stockMaximo}
             onChange={onUpdateQuantity}
+            presentacion={presentacion ? { factor: presentacion.factor } : null}
           />
 
           <div className="text-right">
             {/* El precio por unidad de medida solo se muestra cuando se vende
                 fraccionado: en una remera "x u." es ruido, en un fiambre es el
                 dato que explica de dónde sale el subtotal. */}
-            {esFraccionable(item.unidadMedida) && (
+            {presentacion ? (
               <p className="font-mono text-[10px] text-muted-foreground">
-                {formatearCantidad(item.cantidad, item.unidadMedida)} × $
-                {item.precio.toLocaleString("es-AR")}/
-                {ABREVIATURA_UNIDAD[normalizarUnidadMedida(item.unidadMedida)]}
+                {item.cantidad} × ${item.precio.toLocaleString("es-AR")}
               </p>
+            ) : (
+              esFraccionable(item.unidadMedida) && (
+                <p className="font-mono text-[10px] text-muted-foreground">
+                  {formatearCantidad(item.cantidad, item.unidadMedida)} × $
+                  {item.precio.toLocaleString("es-AR")}/
+                  {ABREVIATURA_UNIDAD[unidad]}
+                </p>
+              )
             )}
             {/* El precio de siempre, tachado, cuando una lista de precios lo
                 cambió. Es la señal por renglón de que el ticket no está a los
                 precios de todos los días; la franja de arriba lo dice para el
                 ticket entero. Sin lista, `precioBase` es igual a `precio` y
                 acá no se dibuja nada. */}
-            {item.precioBase != null && item.precioBase !== item.precio && (
+            {precioSinLista != null && precioSinLista !== item.precio && (
               <p className="font-mono text-[10px] text-muted-foreground line-through">
-                ${(item.precioBase * item.cantidad).toLocaleString("es-AR")}
+                ${(precioSinLista * item.cantidad).toLocaleString("es-AR")}
               </p>
             )}
             <p className="font-mono text-sm font-medium text-foreground">

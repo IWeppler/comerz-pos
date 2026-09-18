@@ -1,5 +1,56 @@
 import type { Producto } from "@/entities/productos/types";
 import type { ProductoCargado } from "@/features/carga-rapida/types";
+import {
+  aPresentacionCarrito,
+  precioEnForma,
+  presentacionDefault,
+  presentacionesDeVariante,
+  type PresentacionCarrito,
+} from "@/shared/lib/presentaciones";
+
+/**
+ * Con qué FORMA entra al carrito una variante recién tocada, y con qué
+ * presentaciones a mano para cambiarla desde el ticket.
+ *
+ * Se agrega en la presentación marcada como default si hay una; si no, en la
+ * unidad base. Un solo toque en la grilla tiene que seguir siendo un solo
+ * toque: el que vende globos de a pack marca el pack como default y no elige
+ * nada más; el que vende crema suelta no marca ninguna y el balde queda a un
+ * cambio de selector en la línea.
+ *
+ * `precioBase` es por unidad base (ya con lista si corresponde); el precio de
+ * la línea sale en su forma.
+ */
+export function formaInicialDeLinea(
+  producto: Pick<Producto, "producto_presentaciones">,
+  varianteId: string | undefined,
+  precioBase: number,
+): {
+  presentacionId: string | null;
+  presentacionNombre: string | null;
+  factor: number;
+  precio: number;
+  presentaciones: PresentacionCarrito[] | undefined;
+} {
+  const aplicables = presentacionesDeVariante(
+    producto.producto_presentaciones,
+    varianteId ?? null,
+  ).map(aPresentacionCarrito);
+  const inicial = presentacionDefault(
+    producto.producto_presentaciones,
+    varianteId ?? null,
+  );
+  const elegida = inicial
+    ? (aplicables.find((p) => p.id === inicial.id) ?? null)
+    : null;
+  return {
+    presentacionId: elegida?.id ?? null,
+    presentacionNombre: elegida?.nombre ?? null,
+    factor: elegida?.factor ?? 1,
+    precio: precioEnForma(precioBase, elegida),
+    presentaciones: aplicables.length > 0 ? aplicables : undefined,
+  };
+}
 
 /**
  * Adapta lo que reporta la Carga rápida a un `Producto` completo, para que lo
@@ -18,6 +69,7 @@ export function productoCargadoAProducto(cargado: ProductoCargado): Producto {
     nombre: cargado.nombre,
     tipo: cargado.tipo,
     precio: cargado.precio,
+    unidad_medida: cargado.unidad_medida,
     precio_costo: 0,
     imagen_url: null,
     thumbnail_url: null,
@@ -33,6 +85,7 @@ export function productoCargadoAProducto(cargado: ProductoCargado): Producto {
       costo: null,
       stock: v.stock,
     })),
+    producto_presentaciones: cargado.presentaciones,
   };
 }
 

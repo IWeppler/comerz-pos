@@ -16,6 +16,7 @@ import { ProductVariantsSection } from "@/features/stock/ui/create-product/produ
 import { useCategoriasProducto } from "@/features/stock/hooks/use-categorias-producto";
 import { useVariantSelection } from "@/features/stock/hooks/use-variant-selection";
 import type { Opcion, VarianteInput } from "@/features/stock/types";
+import { parsearCantidadDeEntrada } from "@/shared/lib/unidad-venta";
 import type { LineaCargaNueva } from "../types";
 import { prefillAVariantes, type PrefillMaestro } from "../lib/maestro-prefill";
 import { Sparkles } from "lucide-react";
@@ -137,7 +138,9 @@ function CargaRapidaQuickCreateModalContent({
         : undefined,
   );
 
-  const cantidadNum = Number.parseInt(cantidad, 10);
+  // Al reeditar una línea por peso, `parseInt("0.5")` daría 0 y el modal la
+  // rechazaría; la unidad se elige en la fila, acá solo se respeta el número.
+  const cantidadNum = parsearCantidadDeEntrada(cantidad);
   const precioCompraNum = Number.parseFloat(precioCompra);
   const precioVentaNum = Number.parseFloat(precioVenta);
   const precioVentaCargado =
@@ -204,7 +207,7 @@ function CargaRapidaQuickCreateModalContent({
         <p className="text-sm text-muted-foreground mt-1">
           {(() => {
             if (editando) {
-              return "Ajustá talles, colores y stock antes de confirmar la carga.";
+              return "Ajustá las combinaciones y el stock antes de confirmar la carga.";
             }
             if (maestro) {
               return "Encontrado en el Catálogo Maestro";
@@ -269,7 +272,8 @@ function CargaRapidaQuickCreateModalContent({
               <Label>Cantidad</Label>
               <Input
                 type="number"
-                min={1}
+                min={0}
+                step="any"
                 value={cantidad}
                 onChange={(e) => setCantidad(e.target.value)}
               />

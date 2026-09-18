@@ -50,6 +50,9 @@ import { MobileCartBar } from "../../../shared/components/cart-sidebar/mobile-ca
 import { PromocionDB } from "../../../shared/components/cart-sidebar/types";
 import { useListasPrecios } from "@/shared/hooks/use-listas-precios";
 import { admitePromociones } from "@/shared/lib/precio-de-lista";
+import { precioEnForma } from "@/shared/lib/presentaciones";
+import { claveLinea } from "@/shared/store/cart-store";
+import type { CartItemStore } from "@/entities/cart/types";
 import { SelectorListaPrecio } from "./selector-lista-precio";
 import { decidirSugerenciaDeLista } from "../lib/sugerencia-lista-cliente";
 import {
@@ -100,6 +103,7 @@ export function CartPanelAdmin({
     setIsOpen,
     removeItem,
     updateQuantity,
+    cambiarForma,
     getTotalPrice,
     getTotalItems,
     clearCart,
@@ -114,6 +118,7 @@ export function CartPanelAdmin({
       setIsOpen: state.setIsOpen,
       removeItem: state.removeItem,
       updateQuantity: state.updateQuantity,
+      cambiarForma: state.cambiarForma,
       getTotalPrice: state.getTotalPrice,
       getTotalItems: state.getTotalItems,
       clearCart: state.clearCart,
@@ -331,8 +336,17 @@ export function CartPanelAdmin({
    * podría venir de otra lista — aplicar un descuento sobre un descuento es
    * el error que este cálculo tiene que hacer imposible.
    */
+  /** La presentación en la que se vende la línea, si la hay. */
+  const presentacionDeLinea = (item: CartItemStore) =>
+    item.presentacionId
+      ? (item.presentaciones?.find((p) => p.id === item.presentacionId) ?? null)
+      : null;
+
   const preciosPara = (nuevaListaId: string | null) => {
-    const precios: Record<string, { precio: number; precioBase: number }> = {};
+    const precios: Record<
+      string,
+      { precio: number; precioBase: number; precioBaseEfectivo: number }
+    > = {};
     let algunoCambia = false;
 
     for (const item of items) {
@@ -345,15 +359,31 @@ export function CartPanelAdmin({
       // producto) no trae `precioBase`: ahí el precio con el que entró ES el
       // base, porque esas pantallas no conocen la lista.
       const precioBase = item.precioBase ?? item.precio;
-      const { precio } = resolverPrecio({
+      const { precio: precioBaseConLista } = resolverPrecio({
         listaPrecioId: nuevaListaId,
         productoId: item.productoId,
         precioBase,
         precioCosto: item.costoBase,
       });
+      // La lista se resuelve sobre la unidad base; la línea cobra en su
+      // forma (por balde si es balde). Con precio FIJO la lista no toca.
+      const precio = precioEnForma(
+        precioBaseConLista,
+        presentacionDeLinea(item),
+      );
 
-      precios[`${item.productoId}|${item.variante}`] = { precio, precioBase };
-      if (precio !== item.precio || item.precioBase == null) algunoCambia = true;
+      precios[claveLinea(item)] = {
+        precio,
+        precioBase,
+        precioBaseEfectivo: precioBaseConLista,
+      };
+      if (
+        precio !== item.precio ||
+        item.precioBase == null ||
+        item.precioBaseEfectivo !== precioBaseConLista
+      ) {
+        algunoCambia = true;
+      }
     }
 
     return { precios, algunoCambia };
@@ -365,12 +395,13 @@ export function CartPanelAdmin({
     items.reduce((acc, item) => {
       if (item.ventaLibre) return acc + item.precio * item.cantidad;
       const base = item.precioBase ?? item.precio;
-      const { precio } = resolverPrecio({
+      const { precio: precioBaseConLista } = resolverPrecio({
         listaPrecioId: listaId,
         productoId: item.productoId,
         precioBase: base,
         precioCosto: item.costoBase,
       });
+      const precio = precioEnForma(precioBaseConLista, presentacionDeLinea(item));
       return acc + precio * item.cantidad;
     }, 0);
 
@@ -969,6 +1000,7 @@ export function CartPanelAdmin({
         varianteId: i.varianteId,
         precio: i.precio,
         precioBase: i.precioBase,
+        precioBaseEfectivo: i.precioBaseEfectivo,
         cantidad: i.cantidad,
         unidadMedida: i.unidadMedida ?? null,
         imagenUrl: i.imagenUrl ?? null,
@@ -976,15 +1008,24 @@ export function CartPanelAdmin({
         // no hay catálogo a mano y un tope inventado bloquearía la línea.
         stockMaximo: Number.MAX_SAFE_INTEGER,
         ventaLibre: i.ventaLibre,
+        presentacionId: i.presentacionId ?? null,
+        presentacionNombre: i.presentacionNombre ?? null,
+        factor: i.factor ?? 1,
+        presentaciones: i.presentaciones,
       });
     }
     // La lista con la que se precio el pedido, sin re-preciar: los renglones
     // ya traen el precio de esa lista y su base.
-    const preciosDelPedido: Record<string, { precio: number; precioBase: number }> = {};
+    const preciosDelPedido: Record<
+      string,
+      { precio: number; precioBase: number; precioBaseEfectivo: number }
+    > = {};
     for (const i of p.items) {
-      preciosDelPedido[`${i.productoId}|${i.variante}`] = {
+      preciosDelPedido[claveLinea(i)] = {
         precio: i.precio,
         precioBase: i.precioBase ?? i.precio,
+        precioBaseEfectivo:
+          i.precioBaseEfectivo ?? i.precioBase ?? i.precio,
       };
     }
     setListaPrecio(ctx.listaPrecioId ?? null, preciosDelPedido);
@@ -1434,12 +1475,14 @@ export function CartPanelAdmin({
         // paso mínimo es un gramo: "+1" ahí sería un kilo de más, y "+1 g" un
         // atajo que no cambia nada visible. Esa cantidad se tipea.
         ajustarUltimo={
-          ultimoItem && !esFraccionable(ultimoItem.unidadMedida)
+          ultimoItem &&
+          (ultimoItem.presentacionId || !esFraccionable(ultimoItem.unidadMedida))
             ? (delta: number) =>
                 updateQuantity(
                   ultimoItem.productoId,
                   ultimoItem.variante,
                   ultimoItem.cantidad + delta,
+                  ultimoItem.presentacionId ?? null,
                 )
             : null
         }
@@ -1509,6 +1552,7 @@ export function CartPanelAdmin({
           items={items}
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
+          onCambiarForma={cambiarForma}
           totalCarrito={totalCarrito}
           onContinueToPayment={handleContinueToPayment}
           variantesSerializadas={variantesSerializadas}

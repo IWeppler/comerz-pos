@@ -22,6 +22,13 @@ export interface VentaItem {
   descuento_monto?: number;
   precio_final?: number;
   promocion_nombre?: string | null;
+  /** Presentación congelada al vender. `cantidad` y precios históricos siguen
+   * en unidad base; estos campos permiten reconstruir "1 Balde a $45.000". */
+  presentacion_id?: string | null;
+  presentacion_nombre?: string | null;
+  factor?: number;
+  cantidad_presentacion?: number | null;
+  precio_presentacion?: number | null;
   /** Renglón cobrado sin producto (venta libre): `variante` es la
    * descripción tipeada. Ver `features/sales/lib/nombre-renglon.ts`. */
   es_venta_libre?: boolean | null;
@@ -172,6 +179,8 @@ export interface TicketItemData {
   /** Unidad en la que se vendió. Sin esto el ticket imprime "0.75x Jamón",
    * que no es una cantidad que alguien pueda controlar contra la balanza. */
   unidadMedida?: string | null;
+  /** Si existe, `cantidad` y el precio del ticket están en esta presentación. */
+  presentacionNombre?: string | null;
 }
 
 export interface TicketData {

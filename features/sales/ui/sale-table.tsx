@@ -555,11 +555,13 @@ export function VentasTable({
           nombre: nombreRenglon(getSupabaseRelation(item.producto)?.nombre, item),
           // En la venta libre la descripción ya es el nombre: no se repite.
           variante: item.es_venta_libre ? "" : item.variante,
-          cantidad: item.cantidad,
-          precioUnitario: item.precio_unitario,
+          cantidad: item.cantidad_presentacion ?? item.cantidad,
+          precioUnitario: item.precio_presentacion ?? item.precio_unitario,
+          presentacionNombre: item.presentacion_nombre ?? null,
           imei: getSupabaseRelation(item.unidad_serie)?.imei ?? null,
-          unidadMedida:
-            getSupabaseRelation(item.producto)?.unidad_medida ?? null,
+          unidadMedida: item.presentacion_id
+            ? null
+            : (getSupabaseRelation(item.producto)?.unidad_medida ?? null),
         }),
       ),
       total: venta.total,

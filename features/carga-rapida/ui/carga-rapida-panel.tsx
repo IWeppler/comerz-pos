@@ -24,8 +24,11 @@ export function CargaRapidaPanel({
   return (
     <>
       <CargaRapidaLista
+        rubro={carga.rubro}
         lineas={carga.lineas}
         onUpdateCantidad={carga.updateCantidad}
+        onUpdateUnidad={carga.updateUnidadLinea}
+        onUpdateForma={carga.updateFormaLinea}
         onUpdatePrecio={carga.updatePrecioLinea}
         onUpdateTexto={carga.updateTextoLinea}
         onVolverAlBuscador={carga.enfocarBuscador}

@@ -84,6 +84,11 @@ export async function getVentasAction(opts?: {
           precio_final,
           promocion_nombre,
           es_venta_libre,
+          presentacion_id,
+          presentacion_nombre,
+          factor,
+          cantidad_presentacion,
+          precio_presentacion,
           producto:productos(nombre, imagen_url, unidad_medida),
           unidad_serie:unidades_serie(id, imei, fecha_venta)
         ),

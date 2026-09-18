@@ -1,3 +1,5 @@
+import type { PresentacionCarrito } from "@/shared/lib/presentaciones";
+
 export type CartItem = {
   productoId: string;
   nombre: string;
@@ -32,6 +34,13 @@ export interface CartItemStore {
    * ahí se trata como igual a `precio` — sin lista, son lo mismo.
    */
   precioBase?: number;
+  /**
+   * Precio vigente de UNA unidad base después de aplicar la lista activa.
+   * Se conserva separado porque una presentación FIJA no permite reconstruir
+   * ese número desde `precio`, y cambiar luego a una forma HEREDADA tiene que
+   * seguir respetando la lista sin esperar a un efecto de React.
+   */
+  precioBaseEfectivo?: number;
   /** El costo, solo para las listas con regla por MARKUP. Mismo motivo. */
   costoBase?: number | null;
   cantidad: number;
@@ -45,7 +54,24 @@ export interface CartItemStore {
    * siempre — fail-closed, igual que en el server.
    */
   unidadMedida?: string | null;
+  /**
+   * Presentación en la que se vende ESTA línea (Balde 4,7 kg, Pack x10).
+   * null/ausente = unidad base. Con presentación, `cantidad` es en
+   * presentaciones (entera), `precio` es por presentación y el stock que se
+   * descuenta es `cantidad × factor`, que calcula el server desde la base.
+   * Forma parte de la IDENTIDAD de la línea: el kilo suelto y el balde de la
+   * misma crema son dos renglones.
+   */
+  presentacionId?: string | null;
+  presentacionNombre?: string | null;
+  factor?: number;
+  /**
+   * Las presentaciones que aplican a esta variante, para poder cambiar de
+   * forma desde el ticket sin volver al catálogo. Snapshot al agregar.
+   */
+  presentaciones?: PresentacionCarrito[];
   imagenUrl?: string | null;
+  /** Siempre en UNIDAD BASE, también en una línea por presentación. */
   stockMaximo: number;
   /** IDs de `reservas` que esta línea del carrito viene a saldar (flujo "Confirmar venta" desde Reservas activas). */
   reservaIds?: string[];

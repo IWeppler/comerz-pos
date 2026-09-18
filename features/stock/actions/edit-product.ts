@@ -21,6 +21,12 @@ import {
   normalizarUnidadMedida,
 } from "@/shared/lib/fiscal-producto";
 import { parsearCantidadDeEntrada } from "@/shared/lib/unidad-venta";
+import {
+  MENSAJE_ERROR_PRESENTACION,
+  normalizarReglaPrecio,
+  validarPresentaciones,
+  type PresentacionInput,
+} from "@/shared/lib/presentaciones";
 
 type SupabaseServerClient = ReturnType<typeof createClient>;
 
@@ -62,6 +68,8 @@ export type EditarProductoResult = {
    * ya se guardó bien, pero tampoco puede pasar en silencio.
    */
   preciosLista?: string | null;
+  /** Lo mismo para las presentaciones comerciales (Balde, Pack x10). */
+  presentaciones?: string | null;
 };
 
 // Fotos y variantes son preocupaciones independientes: el guard de
@@ -205,11 +213,20 @@ export async function editarProductoAction(
     formData,
   });
 
+  // (d) Presentaciones comerciales. Mismo criterio que (c): parte de la
+  // ficha, guardada aparte y con su propio aviso.
+  const presentaciones = await guardarPresentaciones(supabase, {
+    id,
+    negocioId,
+    formData,
+    unidadMedida: camposOpcionales.unidad_medida ?? null,
+  });
+
   revalidatePath("/stock");
   revalidatePath("/store", "layout");
   invalidarCatalogo(negocioId);
 
-  return { imagenes, variantes, preciosLista };
+  return { imagenes, variantes, preciosLista, presentaciones };
 }
 
 /**
@@ -296,6 +313,174 @@ async function guardarPreciosPorLista(
     if (error) {
       console.error("[EDIT PRODUCT] borrando precios por lista:", error);
       return "No se pudieron borrar los precios por lista.";
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Las presentaciones comerciales del producto (Balde 4,7 kg, Pack x10): el
+ * CONJUNTO que trae el formulario reemplaza al que había — upsert por id de
+ * las que siguen, insert de las nuevas, delete de las que faltan.
+ *
+ * Solo corre con el centinela `presentaciones_editables`, igual que los
+ * precios por lista: la sección va colapsada y cerrada no monta nada, así que
+ * corregir un precio no puede borrarle los packs a un producto.
+ *
+ * Se valida ANTES de escribir con `validarPresentaciones`, que es el espejo
+ * en TS de los CHECK e índices de la tabla: así el error dice "fila 2: el
+ * factor tiene que ser entero" y no un 23505 pelado. La base igual vuelve a
+ * frenarlo, y la unidad contra la que se valida es la que se está guardando
+ * —si el formulario no la mandó, la que ya tiene el producto.
+ *
+ * Toda escritura se cuenta: un upsert filtrado por RLS escribe 0 filas y sale
+ * con `error: null`, que es el éxito silencioso que costó 35 fotos.
+ */
+async function guardarPresentaciones(
+  supabase: SupabaseServerClient,
+  {
+    id,
+    negocioId,
+    formData,
+    unidadMedida,
+  }: {
+    id: string;
+    negocioId: string;
+    formData: FormData;
+    unidadMedida: string | null;
+  },
+): Promise<string | null> {
+  if (!formData.has("presentaciones_editables")) return null;
+
+  let entrada: unknown;
+  try {
+    entrada = JSON.parse((formData.get("presentaciones") as string) || "[]");
+  } catch {
+    return "No se pudieron leer las presentaciones.";
+  }
+  if (!Array.isArray(entrada)) return "No se pudieron leer las presentaciones.";
+
+  // Normalización de forma: lo que no es número no entra como número.
+  const presentaciones: PresentacionInput[] = entrada.map((p, i) => {
+    const fila = (p ?? {}) as Record<string, unknown>;
+    const numero = (v: unknown): number | null => {
+      if (v === null || v === undefined || v === "") return null;
+      const n = Number(String(v).replace(",", "."));
+      return Number.isFinite(n) ? n : Number.NaN;
+    };
+    return {
+      id: typeof fila.id === "string" && fila.id ? fila.id : undefined,
+      variante_id:
+        typeof fila.variante_id === "string" && fila.variante_id
+          ? fila.variante_id
+          : null,
+      nombre: String(fila.nombre ?? "").trim(),
+      factor: numero(fila.factor) ?? Number.NaN,
+      regla_precio: normalizarReglaPrecio(fila.regla_precio),
+      precio: numero(fila.precio),
+      costo: numero(fila.costo),
+      sku: String(fila.sku ?? "").trim() || null,
+      es_default: fila.es_default === true,
+      visible_catalogo: fila.visible_catalogo !== false,
+      activa: fila.activa !== false,
+      orden: Number.isFinite(Number(fila.orden)) ? Number(fila.orden) : i,
+    };
+  });
+
+  let unidad = unidadMedida;
+  if (!unidad) {
+    const { data } = await supabase
+      .from("productos")
+      .select("unidad_medida")
+      .eq("id", id)
+      .maybeSingle();
+    unidad = (data?.unidad_medida as string | null) ?? null;
+  }
+
+  const errores = validarPresentaciones(presentaciones, unidad);
+  if (errores.length > 0) {
+    const primero = errores[0];
+    const nombre = presentaciones[primero.indice]?.nombre || `fila ${primero.indice + 1}`;
+    return `Presentaciones sin guardar — "${nombre}": ${MENSAJE_ERROR_PRESENTACION[primero.error]}`;
+  }
+
+  const { data: existentes, error: errorLectura } = await supabase
+    .from("producto_presentaciones")
+    .select("id")
+    .eq("producto_id", id);
+  if (errorLectura) {
+    console.error("[EDIT PRODUCT] leyendo presentaciones:", errorLectura);
+    return "No se pudieron leer las presentaciones actuales.";
+  }
+
+  const idsQueQuedan = new Set(
+    presentaciones.map((p) => p.id).filter((x): x is string => Boolean(x)),
+  );
+  const aBorrar = (existentes ?? [])
+    .map((r) => r.id as string)
+    .filter((rid) => !idsQueQuedan.has(rid));
+
+  // Borrar primero: si una fila nueva reusa el nombre de una que se va, el
+  // índice único la rechazaría con las dos vivas.
+  if (aBorrar.length > 0) {
+    const { data, error } = await supabase
+      .from("producto_presentaciones")
+      .delete()
+      .eq("producto_id", id)
+      .in("id", aBorrar)
+      .select("id");
+    if (error) {
+      console.error("[EDIT PRODUCT] borrando presentaciones:", error);
+      return "No se pudieron borrar las presentaciones que sacaste.";
+    }
+    if (!data || data.length < aBorrar.length) {
+      return "No tenés permiso para cambiar las presentaciones.";
+    }
+  }
+
+  if (presentaciones.length > 0) {
+    const filas = presentaciones.map((p) => ({
+      ...(p.id ? { id: p.id } : {}),
+      negocio_id: negocioId,
+      producto_id: id,
+      variante_id: p.variante_id,
+      nombre: p.nombre,
+      factor: p.factor,
+      regla_precio: p.regla_precio,
+      precio: p.regla_precio === "FIJO" ? p.precio : null,
+      costo: p.costo,
+      sku: p.sku,
+      es_default: p.es_default,
+      visible_catalogo: p.visible_catalogo,
+      activa: p.activa,
+      orden: p.orden,
+    }));
+
+    const { data, error } = await supabase
+      .from("producto_presentaciones")
+      .upsert(filas, { onConflict: "id" })
+      .select("id");
+
+    if (error) {
+      console.error("[EDIT PRODUCT] presentaciones:", error);
+      // Los dos errores que el espejo en TS no puede ver: el sku repetido
+      // contra OTRO producto y el factor contra la unidad ya guardada.
+      if (error.code === "23505" && error.message.includes("sku")) {
+        return "Ese código ya está usado en otra presentación de tu catálogo.";
+      }
+      if (error.message.includes("PRESENTACION_FACTOR_ENTERO")) {
+        return MENSAJE_ERROR_PRESENTACION.FACTOR_ENTERO;
+      }
+      return "No se pudieron guardar las presentaciones.";
+    }
+    if (!data || data.length < filas.length) {
+      console.error("[EDIT PRODUCT] presentaciones filtradas por RLS", {
+        id,
+        pedidas: filas.length,
+        escritas: data?.length ?? 0,
+      });
+      return "No tenés permiso para cambiar las presentaciones.";
     }
   }
 
