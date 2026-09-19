@@ -25,6 +25,8 @@ import {
 import { VentaPago } from "@/entities/ventas/types";
 import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 import { getRolActual } from "@/shared/config/supabase/contexto-actual";
+import { getEstadoCuentasFinancierasAction } from "@/features/caja/actions/cuentas-financieras";
+import { CuentasFinancierasPanel } from "@/features/caja/ui/cuentas-financieras-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -145,10 +147,11 @@ export default async function CajaPage() {
   let ventas: VentaCaja[] = [];
   let pagosSueltos: VentaPago[] = [];
   let egresos: EgresoCaja[] = [];
+  let transferenciasCaja = [];
 
   // 5. Traemos los movimientos SOLAMENTE del turno propio abierto
   if (turnoPropio) {
-    const [ventasRes, pagosSueltosRes, egresosRes] = await Promise.all([
+    const [ventasRes, pagosSueltosRes, egresosRes, transferenciasRes] = await Promise.all([
       supabase
         .from("ventas")
         .select(
@@ -172,15 +175,20 @@ export default async function CajaPage() {
       supabase
         .from("egresos")
         .select(
-          "id, concepto, monto, fecha, tipo, orden_compra_id, creado_por, turno_caja_id, perfiles(nombre)",
+          "id, concepto, monto, fecha, tipo, orden_compra_id, creado_por, turno_caja_id, cuenta_origen_id, perfiles(nombre)",
         )
         .eq("turno_caja_id", turnoPropio.id)
+        .eq("cuenta_origen_id", turnoPropio.cuenta_financiera_id!)
         .order("fecha", { ascending: false }),
+      supabase.rpc("transferencias_caja_turno", {
+        p_turno_id: turnoPropio.id,
+      }),
     ]);
 
     ventas = (ventasRes.data || []) as unknown as VentaCaja[];
     pagosSueltos = (pagosSueltosRes.data || []) as unknown as VentaPago[];
     egresos = (egresosRes.data || []) as unknown as EgresoCaja[];
+    transferenciasCaja = transferenciasRes.data || [];
 
     // Si es vendedor, no le mostramos los egresos que registraron otros usuarios
     if (userRole !== "ADMIN") {
@@ -197,7 +205,7 @@ export default async function CajaPage() {
   // esto es lo que decide si se renderiza, no lo que protege el dato.
   const puedeVerGerencial = await puedeVerVistaGerencialAction();
 
-  const [resumenGerencial, detalleMedios, posicion, facturadas] =
+  const [resumenGerencial, detalleMedios, posicion, facturadas, estadoCuentas] =
     puedeVerGerencial
       ? await Promise.all([
           getResumenGerencialAction(),
@@ -206,8 +214,9 @@ export default async function CajaPage() {
           facturaConArca
             ? getVentasFacturadasAction(PERIODO_INICIAL_DINERO)
             : Promise.resolve(null),
+          getEstadoCuentasFinancierasAction(),
         ])
-      : [null, null, null, null];
+      : [null, null, null, null, null];
 
   // 8. ¿Esta persona opera caja, o solo mira números? No hay un flag para
   // esto: se deduce de si tiene un turno propio abierto o abrió alguno en el
@@ -234,6 +243,7 @@ export default async function CajaPage() {
             ventas={ventas}
             pagosSueltos={pagosSueltos}
             egresos={egresos}
+            transferenciasCaja={transferenciasCaja}
             historial={turnos}
             modoCaja={modoCaja}
             userRole={userRole}
@@ -251,6 +261,12 @@ export default async function CajaPage() {
         dinero={
           posicion?.data ? (
             <div className="space-y-10">
+              {estadoCuentas?.data && (
+                <CuentasFinancierasPanel
+                  cuentas={estadoCuentas.data.cuentas}
+                  transferencias={estadoCuentas.data.transferencias}
+                />
+              )}
               <PosicionDinero
                 posicionInicial={posicion.data}
                 periodoInicial={PERIODO_INICIAL_DINERO}

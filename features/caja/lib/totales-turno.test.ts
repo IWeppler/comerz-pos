@@ -32,6 +32,26 @@ const egreso = (monto: number): MovimientoCaja => ({
 });
 
 describe("calcularTotalesTurno", () => {
+  it("una transferencia interna toca el cajón pero no la facturación", () => {
+    const entrada: MovimientoCaja = {
+      tipo: "INGRESO",
+      metodo_tipo: "EFECTIVO",
+      monto: 30_000,
+      comision: 0,
+      neto: 30_000,
+      afecta_facturacion: false,
+    };
+    const salida: MovimientoCaja = {
+      ...entrada,
+      tipo: "EGRESO",
+      monto: 10_000,
+      neto: 10_000,
+    };
+    const totales = calcularTotalesTurno([entrada, salida], 5_000);
+    expect(totales.efectivoEsperado).toBe(25_000);
+    expect(totales.totalFacturado).toBe(0);
+  });
+
   it("suma efectivo y descuenta egresos", () => {
     const totales = calcularTotalesTurno(
       [ventaEfectivo(45_000), ventaEfectivo(25_000), egreso(10_000)],

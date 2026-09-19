@@ -139,29 +139,16 @@ export async function cerrarTurnoAction(
   // el mismo turno_caja_id, y la policy egresos_select_propio_o_admin solo
   // deja ver a cada uno sus propios egresos. Un SUM corrido con la sesión
   // del cajero que cierra subestimaría el total e inflaría el esperado.
-  const [ventaPagosRes, egresosSumRes] = await Promise.all([
-    supabase
-      .from("venta_pagos")
-      .select("monto_bruto")
-      .eq("turno_caja_id", turnoId)
-      .eq("metodo_tipo", "EFECTIVO")
-      .neq("estado_pago_operacion", "ANULADO"),
-    supabase.rpc("calcular_egresos_turno", { p_turno_id: turnoId }),
-  ]);
+  const { data: flujoCaja, error: flujoError } = await supabase.rpc(
+    "flujo_caja_turno",
+    { p_turno_id: turnoId },
+  );
 
-  if (egresosSumRes.error) {
-    console.error("Error calculando egresos del turno:", egresosSumRes.error);
+  if (flujoError) {
+    console.error("Error calculando flujo del turno:", flujoError);
     return { error: "Ocurrió un error al calcular el cierre.", success: false };
   }
-
-  const ingresosEfectivo = (ventaPagosRes.data || []).reduce(
-    (acc, p) => acc + Number(p.monto_bruto),
-    0,
-  );
-  const totalEgresos = Number(egresosSumRes.data ?? 0);
-
-  const efectivoEsperado =
-    Number(turno.monto_inicial) + ingresosEfectivo - totalEgresos;
+  const efectivoEsperado = Number(turno.monto_inicial) + Number(flujoCaja ?? 0);
   const diferenciaCaja = montoDeclarado - efectivoEsperado;
 
   const { data: turnoCerrado, error } = await supabase
@@ -206,7 +193,12 @@ export async function getDetallesTurnoAction(turnoId: string) {
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
-    const [ventasRes, pagosSueltosRes, egresosRes] = await Promise.all([
+    const [turnoRes, ventasRes, pagosSueltosRes, egresosRes, transferenciasRes] = await Promise.all([
+      supabase
+        .from("turnos_caja")
+        .select("cuenta_financiera_id")
+        .eq("id", turnoId)
+        .single(),
       supabase
         .from("ventas")
         .select(
@@ -245,9 +237,10 @@ export async function getDetallesTurnoAction(turnoId: string) {
         .order("creado_en", { ascending: false }),
       supabase
         .from("egresos")
-        .select("id, concepto, monto, fecha, tipo, orden_compra_id, perfiles(nombre)")
+        .select("id, concepto, monto, fecha, tipo, orden_compra_id, cuenta_origen_id, perfiles(nombre)")
         .eq("turno_caja_id", turnoId)
         .order("fecha", { ascending: false }),
+      supabase.rpc("transferencias_caja_turno", { p_turno_id: turnoId }),
     ]);
 
     if (ventasRes.error) {
@@ -259,7 +252,10 @@ export async function getDetallesTurnoAction(turnoId: string) {
       data: {
         ventas: ventasRes.data || [],
         pagosSueltos: pagosSueltosRes.data || [],
-        egresos: egresosRes.data || [],
+        egresos: (egresosRes.data || []).filter(
+          (egreso) => egreso.cuenta_origen_id === turnoRes.data?.cuenta_financiera_id,
+        ),
+        transferenciasCaja: transferenciasRes.data || [],
       },
       error: null,
     };
@@ -277,6 +273,7 @@ export async function registrarEgresoAction(
   const monto = Number(formData.get("monto"));
   const tipo = normalizarTipoEgreso(formData.get("tipo"));
   const ordenCompraId = (formData.get("orden_compra_id") as string) || null;
+  const cuentaOrigenId = String(formData.get("cuenta_origen_id") ?? "");
 
   if (!concepto || !monto || monto <= 0) {
     return { error: "Ingresa un concepto y un monto válido.", success: false };
@@ -288,6 +285,9 @@ export async function registrarEgresoAction(
       error: "Solo una compra de mercadería puede asociarse a un remito.",
       success: false,
     };
+  }
+  if (!cuentaOrigenId) {
+    return { error: "Elegí desde qué cuenta sale el dinero.", success: false };
   }
 
   const cookieStore = await cookies();
@@ -310,7 +310,17 @@ export async function registrarEgresoAction(
     user.id,
   );
 
-  if (requiereCajaAbierta && !turnoId) {
+  const { data: cuenta } = await supabase
+    .from("cuentas_financieras")
+    .select("id, requiere_arqueo")
+    .eq("id", cuentaOrigenId)
+    .eq("activa", true)
+    .maybeSingle();
+  if (!cuenta) {
+    return { error: "La cuenta elegida no está disponible.", success: false };
+  }
+
+  if (cuenta.requiere_arqueo && requiereCajaAbierta && !turnoId) {
     return {
       error: "Necesitas abrir la caja antes de registrar un gasto.",
       success: false,
@@ -324,6 +334,7 @@ export async function registrarEgresoAction(
     orden_compra_id: tipo === "COMPRA_MERCADERIA" ? ordenCompraId : null,
     creado_por: user.id,
     turno_caja_id: turnoId,
+    cuenta_origen_id: cuentaOrigenId,
   });
 
   if (error) {

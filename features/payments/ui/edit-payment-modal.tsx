@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -21,6 +21,9 @@ import { CreditCard, Percent, Clock, Loader2, TrendingUp } from "lucide-react";
 import { editPaymentAction } from "../actions/manage-payment";
 import { toast } from "sonner";
 import { MetodoPago } from "@/entities/payments/types";
+import { getCuentasFinancierasAction, type CuentaFinanciera } from "@/features/caja/actions/cuentas-financieras";
+
+const SIN_CUENTA = "sin-cuenta";
 
 export function EditPaymentModal({
   pago,
@@ -31,6 +34,13 @@ export function EditPaymentModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([]);
+  const [cuentaDestinoId, setCuentaDestinoId] = useState(pago.cuenta_destino_id ?? SIN_CUENTA);
+  useEffect(() => {
+    if (!open) return;
+    setCuentaDestinoId(pago.cuenta_destino_id ?? SIN_CUENTA);
+    getCuentasFinancierasAction().then((data) => setCuentas(data.filter((c) => c.codigo !== "POR_ACREDITAR")));
+  }, [open, pago.cuenta_destino_id]);
   const [, formAction, isPending] = useActionState(
     async (
       previousState: { error: string | null; success: boolean },
@@ -60,6 +70,7 @@ export function EditPaymentModal({
           </DialogTitle>
         </DialogHeader>
         <form action={formAction} className="space-y-5 pt-4">
+          <input type="hidden" name="cuenta_destino_id" value={cuentaDestinoId === SIN_CUENTA ? "" : cuentaDestinoId} />
           <div className="space-y-2">
             <Label htmlFor="nombre">Nombre a mostrar en caja</Label>
             <Input
@@ -147,6 +158,18 @@ export function EditPaymentModal({
                 0 = Inmediata
               </p>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Cuenta donde acredita</Label>
+            <Select value={cuentaDestinoId} onValueChange={setCuentaDestinoId}>
+              <SelectTrigger className="rounded-lg shadow-none"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SIN_CUENTA}>Sin configurar todavía</SelectItem>
+                {cuentas.map((cuenta) => <SelectItem key={cuenta.id} value={cuenta.id}>{cuenta.nombre}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-[10px] text-muted-foreground">Los cobros diferidos quedan primero en Por acreditar y se liquidan después a esta cuenta.</p>
           </div>
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">

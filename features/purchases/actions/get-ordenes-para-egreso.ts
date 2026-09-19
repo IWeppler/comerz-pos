@@ -7,7 +7,9 @@ export interface OrdenParaEgreso {
   id: string;
   proveedor: string;
   fecha_remito: string | null;
-  total_presupuestado: number;
+  valor_historico: number;
+  total_pagado: number;
+  saldo_pendiente: number;
   estado: string | null;
   creado_en: string;
 }
@@ -28,15 +30,12 @@ export async function getOrdenesParaEgresoAction(): Promise<OrdenParaEgreso[]> {
   const supabase = createClient(cookieStore);
 
   const { data, error } = await supabase
-    .from("ordenes_compra")
-    .select("id, proveedor, fecha_remito, total_presupuestado, estado, creado_en")
-    .order("creado_en", { ascending: false })
-    .limit(30);
+    .rpc("resumen_remitos_financiero");
 
   if (error) {
     console.error("[getOrdenesParaEgresoAction] Error:", error);
     return [];
   }
 
-  return (data ?? []) as OrdenParaEgreso[];
+  return (data ?? []).slice(0, 30) as OrdenParaEgreso[];
 }

@@ -67,28 +67,9 @@ export const useCajaStatusStore = create<CajaStatusState>((set) => ({
     // SECURITY DEFINER para egresos (en modo UNICA la policy
     // egresos_select_propio_o_admin solo deja ver los propios — un SUM
     // directo con esta sesión subestimaría el total).
-    const [ventaPagosRes, egresosSumRes] = await Promise.all([
-      supabase
-        .from("venta_pagos")
-        .select("monto_bruto")
-        .eq("turno_caja_id", data.id)
-        .eq("metodo_tipo", "EFECTIVO"),
-      // Los pagos ANULADOS se cuentan IGUAL, y no es un descuido.
-      //
-      // `estado_pago_operacion = 'ANULADO'` lo pone solo `anular_venta`, que
-      // en el mismo movimiento genera el egreso "Devolución en efectivo" por
-      // la porción cobrada en efectivo. Ese egreso ya está en el SUM de abajo.
-      // Con el filtro puesto, la misma anulación se restaba dos veces y el
-      // indicador de caja del navbar mostraba menos plata de la que había —
-      // el mismo bug que dejó a Ninja Camisetas en −320.000 el 22/8/2026.
-      supabase.rpc("calcular_egresos_turno", { p_turno_id: data.id }),
-    ]);
-
-    const ingresosEfectivo = (ventaPagosRes.data || []).reduce(
-      (acc, p) => acc + Number(p.monto_bruto),
-      0,
-    );
-    const totalEgresos = Number(egresosSumRes.data ?? 0);
+    const { data: flujoCaja } = await supabase.rpc("flujo_caja_turno", {
+      p_turno_id: data.id,
+    });
     const montoInicial = Number(data.monto_inicial);
 
     set({
@@ -99,7 +80,7 @@ export const useCajaStatusStore = create<CajaStatusState>((set) => ({
         fecha_apertura: data.fecha_apertura,
         vendedor_id: data.vendedor_id,
         vendedor_nombre: getSupabaseRelation(data.perfiles)?.nombre ?? null,
-        montoActual: montoInicial + ingresosEfectivo - totalEgresos,
+        montoActual: montoInicial + Number(flujoCaja ?? 0),
       },
     });
   },

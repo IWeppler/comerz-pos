@@ -89,7 +89,7 @@ export function PosicionDinero({
 
   const { efectivo, por_acreditar: porAcreditar, acreditado } = posicion;
 
-  const totalPorAcreditar = sumarNeto(porAcreditar);
+  const totalPorAcreditar = Number(posicion.por_acreditar_real?.saldo ?? sumarNeto(porAcreditar));
   const totalAcreditado = sumarNeto(acreditado);
   // Un turno con más egresos que ingresos da negativo. No se esconde: es la
   // señal de que hay egresos cargados en el turno equivocado.
@@ -135,7 +135,7 @@ export function PosicionDinero({
             detalle={
               porAcreditar.length === 0
                 ? "Nada en el aire"
-                : `${porAcreditar.reduce((a, c) => a + Number(c.cantidad), 0)} cobro(s) sin caer`
+                : "Saldo real de la cuenta técnica"
             }
             Icono={Clock}
             ayuda="Plata que ya cobraste pero todavía no está en la cuenta. Sale de los días de acreditación pactados con cada método (las tarjetas suelen ser a 20 días). Es tuya, pero no la podés usar todavía: no la sumes al efectivo para decidir una compra."
@@ -187,6 +187,9 @@ export function PosicionDinero({
                         {formatearMoneda(Number(caja.inicial))} · cobró{" "}
                         {formatearMoneda(Number(caja.ingresos))} · salidas{" "}
                         {formatearMoneda(Number(caja.salidas))}
+                        {Number(caja.transferencias_netas ?? 0) !== 0 && (
+                          <> · pases internos {Number(caja.transferencias_netas) > 0 ? "+" : ""}{formatearMoneda(Number(caja.transferencias_netas))}</>
+                        )}
                       </div>
                     </div>
                     <div
@@ -218,6 +221,16 @@ export function PosicionDinero({
         vacio="No hay cobros pendientes de acreditar."
         mostrarFecha
       />
+
+      {posicion.cuentas && (
+        <ListaSaldos cuentas={posicion.cuentas} />
+      )}
+
+      {posicion.conciliacion && (
+        <p className="text-[11px] text-muted-foreground">
+          Conciliación transitoria · por acreditar anterior {formatearMoneda(Number(posicion.conciliacion.por_acreditar_anterior))} · ledger {formatearMoneda(Number(posicion.conciliacion.por_acreditar_ledger))}.
+        </p>
+      )}
 
       <ListaCuentas
         titulo={`Ya acreditado en cada cuenta (${ETIQUETA_PERIODO_CALENDARIO[periodo]})`}
@@ -352,6 +365,10 @@ function Tarjeta({
 
 function sumarNeto(cuentas: CuentaPosicion[]): number {
   return cuentas.reduce((acc, c) => acc + Number(c.neto), 0);
+}
+
+function ListaSaldos({ cuentas }: Readonly<{ cuentas: NonNullable<PosicionDineroData["cuentas"]> }>) {
+  return <div className="space-y-2"><h3 className={LABEL}>Saldo registrado por cuenta</h3><ul className="rounded-xl border border-border bg-card">{cuentas.map((cuenta) => <li key={cuenta.cuenta_id} className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5 text-xs last:border-b-0"><span><span className="font-medium">{cuenta.nombre}</span><span className="ml-2 text-muted-foreground">{cuenta.tipo.replaceAll("_", " ")}</span></span><span className="font-semibold tabular-nums">{formatearMoneda(Number(cuenta.saldo))}</span></li>)}</ul></div>;
 }
 
 function formatearFecha(iso: string): string {

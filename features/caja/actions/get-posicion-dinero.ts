@@ -11,7 +11,7 @@ export async function getPosicionDineroAction(
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const { data, error } = await supabase.rpc("posicion_dinero", {
+  const { data, error } = await supabase.rpc("posicion_dinero_ledger", {
     p_desde: null,
     p_hasta: null,
     p_periodo: periodo,

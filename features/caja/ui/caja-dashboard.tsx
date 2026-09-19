@@ -10,12 +10,14 @@ import {
   ShoppingBag,
   BookUser,
   TrendingDown,
+  Repeat2,
 } from "lucide-react";
 import { etiquetaTipoEgreso } from "../lib/tipo-egreso";
 import { calcularTotalesTurno } from "../lib/totales-turno";
 import {
   TurnoCajaHistorial,
   EgresoCaja,
+  TransferenciaCaja,
   VentaCaja,
 } from "@/entities/caja/types";
 import { VentaPago, getSupabaseRelation } from "@/entities/ventas/types";
@@ -26,6 +28,7 @@ export interface CajaDashboardProps {
   ventas: VentaCaja[];
   pagosSueltos: VentaPago[];
   egresos: EgresoCaja[];
+  transferenciasCaja?: TransferenciaCaja[];
   historial: TurnoCajaHistorial[];
   modoCaja?: string;
   userRole?: string;
@@ -35,7 +38,7 @@ export interface CajaDashboardProps {
 type MovimientoExtendido = {
   id: string;
   tipo: "INGRESO" | "EGRESO";
-  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO";
+  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA";
   concepto: string;
   metodo: string;
   metodo_tipo: string;
@@ -47,6 +50,7 @@ type MovimientoExtendido = {
   /** La venta se anuló. Sigue siendo un movimiento real del turno —la plata
    * entró— pero no es facturación. Ver `totales` más abajo. */
   anulada?: boolean;
+  afecta_facturacion?: boolean;
 };
 
 export function CajaDashboard({
@@ -54,6 +58,7 @@ export function CajaDashboard({
   ventas,
   pagosSueltos,
   egresos,
+  transferenciasCaja = [],
   historial: _historial,
   modoCaja: _modoCaja,
   userRole: _userRole,
@@ -176,10 +181,28 @@ export function CajaDashboard({
       usuario: e.perfiles?.nombre || "Usuario",
     }));
 
+    const transferenciasMapeadas: MovimientoExtendido[] = transferenciasCaja.map(
+      (movimiento) => ({
+        id: `transferencia-${movimiento.movimiento_id}`,
+        tipo: Number(movimiento.importe) >= 0 ? "INGRESO" : "EGRESO",
+        origen: "TRANSFERENCIA",
+        concepto: movimiento.descripcion,
+        metodo: "TRANSFERENCIA INTERNA",
+        metodo_tipo: "EFECTIVO",
+        monto: Math.abs(Number(movimiento.importe)),
+        comision: 0,
+        neto: Math.abs(Number(movimiento.importe)),
+        fecha: movimiento.fecha_movimiento,
+        usuario: "Sistema",
+        afecta_facturacion: false,
+      }),
+    );
+
     const todos = [
       ...ventasMapeadas,
       ...pagosSueltosMapeados,
       ...egresosMapeados,
+      ...transferenciasMapeadas,
     ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
     // La cuenta vive en `lib/totales-turno.ts`, con tests: es la que decide si
@@ -188,7 +211,7 @@ export function CajaDashboard({
       movimientos: todos,
       totales: calcularTotalesTurno(todos, Number(turno.monto_inicial)),
     };
-  }, [ventas, pagosSueltos, egresos, turno]);
+  }, [ventas, pagosSueltos, egresos, transferenciasCaja, turno]);
 
   return (
     <div className="space-y-6 animate-in fade-in-50">
@@ -261,7 +284,7 @@ export function CajaDashboard({
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-muted-foreground">Gastos fisicos</span>
+                  <span className="text-muted-foreground">Salidas de efectivo</span>
                   <span className="font-mono font-medium text-danger">
                     -{formatearMoneda(totales.totalEgresos)}
                   </span>
@@ -363,6 +386,11 @@ export function CajaDashboard({
                             {mov.origen === "EGRESO" && (
                               <div className="p-1.5 bg-danger/10 text-danger rounded-md shrink-0 border">
                                 <TrendingDown className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+                            {mov.origen === "TRANSFERENCIA" && (
+                              <div className="p-1.5 bg-info/10 text-info rounded-md shrink-0 border">
+                                <Repeat2 className="w-3.5 h-3.5" />
                               </div>
                             )}
                             <span className="truncate max-w-[110px] sm:max-w-xs text-xs sm:text-sm">

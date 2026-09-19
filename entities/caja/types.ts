@@ -28,6 +28,7 @@ export interface TurnoCajaHistorial {
    * cierre, hubo una corrección posterior y ambos se muestran. */
   efectivo_esperado_actual?: number | string | null;
   estado: string;
+  cuenta_financiera_id?: string | null;
   perfiles?: {
     nombre?: string | null;
   } | null;
@@ -122,6 +123,8 @@ export interface ResumenGerencialCaja {
     fondo_inicial: number;
     ingresos_efectivo: number;
     egresos_efectivo: number;
+    /** Neto de pases internos que entraron/salieron de la cuenta arqueada. */
+    transferencias_netas?: number;
     esperado: number;
     turnos_totales: number;
     turnos_abiertos: number;
@@ -161,9 +164,18 @@ export interface EgresoCaja {
   orden_compra_id?: string | null;
   creado_por?: string | null;
   turno_caja_id?: string | null;
+  cuenta_origen_id?: string | null;
   perfiles?: {
     nombre?: string | null;
   } | null;
+}
+
+export interface TransferenciaCaja {
+  movimiento_id: number;
+  /** Positivo si entró al cajón, negativo si salió. */
+  importe: number | string;
+  descripcion: string;
+  fecha_movimiento: string;
 }
 
 /**
@@ -181,6 +193,7 @@ export interface CajaAbiertaPosicion {
   ingresos: number;
   /** Todos los egresos del turno, del tipo que sean: los tres vacían el cajón. */
   salidas: number;
+  transferencias_netas?: number;
   esperado: number;
 }
 
@@ -209,6 +222,10 @@ export interface PosicionDinero {
   };
   por_acreditar: CuentaPosicion[];
   acreditado: CuentaPosicion[];
+  modelo?: "LEDGER";
+  cuentas?: { cuenta_id: string; nombre: string; tipo: string; es_efectivo: boolean; saldo: number }[];
+  por_acreditar_real?: { nombre: string; saldo: number; cantidad_movimientos: number };
+  conciliacion?: { por_acreditar_ledger: number; por_acreditar_anterior: number };
 }
 
 /** Respuesta de `ventas_facturadas`: qué parte de lo vendido tiene factura. */

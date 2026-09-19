@@ -11,10 +11,10 @@ drop table if exists public.cobros_cc_correcciones;
 delete from public.rol_permisos
  where permiso_id in (
    select id from public.permisos
-    where clave = ''clientes.corregir_cobro_cc''
+    where clave = 'clientes.corregir_cobro_cc'
  );
 
 delete from public.permisos
- where clave = ''clientes.corregir_cobro_cc'';
+ where clave = 'clientes.corregir_cobro_cc';
 
 commit;

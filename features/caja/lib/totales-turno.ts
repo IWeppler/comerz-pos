@@ -20,6 +20,8 @@ export interface MovimientoCaja {
   neto: number;
   /** La venta se anuló. Cambia en qué totales entra, no si es real. */
   anulada?: boolean;
+  /** Las transferencias que entran al cajón son ingresos físicos, no ventas. */
+  afecta_facturacion?: boolean;
 }
 
 export interface TotalesTurno {
@@ -60,7 +62,9 @@ export function calcularTotalesTurno(
   fondoInicial: number,
 ): TotalesTurno {
   const efectivoArqueo = movimientos.filter((m) => esIngreso(m) && esEfectivo(m));
-  const efectivoFacturado = efectivoArqueo.filter((m) => !m.anulada);
+  const efectivoFacturado = efectivoArqueo.filter(
+    (m) => !m.anulada && m.afecta_facturacion !== false,
+  );
   const digitales = movimientos.filter(
     (m) => esIngreso(m) && !esEfectivo(m) && !m.anulada,
   );

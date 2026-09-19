@@ -283,6 +283,14 @@ export function MergeTable({
 }: Readonly<MergeTableProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  // No usamos el total de cabecera: el valor histórico del remito es la suma
+  // congelada de cantidad × costo de cada línea, aunque luego cambie el costo
+  // actual de los productos o una carga vieja tenga un total presupuestado
+  // desactualizado.
+  const valorHistoricoRemito = itemsOriginales.reduce(
+    (total, item) => total + Number(item.cantidad ?? 0) * Number(item.precio_costo ?? 0),
+    0,
+  );
 
   // Estado de red por acción — separados para que un "crear producto"
   // colgado no bloquee el botón de aprobar (y viceversa).
@@ -1239,8 +1247,8 @@ export function MergeTable({
             Conciliación de Pedido
           </h1>
           <p className="text-muted-foreground mt-1">
-            Proveedor: <strong>{orden.proveedor}</strong> | Total: $
-            {Number(orden.total_presupuestado).toLocaleString("es-AR")}
+            Proveedor: <strong>{orden.proveedor}</strong> | Valor histórico: $
+            {valorHistoricoRemito.toLocaleString("es-AR")}
           </p>
         </div>
         <div className="flex flex-col items-stretch sm:items-end gap-2 w-full sm:w-auto">

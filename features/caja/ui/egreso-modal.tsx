@@ -28,6 +28,10 @@ import {
 import { TrendingDown, Loader2 } from "lucide-react";
 import { CajaActionState } from "@/entities/caja/types";
 import {
+  getCuentasFinancierasAction,
+  type CuentaFinanciera,
+} from "../actions/cuentas-financieras";
+import {
   DEFINICION_TIPO_EGRESO,
   TIPOS_EGRESO,
   type TipoEgreso,
@@ -59,6 +63,8 @@ export function EgresoModal({
   const [tipo, setTipo] = useState<TipoEgreso>("OPERATIVO");
   const [ordenId, setOrdenId] = useState<string>(SIN_REMITO);
   const [ordenes, setOrdenes] = useState<OrdenParaEgreso[] | null>(null);
+  const [cuentas, setCuentas] = useState<CuentaFinanciera[] | null>(null);
+  const [cuentaId, setCuentaId] = useState("");
 
   const esControlado = open !== undefined;
   const isOpen = esControlado ? open : isOpenInterno;
@@ -66,6 +72,20 @@ export function EgresoModal({
     if (!esControlado) setIsOpenInterno(valor);
     onOpenChange?.(valor);
   };
+
+  useEffect(() => {
+    if (!isOpen || cuentas !== null) return;
+    let cancelado = false;
+    getCuentasFinancierasAction().then((data) => {
+      if (cancelado) return;
+      setCuentas(data.filter((cuenta) => cuenta.codigo !== "POR_ACREDITAR"));
+      const cajaDiaria = data.find((cuenta) => cuenta.codigo === "CAJA_DIARIA");
+      setCuentaId((actual) => actual || cajaDiaria?.id || data[0]?.id || "");
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [isOpen, cuentas]);
 
   // Los remitos se piden recién cuando hacen falta: la mayoría de los egresos
   // son gastos operativos y no necesitan la lista.
@@ -88,6 +108,8 @@ export function EgresoModal({
         toast.success("Egreso registrado correctamente");
         setTipo("OPERATIVO");
         setOrdenId(SIN_REMITO);
+        const cajaDiaria = cuentas?.find((cuenta) => cuenta.codigo === "CAJA_DIARIA");
+        setCuentaId(cajaDiaria?.id || cuentas?.[0]?.id || "");
         setIsOpen(false);
       } else {
         toast.error(result.error || "Ocurrió un error");
@@ -113,12 +135,33 @@ export function EgresoModal({
         <DialogHeader>
           <DialogTitle>Registrar Egreso</DialogTitle>
           <DialogDescription>
-            Toda la plata que sale del cajón se anota acá. El tipo decide si
-            además resta de tu ganancia.
+            Indicá para qué salió el dinero y desde qué cuenta. Solo lo que
+            sale de Caja diaria modifica el arqueo.
           </DialogDescription>
         </DialogHeader>
 
         <form action={formAction} className="space-y-4 pt-4">
+          <div className="space-y-2">
+            <Label htmlFor="cuenta-origen">Sale de</Label>
+            <input type="hidden" name="cuenta_origen_id" value={cuentaId} />
+            <Select value={cuentaId} onValueChange={setCuentaId} disabled={!cuentas?.length}>
+              <SelectTrigger id="cuenta-origen" className="w-full">
+                <SelectValue placeholder="Cargando cuentas..." />
+              </SelectTrigger>
+              <SelectContent>
+                {(cuentas ?? []).map((cuenta) => (
+                  <SelectItem key={cuenta.id} value={cuenta.id}>
+                    {cuenta.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {cuentas?.length === 1 && (
+              <p className="text-[11px] text-muted-foreground">
+                Podés crear caja general, banco o billetera desde Caja → Dinero.
+              </p>
+            )}
+          </div>
           <div className="space-y-2">
             <Label htmlFor="tipo-egreso">Tipo de egreso</Label>
             {/* El name va en un input oculto: el Select de Radix no es un
@@ -168,7 +211,7 @@ export function EgresoModal({
                   {(ordenes ?? []).map((o) => (
                     <SelectItem key={o.id} value={o.id}>
                       {o.proveedor} · {formatearFecha(o.fecha_remito ?? o.creado_en)}{" "}
-                      · ${Math.round(Number(o.total_presupuestado)).toLocaleString("es-AR")}
+                      · ${Math.round(Number(o.saldo_pendiente)).toLocaleString("es-AR")} pendiente
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -212,8 +255,8 @@ export function EgresoModal({
 
           {!definicion.afectaResultado && (
             <p className="text-[11px] text-warning">
-              Sale de la caja y entra en el arqueo del turno, pero NO resta de la
-              ganancia del panel.
+              Mueve dinero de la cuenta elegida, pero NO resta de la ganancia
+              del panel.
             </p>
           )}
 
@@ -226,7 +269,7 @@ export function EgresoModal({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" disabled={isPending || !cuentaId}>
               {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Guardar Egreso
             </Button>

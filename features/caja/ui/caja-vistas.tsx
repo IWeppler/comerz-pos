@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import { History, PiggyBank, Wallet } from "lucide-react";
 
@@ -47,6 +48,7 @@ export function CajaVistas({
   esCajera,
   vistaInicial,
 }: Readonly<CajaVistasProps>) {
+  const searchParams = useSearchParams();
   const opciones: { valor: Vista; label: string; Icono: typeof Wallet }[] = [
     // Hoy existe si hay ALGO que mostrar: el turno propio, el resumen, o los
     // dos. Una cajera sin permiso gerencial ve solo su turno; una dueña que
@@ -62,8 +64,11 @@ export function CajaVistas({
 
   // Si la vista inicial no está disponible (sin permiso, o no es cajera), cae
   // en la primera que sí lo esté en vez de renderizar una pestaña vacía.
-  const inicial = opciones.some((o) => o.valor === vistaInicial)
-    ? vistaInicial
+  const vistaPedida = searchParams.get("vista") as Vista | null;
+  const inicial = opciones.some((o) => o.valor === vistaPedida)
+    ? vistaPedida!
+    : opciones.some((o) => o.valor === vistaInicial)
+      ? vistaInicial
     : opciones[0].valor;
 
   const [vista, setVista] = useState<Vista>(inicial);

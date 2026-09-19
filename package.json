@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "auditar:finanzas": "node --experimental-strip-types scripts/auditar-modelo-financiero.ts",
     "backfill:images": "node --experimental-strip-types scripts/backfill-image-thumbnails.ts",
     "auditar:imagenes": "node --experimental-strip-types scripts/auditar-imagenes-pesadas.ts",
     "cleanup:genero": "node --experimental-strip-types scripts/cleanup-genero-fuera-de-bebe.ts",

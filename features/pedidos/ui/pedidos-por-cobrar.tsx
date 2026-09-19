@@ -3,9 +3,8 @@
 import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ClipboardList, Loader2, Search, Trash2 } from "lucide-react";
+import { ClipboardList, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
-import { Input } from "@/shared/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -136,19 +135,6 @@ export function PedidosPorCobrar({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="shrink-0 border-b border-border px-3 py-2">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={busqueda}
-            onChange={(event) => setBusqueda(event.target.value)}
-            placeholder="Buscar pedido #, cliente o vendedor"
-            className="h-9 pl-9 text-sm"
-            aria-label="Buscar pedidos por cobrar"
-          />
-        </div>
-      </div>
-
       <div className="flex-1 space-y-2 overflow-y-auto p-3">
         {isLoading && (
           <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">

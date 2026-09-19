@@ -5,6 +5,7 @@ import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import {
   TurnoCajaHistorial,
   EgresoCaja,
+  TransferenciaCaja,
   VentaCaja,
 } from "@/entities/caja/types";
 import { VentaPago, getSupabaseRelation } from "@/entities/ventas/types";
@@ -26,6 +27,7 @@ import {
   ShoppingBag,
   BookUser,
   TrendingDown,
+  Repeat2,
 } from "lucide-react";
 import { getDetallesTurnoAction } from "../actions/caja-action";
 import { etiquetaTipoEgreso } from "../lib/tipo-egreso";
@@ -44,7 +46,7 @@ interface CajaDetailSheetProps {
 type MovimientoDetalle = {
   id: string;
   tipo: "INGRESO" | "EGRESO";
-  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO";
+  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA";
   concepto: string;
   metodo: string;
   metodo_tipo: string;
@@ -91,6 +93,7 @@ export function CajaDetailSheet({
         const ventas = res.data.ventas as unknown as VentaCaja[];
         const pagosSueltos = res.data.pagosSueltos as VentaPago[];
         const egresos = res.data.egresos as EgresoCaja[];
+        const transferencias = res.data.transferenciasCaja as TransferenciaCaja[];
 
         const ventasMapeadas: MovimientoDetalle[] = ventas.flatMap((v) => {
           const primerItem = v.ventas_items?.[0];
@@ -174,10 +177,27 @@ export function CajaDetailSheet({
           fecha: e.fecha,
         }));
 
+        const transferenciasMapeadas: MovimientoDetalle[] = transferencias.map(
+          (movimiento) => ({
+            id: `transferencia-${movimiento.movimiento_id}`,
+            tipo: Number(movimiento.importe) >= 0 ? "INGRESO" : "EGRESO",
+            origen: "TRANSFERENCIA",
+            concepto: movimiento.descripcion,
+            metodo: "TRANSFERENCIA INTERNA",
+            metodo_tipo: "EFECTIVO",
+            monto: Math.abs(Number(movimiento.importe)),
+            recargo: 0,
+            comision: 0,
+            neto: Math.abs(Number(movimiento.importe)),
+            fecha: movimiento.fecha_movimiento,
+          }),
+        );
+
         const todos = [
           ...ventasMapeadas,
           ...pagosSueltosMapeados,
           ...egresosMapeados,
+          ...transferenciasMapeadas,
         ].sort(
           (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
         );
@@ -418,6 +438,11 @@ export function CajaDetailSheet({
                         {mov.origen === "EGRESO" && (
                           <div className="text-danger shrink-0">
                             <TrendingDown className="w-4 h-4" />
+                          </div>
+                        )}
+                        {mov.origen === "TRANSFERENCIA" && (
+                          <div className="text-info shrink-0">
+                            <Repeat2 className="w-4 h-4" />
                           </div>
                         )}
                         <div>

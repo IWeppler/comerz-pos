@@ -21,6 +21,7 @@ export async function createPaymentAction(prevState: any, formData: FormData) {
     const tipo = formData.get("tipo") as string;
     const comision = Number(formData.get("comision") || 0);
     const acreditacion_dias = Number(formData.get("acreditacion_dias") || 0);
+    const cuentaDestinoId = String(formData.get("cuenta_destino_id") || "") || null;
     const recargo_porcentaje = parsearRecargo(formData);
 
     if (!nombre || !tipo || isNaN(comision) || isNaN(acreditacion_dias)) {
@@ -39,6 +40,7 @@ export async function createPaymentAction(prevState: any, formData: FormData) {
       comision,
       recargo_porcentaje,
       acreditacion_dias,
+      cuenta_destino_id: cuentaDestinoId,
       activo: true,
     });
 
@@ -62,6 +64,7 @@ export async function editPaymentAction(prevState: any, formData: FormData) {
     const tipo = formData.get("tipo") as string;
     const comision = Number(formData.get("comision") || 0);
     const acreditacion_dias = Number(formData.get("acreditacion_dias") || 0);
+    const cuentaDestinoId = String(formData.get("cuenta_destino_id") || "") || null;
     const recargo_porcentaje = parsearRecargo(formData);
 
     if (
@@ -90,6 +93,7 @@ export async function editPaymentAction(prevState: any, formData: FormData) {
         comision,
         recargo_porcentaje,
         acreditacion_dias,
+        cuenta_destino_id: cuentaDestinoId,
       })
       .eq("id", id);
 
