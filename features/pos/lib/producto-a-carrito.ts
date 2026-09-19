@@ -32,16 +32,41 @@ export function formaInicialDeLinea(
   precio: number;
   presentaciones: PresentacionCarrito[] | undefined;
 } {
-  const aplicables = presentacionesDeVariante(
-    producto.producto_presentaciones,
-    varianteId ?? null,
-  ).map(aPresentacionCarrito);
   const inicial = presentacionDefault(
     producto.producto_presentaciones,
     varianteId ?? null,
   );
-  const elegida = inicial
-    ? (aplicables.find((p) => p.id === inicial.id) ?? null)
+  return formaElegidaDeLinea(
+    producto,
+    varianteId,
+    precioBase,
+    inicial?.id ?? null,
+  );
+}
+
+/**
+ * Resuelve una forma elegida explícitamente en el selector visual. `null` es
+ * la unidad base; un id es una presentación. La lista aplicable viaja siempre
+ * para que el ticket pueda reabrir el mismo selector sin consultar de nuevo.
+ */
+export function formaElegidaDeLinea(
+  producto: Pick<Producto, "producto_presentaciones">,
+  varianteId: string | undefined,
+  precioBase: number,
+  presentacionId: string | null,
+): {
+  presentacionId: string | null;
+  presentacionNombre: string | null;
+  factor: number;
+  precio: number;
+  presentaciones: PresentacionCarrito[] | undefined;
+} {
+  const aplicables = presentacionesDeVariante(
+    producto.producto_presentaciones,
+    varianteId ?? null,
+  ).map(aPresentacionCarrito);
+  const elegida = presentacionId
+    ? (aplicables.find((p) => p.id === presentacionId) ?? null)
     : null;
   return {
     presentacionId: elegida?.id ?? null,

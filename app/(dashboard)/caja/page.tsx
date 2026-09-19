@@ -51,12 +51,8 @@ export default async function CajaPage() {
   ]);
   if (!operaCaja && !veGerencial) redirect("/pos");
 
-  // El rol es por negocio (usuarios_negocios), el nombre es del perfil global.
-  const [{ data: perfil }, rolActual] = await Promise.all([
-    supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
-    getRolActual(),
-  ]);
-
+  // El rol es por negocio (usuarios_negocios).
+  const rolActual = await getRolActual();
   const userRole = rolActual || "VENDEDOR";
 
   const { data: puedeCerrarAjenaRaw } = await supabase.rpc("tiene_permiso", {
@@ -97,7 +93,36 @@ export default async function CajaPage() {
     console.error("Error cargando historial:", queryError);
   }
   
-  const turnos = (turnosHistorial || []) as TurnoCajaHistorial[];
+  let turnos = (turnosHistorial || []) as TurnoCajaHistorial[];
+
+  // Un cierre conserva para siempre el esperado que la cajera vio y firmó.
+  // Si después una administradora corrige un medio de pago, el historial
+  // necesita además el esperado ACTUAL para no seguir mostrando un faltante
+  // ficticio. La RPC suma todos los movimientos del turno sin depender de la
+  // RLS por usuario (en caja ÚNICA participan varias personas).
+  if (turnos.length > 0) {
+    const { data: efectivosActuales, error: efectivosError } = await supabase.rpc(
+      "efectivo_actual_turnos",
+      { p_turno_ids: turnos.map((turno) => turno.id) },
+    );
+
+    if (efectivosError) {
+      console.error("Error recalculando efectivos del historial:", efectivosError);
+    } else {
+      const porTurno = new Map(
+        (
+          (efectivosActuales ?? []) as {
+            turno_id: string;
+            efectivo_esperado_actual: number | string;
+          }[]
+        ).map((fila) => [fila.turno_id, fila.efectivo_esperado_actual]),
+      );
+      turnos = turnos.map((turno) => ({
+        ...turno,
+        efectivo_esperado_actual: porTurno.get(turno.id) ?? null,
+      }));
+    }
+  }
 
   // 4. Identificamos los turnos ABIERTOS actuales
   const turnosAbiertos = turnos.filter((t) => t.estado === "ABIERTO");

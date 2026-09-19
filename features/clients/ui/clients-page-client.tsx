@@ -9,7 +9,13 @@ import { Skeleton } from "@/shared/ui/skeleton";
 
 const CATALOG_STALE_TIME_MS = 3 * 60 * 1000;
 
-export function ClientsPageClient({ isAdmin }: { isAdmin: boolean }) {
+export function ClientsPageClient({
+  isAdmin,
+  puedeCorregirCobro,
+}: {
+  isAdmin: boolean;
+  puedeCorregirCobro: boolean;
+}) {
   const negocioActivo = useNegocioActivo();
   const { data, isLoading, error } = useQuery({
     queryKey: conNegocio(queryKeys.clientes.listado, negocioActivo?.id),
@@ -50,6 +56,7 @@ export function ClientsPageClient({ isAdmin }: { isAdmin: boolean }) {
         vencidoPorCliente={data?.data?.vencidoPorCliente ?? {}}
         moraPreviaPorCliente={data?.data?.moraPreviaPorCliente ?? {}}
         isAdmin={isAdmin}
+        puedeCorregirCobro={puedeCorregirCobro}
       />
     </div>
   );

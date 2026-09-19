@@ -32,6 +32,7 @@ export const PERMISOS = {
   STOCK_IMPORTAR_PLANILLA: "stock.importar_planilla",
   STOCK_INGRESAR_REMITO: "stock.ingresar_remito",
   CLIENTES_COBRAR_CC: "clientes.cobrar_cc",
+  CLIENTES_CORREGIR_COBRO_CC: "clientes.corregir_cobro_cc",
   CONFIGURACION_FACTURACION: "configuracion.facturacion",
   VENTAS_ELEGIR_COMPROBANTE: "ventas.elegir_comprobante",
   VENTAS_ANULAR: "ventas.anular",

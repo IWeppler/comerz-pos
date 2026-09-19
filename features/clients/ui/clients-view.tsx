@@ -84,6 +84,7 @@ interface ClientsViewProps {
    * recargo: la mora no se calcula sobre mora. */
   moraPreviaPorCliente: Record<string, number>;
   isAdmin?: boolean;
+  puedeCorregirCobro?: boolean;
 }
 
 export function ClientsView({
@@ -94,6 +95,7 @@ export function ClientsView({
   vencidoPorCliente,
   moraPreviaPorCliente,
   isAdmin = false,
+  puedeCorregirCobro = false,
 }: Readonly<ClientsViewProps>) {
   // El "ahora" se congela en el primer render: si saliera de `new Date()`
   // dentro del useMemo, cada recálculo daría puntajes microscópicamente
@@ -630,6 +632,7 @@ export function ClientsView({
           selectedClient ? (moraPreviaPorCliente[selectedClient.id] ?? 0) : 0
         }
         isAdmin={isAdmin}
+        puedeCorregirCobro={puedeCorregirCobro}
         onClose={() => setSelectedClientId(null)}
       />
       <ImportClientsCsvModal

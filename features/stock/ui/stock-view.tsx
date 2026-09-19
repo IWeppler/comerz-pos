@@ -408,7 +408,7 @@ export function StockView({
   };
 
   return (
-    <div className="space-y-4 px-2 md:px-4 p-2">
+    <div className="space-y-4 px-2 md:px-4">
       {/* El toolbar NO se apila con la barra de selección: se reemplaza. Misma
           posición, misma altura, cero reflow al entrar y salir del modo. */}
       {seleccion.cantidad > 0 ? (

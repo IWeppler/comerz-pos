@@ -31,10 +31,12 @@ import {
   productoCargadoAProducto,
   resolverImagenPrincipal,
   resolverVariantesVendibles,
+  formaElegidaDeLinea,
   formaInicialDeLinea,
   type VarianteVendible,
 } from "../lib/producto-a-carrito";
 import { useCargaRapida } from "@/features/carga-rapida/hooks/use-carga-rapida";
+import { SelectorFormaVentaDialog } from "@/shared/components/cart-sidebar/selector-forma-venta-dialog";
 import {
   CargaRapidaPanel,
   CargaRapidaRecargo,
@@ -143,6 +145,14 @@ export function PosTerminal({
   // Estados para el Modal Rápido
   const [selectedProduct, setSelectedProduct] = useState<Producto | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formaPendiente, setFormaPendiente] = useState<{
+    producto: Producto;
+    variante: VarianteVendible;
+    precioBaseEfectivo: number;
+    presentaciones: NonNullable<
+      ReturnType<typeof formaInicialDeLinea>["presentaciones"]
+    >;
+  } | null>(null);
   // Carga rápida NO es otra pantalla: es una vista del mismo POS. Cambian la
   // grilla y la fila de pills; el buscador, el ticket y el sidebar quedan
   // donde están.
@@ -307,6 +317,7 @@ export function PosTerminal({
   const agregarVarianteAlCarrito = (
     producto: Producto,
     variante: VarianteVendible,
+    presentacionId?: string | null,
   ) => {
     // El precio de siempre, con la cascada compartida (`variante ?? producto`).
     const precioBase = precioBaseDeVariante(producto, {
@@ -323,7 +334,15 @@ export function PosTerminal({
 
     // La forma: presentación default si hay, unidad base si no. El precio
     // de la línea sale en esa forma; `precioBase` sigue por unidad base.
-    const forma = formaInicialDeLinea(producto, variante.varianteId, precio);
+    const forma =
+      presentacionId === undefined
+        ? formaInicialDeLinea(producto, variante.varianteId, precio)
+        : formaElegidaDeLinea(
+            producto,
+            variante.varianteId,
+            precio,
+            presentacionId,
+          );
 
     addItem({
       productoId: producto.id,
@@ -350,6 +369,44 @@ export function PosTerminal({
     });
   };
 
+  /**
+   * La forma se elige ANTES de agregar. Una default conserva el camino de un
+   * toque; sin default, las alternativas se muestran como decisiones grandes
+   * y legibles en vez de agregar "suelto" y obligar a corregir el ticket.
+   */
+  const solicitarAgregarVariante = (
+    producto: Producto,
+    variante: VarianteVendible,
+    abrirSelector = true,
+  ): "AGREGADO" | "REQUIERE_FORMA" => {
+    const precioBase = precioBaseDeVariante(producto, {
+      precio: variante.precio,
+    });
+    const { precio } = resolverPrecio({
+      listaPrecioId,
+      productoId: producto.id,
+      precioBase,
+      precioCosto: producto.precio_costo,
+    });
+    const forma = formaInicialDeLinea(producto, variante.varianteId, precio);
+
+    if (forma.presentaciones && !forma.presentacionId) {
+      if (abrirSelector) {
+        setFormaPendiente({
+          producto,
+          variante,
+          precioBaseEfectivo: precio,
+          presentaciones: forma.presentaciones,
+        });
+      }
+      return "REQUIERE_FORMA";
+    }
+
+    agregarVarianteAlCarrito(producto, variante);
+    setIsOpenCart(true);
+    return "AGREGADO";
+  };
+
   const handleProductClick = (producto: Producto) => {
     const variantesParaVender = resolverVariantesVendibles(
       producto,
@@ -363,8 +420,7 @@ export function PosTerminal({
 
     // Variante única: se agrega como un rayo.
     if (variantesParaVender.length === 1) {
-      agregarVarianteAlCarrito(producto, variantesParaVender[0]);
-      setIsOpenCart(true);
+      solicitarAgregarVariante(producto, variantesParaVender[0]);
     } else {
       // Varias variantes: abrimos el selector.
       setSelectedProduct(producto);
@@ -392,6 +448,7 @@ export function PosTerminal({
     // abre para el primero que lo necesite. El resto ya quedó en el catálogo
     // y se toca desde la grilla.
     let pendienteDeSelector: Producto | null = null;
+    let hayFormaPendiente = false;
 
     for (const cargado of cargados) {
       const producto = productoCargadoAProducto(cargado);
@@ -400,8 +457,17 @@ export function PosTerminal({
         permitirVentaSinStock,
       );
       if (vendibles.length === 1) {
-        agregarVarianteAlCarrito(producto, vendibles[0]);
-      } else if (vendibles.length > 1 && !pendienteDeSelector) {
+        const resultado = solicitarAgregarVariante(
+          producto,
+          vendibles[0],
+          !pendienteDeSelector && !hayFormaPendiente,
+        );
+        if (resultado === "REQUIERE_FORMA") hayFormaPendiente = true;
+      } else if (
+        vendibles.length > 1 &&
+        !pendienteDeSelector &&
+        !hayFormaPendiente
+      ) {
         pendienteDeSelector = producto;
       }
     }
@@ -409,7 +475,7 @@ export function PosTerminal({
     if (pendienteDeSelector) {
       setSelectedProduct(pendienteDeSelector);
       setIsModalOpen(true);
-    } else {
+    } else if (!hayFormaPendiente) {
       setIsOpenCart(true);
     }
   };
@@ -929,7 +995,37 @@ export function PosTerminal({
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         permitirVentaSinStock={permitirVentaSinStock}
+        onSelectVariante={(seleccion) => {
+          if (!selectedProduct) return;
+          solicitarAgregarVariante(selectedProduct, {
+            variante: seleccion.variante,
+            varianteId: seleccion.varianteId,
+            precio: seleccion.precio,
+            cantidad: seleccion.stockDisponible,
+          });
+        }}
       />
+      {formaPendiente && (
+        <SelectorFormaVentaDialog
+          open
+          onOpenChange={(open) => !open && setFormaPendiente(null)}
+          productoNombre={formaPendiente.producto.nombre}
+          variante={formaPendiente.variante.variante}
+          unidadMedida={formaPendiente.producto.unidad_medida}
+          precioBase={formaPendiente.precioBaseEfectivo}
+          stockMaximo={formaPendiente.variante.cantidad}
+          presentaciones={formaPendiente.presentaciones}
+          onElegir={(presentacionId) => {
+            agregarVarianteAlCarrito(
+              formaPendiente.producto,
+              formaPendiente.variante,
+              presentacionId,
+            );
+            setIsOpenCart(true);
+            setFormaPendiente(null);
+          }}
+        />
+      )}
     </div>
   );
 }

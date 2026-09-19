@@ -85,9 +85,13 @@ export function CierreZPrintable({
   }
 
   const inicial = Number(turno.monto_inicial || 0);
-  const esperado = Number(turno.efectivo_esperado ?? 0);
+  const esperadoAlCerrar = Number(turno.efectivo_esperado ?? 0);
+  const esperado = inicial + ingresosEfectivo - egresos;
   const contado = Number(turno.monto_final || 0);
   const diferencia = contado - esperado;
+  const diferenciaAlCerrar = contado - esperadoAlCerrar;
+  const hayAjustePosterior =
+    Math.abs(esperado - esperadoAlCerrar) >= 0.01;
 
   return (
     <div id="ticket-print-wrapper" className="hidden">
@@ -125,7 +129,7 @@ export function CierreZPrintable({
             <span>-{formatTicketMoney(egresos)}</span>
           </div>
           <div className="flex justify-between font-semibold pt-2 mt-2 border-t border-gray-300">
-            <span>Esperado</span>
+            <span>{hayAjustePosterior ? "Esperado corregido" : "Esperado"}</span>
             <span>{formatTicketMoney(esperado)}</span>
           </div>
           <div className="flex justify-between font-semibold">
@@ -145,6 +149,23 @@ export function CierreZPrintable({
               {formatTicketMoney(diferencia)}
             </span>
           </div>
+          {hayAjustePosterior && (
+            <div className="mt-3 border border-gray-400 p-2 text-[10px]">
+              <p className="font-bold uppercase">Corrección posterior al cierre</p>
+              <div className="mt-1 flex justify-between">
+                <span>Esperado original</span>
+                <span>{formatTicketMoney(esperadoAlCerrar)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Diferencia original</span>
+                <span>{formatTicketMoney(diferenciaAlCerrar)}</span>
+              </div>
+              <p className="mt-1">
+                El arqueo firmado no fue reescrito; los importes principales
+                reflejan los cobros corregidos.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="py-3 border-b-2 border-dashed border-gray-400 space-y-1.5 text-sm">

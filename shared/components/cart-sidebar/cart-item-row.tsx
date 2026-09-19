@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { CartItemStore } from "@/entities/cart/types";
-import { Barcode, ShoppingBag, X } from "lucide-react";
+import { Barcode, ChevronRight, ShoppingBag, X } from "lucide-react";
 import { CantidadControl } from "./cantidad-control";
 import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import {
@@ -9,15 +10,7 @@ import {
   normalizarUnidadMedida,
 } from "@/shared/lib/fiscal-producto";
 import { precioEnForma } from "@/shared/lib/presentaciones";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/ui/select";
-
-const FORMA_BASE = "__unidad_base__";
+import { SelectorFormaVentaDialog } from "./selector-forma-venta-dialog";
 
 interface CartItemRowProps {
   item: CartItemStore;
@@ -63,6 +56,7 @@ export function CartItemRow({
   mostrarImagen = true,
   onCambiarForma,
 }: Readonly<CartItemRowProps>) {
+  const [selectorFormaAbierto, setSelectorFormaAbierto] = useState(false);
   const lineSubtotal = item.precio * item.cantidad;
   const unidad = normalizarUnidadMedida(item.unidadMedida);
   const presentacion = item.presentacionId
@@ -80,6 +74,14 @@ export function CartItemRow({
     item.precioBase != null
       ? precioEnForma(item.precioBase, presentacion)
       : null;
+  const precioBaseEfectivo =
+    item.precioBaseEfectivo ??
+    (presentacion ? item.precio / presentacion.factor : item.precio);
+  const etiquetaForma = presentacion
+    ? presentacion.nombre
+    : ABREVIATURA_UNIDAD[unidad] === "u."
+      ? "Por unidad"
+      : `Suelto · ${ABREVIATURA_UNIDAD[unidad]}`;
 
   return (
     <div className="flex gap-3">
@@ -116,37 +118,33 @@ export function CartItemRow({
                 cambia identidad, precio y cantidad de la línea — lo hace el
                 store. */}
             {tienePresentaciones && onCambiarForma ? (
-              <Select
-                value={item.presentacionId ?? FORMA_BASE}
-                onValueChange={(value) =>
-                  onCambiarForma(value === FORMA_BASE ? null : value)
-                }
+              <button
+                type="button"
+                onClick={() => setSelectorFormaAbierto(true)}
+                className="mt-1 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/15"
               >
-                <SelectTrigger
-                  aria-label="Forma de venta"
-                  size="sm"
-                  className="mt-1 w-fit max-w-full text-[11px]"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent position="popper" align="start">
-                  <SelectItem value={FORMA_BASE}>
-                    {ABREVIATURA_UNIDAD[unidad] === "u."
-                      ? "Por unidad"
-                      : `Suelto (por ${ABREVIATURA_UNIDAD[unidad]})`}
-                  </SelectItem>
-                  {item.presentaciones!.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                <span className="truncate">{etiquetaForma}</span>
+                <ChevronRight className="size-3 shrink-0" />
+              </button>
             ) : presentacion ? (
               <p className="mt-1 text-[10px] font-semibold uppercase tracking-widest text-primary">
                 {presentacion.nombre}
               </p>
             ) : null}
+            {tienePresentaciones && onCambiarForma && (
+              <SelectorFormaVentaDialog
+                open={selectorFormaAbierto}
+                onOpenChange={setSelectorFormaAbierto}
+                productoNombre={item.nombre}
+                variante={item.variante}
+                unidadMedida={item.unidadMedida}
+                precioBase={precioBaseEfectivo}
+                stockMaximo={item.stockMaximo}
+                presentaciones={item.presentaciones!}
+                presentacionIdActual={item.presentacionId ?? null}
+                onElegir={onCambiarForma}
+              />
+            )}
             {/* Producto serializado: hasta que no se elija el aparato, la
                 venta no se puede confirmar. El badge es el acceso al
                 selector — sin esto la vendedora lee "requiere elegir unidad"

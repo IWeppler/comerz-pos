@@ -78,6 +78,7 @@ interface ClientDetailSheetProps {
   /** Recargos anteriores impagos. Se restan de la base del recargo nuevo. */
   moraPrevia: number;
   isAdmin?: boolean;
+  puedeCorregirCobro?: boolean;
   onClose: () => void;
 }
 
@@ -89,6 +90,7 @@ export function ClientDetailSheet({
   montoVencido,
   moraPrevia,
   isAdmin = false,
+  puedeCorregirCobro = false,
   onClose,
 }: Readonly<ClientDetailSheetProps>) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
@@ -377,6 +379,8 @@ export function ClientDetailSheet({
                               key={mov.id}
                               mov={mov}
                               isAdmin={isAdmin}
+                              puedeCorregirCobro={puedeCorregirCobro}
+                              metodosPago={metodosPago}
                             />
                           ))}
                         </div>

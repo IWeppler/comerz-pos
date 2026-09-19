@@ -75,6 +75,12 @@ interface CartState {
     presentacionIdNueva: string | null,
   ) => void;
   clearCart: () => void;
+  /** Reemplaza atómicamente la venta activa al cambiar de pestaña. */
+  reemplazarCarrito: (venta: {
+    items: CartItemStore[];
+    listaPrecioId: string | null;
+    pedidoActivo: CartState["pedidoActivo"];
+  }) => void;
   sincronizarNegocio: (negocioId: string | null) => void;
   setListaPrecio: (
     listaPrecioId: string | null,
@@ -240,6 +246,9 @@ export const useCartStore = create<CartState>()(
       },
 
       clearCart: () => set({ items: [], pedidoActivo: null }),
+
+      reemplazarCarrito: ({ items, listaPrecioId, pedidoActivo }) =>
+        set({ items, listaPrecioId, pedidoActivo }),
 
       /**
        * Cambia la lista Y los precios de las líneas EN LA MISMA ESCRITURA.

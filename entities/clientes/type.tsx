@@ -31,7 +31,7 @@ export interface Cliente {
   notas?: string | null;
   activo: boolean;
   saldo_pendiente: number;
-  reglas_credito: Record<string, any>;
+  reglas_credito: { limite?: number | null; [clave: string]: unknown };
   exceptuado_entrega_minima: boolean;
   fecha_vencimiento_deuda?: string | null;
   /**
@@ -62,4 +62,22 @@ export interface CuentaCorrienteMovimiento {
   anulado?: boolean;
   anulado_en?: string | null;
   anulado_por?: string | null;
+  /** Cobro de caja que originó el crédito. Solo viene hidratado en el detalle
+   * del cliente; los movimientos manuales y las ventas no lo tienen. */
+  pago?: CobroCuentaCorriente | CobroCuentaCorriente[] | null;
+}
+
+export interface CobroCuentaCorriente {
+  id: string;
+  metodo_pago_id?: string | null;
+  metodo_nombre: string;
+  metodo_tipo: string;
+  monto_base: number;
+  recargo_porcentaje: number;
+  recargo_monto: number;
+  monto_bruto: number;
+  comision_monto: number;
+  monto_neto: number;
+  estado_pago_operacion: string;
+  turno?: { estado: string } | { estado: string }[] | null;
 }

@@ -195,7 +195,9 @@ export async function getClienteDetalleAction(clienteId: string) {
   const [movimientosRes, ventasRes, reservasRes] = await Promise.all([
     supabase
       .from("cuenta_corriente_movimientos")
-      .select("*")
+      .select(
+        "*, pago:venta_pagos!cuenta_corriente_movimientos_pago_id_fkey(id, metodo_pago_id, metodo_nombre, metodo_tipo, monto_base, recargo_porcentaje, recargo_monto, monto_bruto, comision_monto, monto_neto, estado_pago_operacion, turno:turnos_caja!venta_pagos_turno_caja_id_fkey(estado))",
+      )
       .eq("cliente_id", clienteId)
       .order("creado_en", { ascending: false }),
     supabase

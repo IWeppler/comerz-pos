@@ -24,6 +24,9 @@ export interface TurnoCajaHistorial {
   fecha_apertura: string;
   fecha_cierre: string | null;
   efectivo_esperado?: number | string | null;
+  /** Recalculado desde los movimientos vigentes. Si difiere del valor de
+   * cierre, hubo una corrección posterior y ambos se muestran. */
+  efectivo_esperado_actual?: number | string | null;
   estado: string;
   perfiles?: {
     nombre?: string | null;

@@ -6,6 +6,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Ban,
+  CreditCard,
   Edit2,
   MoreVertical,
 } from "lucide-react";
@@ -29,21 +30,29 @@ import {
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
 import { CuentaCorrienteMovimiento } from "@/entities/clientes/type";
+import { MetodoPago } from "@/entities/payments/types";
+import { getSupabaseRelation } from "@/entities/ventas/types";
 import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
 import { anularMovimientoManualAction } from "../actions/manage-clients";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { EditMovimientoCCModal } from "./edit-movimiento-cc-modal";
+import { CorregirCobroCCModal } from "./corregir-cobro-cc-modal";
 
 interface MovimientoCCCardProps {
   mov: CuentaCorrienteMovimiento;
   isAdmin: boolean;
+  puedeCorregirCobro: boolean;
+  metodosPago: MetodoPago[];
 }
 
 export function MovimientoCCCard({
   mov,
   isAdmin,
+  puedeCorregirCobro,
+  metodosPago,
 }: Readonly<MovimientoCCCardProps>) {
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isCorregirOpen, setIsCorregirOpen] = useState(false);
   const [isAnularConfirmOpen, setIsAnularConfirmOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const queryClient = useQueryClient();
@@ -52,6 +61,15 @@ export function MovimientoCCCard({
   // venta o un cobro siempre trae venta_id o pago_id seteado.
   const esManual = !mov.venta_id && !mov.pago_id;
   const puedeGestionar = isAdmin && esManual && !mov.anulado;
+  const pago = getSupabaseRelation(mov.pago);
+  const turno = getSupabaseRelation(pago?.turno);
+  const puedeCorregir =
+    puedeCorregirCobro &&
+    !mov.anulado &&
+    mov.tipo === "CREDITO" &&
+    pago?.estado_pago_operacion === "CONFIRMADO" &&
+    (turno?.estado !== "CERRADO" || isAdmin);
+  const mostrarMenu = puedeGestionar || puedeCorregir;
 
   const fechaMostrada = mov.fecha_origen
     ? new Intl.DateTimeFormat("es-AR", {
@@ -135,7 +153,7 @@ export function MovimientoCCCard({
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          {puedeGestionar && (
+          {mostrarMenu && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -148,18 +166,29 @@ export function MovimientoCCCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
-                  <Edit2 className="w-3.5 h-3.5 mr-2 text-info" />
-                  Editar
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => setIsAnularConfirmOpen(true)}
-                  className="text-destructive hover:bg-destructive/10 focus:text-destructive"
-                >
-                  <Ban className="w-3.5 h-3.5 mr-2" />
-                  Anular
-                </DropdownMenuItem>
+                {puedeCorregir && (
+                  <DropdownMenuItem onClick={() => setIsCorregirOpen(true)}>
+                    <CreditCard className="w-3.5 h-3.5 mr-2 text-info" />
+                    Corregir medio de pago
+                  </DropdownMenuItem>
+                )}
+                {puedeGestionar && (
+                  <>
+                    {puedeCorregir && <DropdownMenuSeparator />}
+                    <DropdownMenuItem onClick={() => setIsEditOpen(true)}>
+                      <Edit2 className="w-3.5 h-3.5 mr-2 text-info" />
+                      Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setIsAnularConfirmOpen(true)}
+                      className="text-destructive hover:bg-destructive/10 focus:text-destructive"
+                    >
+                      <Ban className="w-3.5 h-3.5 mr-2" />
+                      Anular
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
@@ -171,6 +200,29 @@ export function MovimientoCCCard({
           mov={mov}
           onClose={() => setIsEditOpen(false)}
           onSaved={() => setIsEditOpen(false)}
+        />
+      )}
+
+      {pago && isCorregirOpen && (
+        <CorregirCobroCCModal
+          pagoId={pago.id}
+          metodoActualId={pago.metodo_pago_id}
+          metodoActualNombre={pago.metodo_nombre}
+          montoBase={Number(pago.monto_base)}
+          totalActual={Number(pago.monto_bruto)}
+          recargoActual={Number(pago.recargo_monto)}
+          turnoCerrado={turno?.estado === "CERRADO"}
+          metodosPago={metodosPago}
+          open={isCorregirOpen}
+          onOpenChange={setIsCorregirOpen}
+          onSaved={() => {
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.clientes.listado,
+            });
+            queryClient.invalidateQueries({
+              queryKey: queryKeys.clientes.detalle(mov.cliente_id),
+            });
+          }}
         />
       )}
 

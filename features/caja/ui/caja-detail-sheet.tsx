@@ -77,12 +77,14 @@ export function CajaDetailSheet({
     comision: 0,
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [detallesCargados, setDetallesCargados] = useState(false);
 
   useEffect(() => {
     if (!turno) return;
 
     const fetchDetalles = async () => {
       setIsLoading(true);
+      setDetallesCargados(false);
       const res = await getDetallesTurnoAction(turno.id);
 
       if (res.data) {
@@ -192,6 +194,7 @@ export function CajaDetailSheet({
         });
       }
       setIsLoading(false);
+      setDetallesCargados(true);
     };
 
     fetchDetalles();
@@ -203,8 +206,24 @@ export function CajaDetailSheet({
   const idCorto = turno.id.split("-")[0].toUpperCase();
 
   const final = Number(turno.monto_final || 0);
-  const esperado = Number(turno.efectivo_esperado);
+  const esperadoAlCerrar = Number(turno.efectivo_esperado);
+  const ingresosEfectivoActuales = movimientos
+    .filter((mov) => mov.tipo === "INGRESO" && mov.metodo_tipo === "EFECTIVO")
+    .reduce((total, mov) => total + mov.monto, 0);
+  const egresosActuales = movimientos
+    .filter((mov) => mov.tipo === "EGRESO")
+    .reduce((total, mov) => total + mov.monto, 0);
+  const esperadoSegunMovimientos =
+    Number(turno.monto_inicial) + ingresosEfectivoActuales - egresosActuales;
+  const hayAjustePosterior =
+    detallesCargados &&
+    !isAbierto &&
+    Math.abs(esperadoSegunMovimientos - esperadoAlCerrar) >= 0.01;
+  const esperado = hayAjustePosterior
+    ? esperadoSegunMovimientos
+    : esperadoAlCerrar;
   const diferencia = final - esperado;
+  const diferenciaAlCerrar = final - esperadoAlCerrar;
   const esperadoNegativo = !isAbierto && esperado < 0;
 
   return (
@@ -270,6 +289,7 @@ export function CajaDetailSheet({
                   <div>
                     <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold mb-1">
                       Diferencia de Efectivo
+                      {hayAjustePosterior ? " corregida" : ""}
                     </p>
                     {diferencia === 0 ? (
                       <span className="text-xl font-semibold text-success">
@@ -289,6 +309,17 @@ export function CajaDetailSheet({
               )}
 
               <div className="space-y-3 text-sm">
+                {hayAjustePosterior && (
+                  <div className="rounded-lg border border-info/30 bg-info/10 p-3 text-xs text-info">
+                    <p className="font-semibold">Hubo una corrección posterior al cierre.</p>
+                    <p className="mt-1">
+                      El arqueo firmado se conserva: esperaba{" "}
+                      {formatearMoneda(esperadoAlCerrar)} y registró una
+                      diferencia de {formatearMoneda(diferenciaAlCerrar)}. Los
+                      importes de abajo reflejan los cobros corregidos.
+                    </p>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-muted-foreground">
                   <span>Fondo Inicial declarado:</span>
                   <span className="font-medium text-foreground">
@@ -296,7 +327,10 @@ export function CajaDetailSheet({
                   </span>
                 </div>
                 <div className="flex justify-between items-center text-muted-foreground">
-                  <span>Efectivo Esperado (Sistema):</span>
+                  <span>
+                    Efectivo Esperado
+                    {hayAjustePosterior ? " (Corregido)" : " (Sistema)"}:
+                  </span>
                   <span
                     className={`font-medium ${esperadoNegativo ? "text-danger" : "text-foreground"}`}
                   >

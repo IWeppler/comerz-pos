@@ -47,12 +47,13 @@ interface DiaAgrupado {
  * cuenta que ya hacía la fila individual, extraída para que el total del día y
  * el detalle no puedan divergir. */
 function diferenciaTurno(t: TurnoCajaHistorial): number | null {
-  if (t.efectivo_esperado == null || t.efectivo_esperado === "") return null;
+  const esperado = t.efectivo_esperado_actual ?? t.efectivo_esperado;
+  if (esperado == null || esperado === "") return null;
   // Un esperado negativo es un turno con los datos rotos (la fila individual lo
   // marca con ⚠). Su "diferencia" es basura, así que tampoco puede entrar en la
   // suma del día: contaminaría el neto sin que se note.
-  if (Number(t.efectivo_esperado) < 0) return null;
-  return Number(t.monto_final || 0) - Number(t.efectivo_esperado);
+  if (Number(esperado) < 0) return null;
+  return Number(t.monto_final || 0) - Number(esperado);
 }
 
 /** Clave de agrupación: día local. Se arma con getFullYear/Month/Date y no con
@@ -382,10 +383,16 @@ function TurnoFila({
   const isAbierto = h.estado === "ABIERTO";
   const idCorto = h.id.split("-")[0].toUpperCase();
   const diferencia = diferenciaTurno(h);
-  const esperadoNegativo =
+  const fueAjustado =
+    h.efectivo_esperado_actual != null &&
     h.efectivo_esperado != null &&
-    h.efectivo_esperado !== "" &&
-    Number(h.efectivo_esperado) < 0;
+    Math.abs(
+      Number(h.efectivo_esperado_actual) - Number(h.efectivo_esperado),
+    ) >= 0.01;
+  const esperadoNegativo =
+    (h.efectivo_esperado_actual ?? h.efectivo_esperado) != null &&
+    (h.efectivo_esperado_actual ?? h.efectivo_esperado) !== "" &&
+    Number(h.efectivo_esperado_actual ?? h.efectivo_esperado) < 0;
 
   return (
     <tr className="bg-muted/20 hover:bg-muted/40 transition-colors text-xs">
@@ -417,11 +424,10 @@ function TurnoFila({
                 ABIERTO
               </Badge>
             ) : (
-              <Badge
-                variant="outline"
-              >
-                CERRADO
-              </Badge>
+              <div className="flex items-center gap-1">
+                <Badge variant="outline">CERRADO</Badge>
+                {fueAjustado && <Badge variant="info">AJUSTADO</Badge>}
+              </div>
             )}
           </div>
 

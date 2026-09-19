@@ -12,7 +12,11 @@ interface CartSidebarHeaderProps {
    * ninguna flecha, así que el carrito público no cambia.
    */
   onBack?: () => void;
-  /** Un control extra a la derecha del título (el POS pone "Por cobrar"). */
+  /** Hace que el título vuelva a la venta activa desde otra vista del Ticket. */
+  onTitleClick?: () => void;
+  /** Control compacto pegado a "Ticket" (el POS usa el botón +). */
+  tituloAccion?: ReactNode;
+  /** Un control extra en el extremo derecho del encabezado. */
   accion?: ReactNode;
   /**
    * Factura / sin factura, solo en el paso de cobro del POS
@@ -27,11 +31,13 @@ export function CartSidebarHeader({
   isPOSMode,
   onClose,
   onBack,
+  onTitleClick,
+  tituloAccion,
   accion,
   comprobante,
 }: Readonly<CartSidebarHeaderProps>) {
   return (
-    <div className="shrink-0 flex items-center justify-between p-4 border-b border-border">
+    <div className="shrink-0 flex items-center gap-1.5 p-2.5 border-b border-border">
       <h2 className="text-sm font-bold uppercase tracking-wide flex items-center gap-2 min-w-0">
         {/* La flecha REEMPLAZA a la bolsa en vez de sumarse: son las dos el
             elemento que abre el título, y dos íconos pegados se leen como
@@ -56,20 +62,35 @@ export function CartSidebarHeader({
         ) : (
           <ShoppingBag className="w-4 h-4 shrink-0" />
         )}
-        <span className="truncate">{isPOSMode ? "Ticket" : "Tu Carrito"}</span>
+        {onTitleClick ? (
+          <button
+            type="button"
+            onClick={onTitleClick}
+            className="truncate rounded-sm text-left hover:text-primary cursor-pointer"
+          >
+            {isPOSMode ? "Ticket" : "Tu Carrito"}
+          </button>
+        ) : (
+          <span className="truncate">
+            {isPOSMode ? "Ticket" : "Tu Carrito"}
+          </span>
+        )}
       </h2>
-      {comprobante ? (
-        <div className="ml-auto mr-2 flex min-w-0 items-center">{comprobante}</div>
-      ) : null}
-      {accion}
-      <button
-        type="button"
-        onClick={onClose}
-        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
-        aria-label={isPOSMode ? "Cerrar Ticket" : "Cerrar carrito"}
-      >
-        <X className="h-5 w-5" />
-      </button>
+      {tituloAccion}
+      <div className="ml-auto flex min-w-0 items-center gap-1">
+        {comprobante ? (
+          <div className="flex min-w-0 items-center">{comprobante}</div>
+        ) : null}
+        {accion}
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          aria-label={isPOSMode ? "Cerrar Ticket" : "Cerrar carrito"}
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
     </div>
   );
 }

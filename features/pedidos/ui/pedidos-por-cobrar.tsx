@@ -1,17 +1,11 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ClipboardList, Loader2, Trash2 } from "lucide-react";
+import { ClipboardList, Loader2, Search, Trash2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/shared/ui/sheet";
+import { Input } from "@/shared/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,12 +26,8 @@ import { usePedidosRealtime } from "../hooks/use-pedidos-realtime";
 
 /**
  * La cola de la caja: los pedidos que los puestos mandaron y todavía nadie
- * cobró. Botón con el conteo en el header del ticket; toca uno y el carrito
- * se carga con él para cobrar por el camino de siempre.
- *
- * Se refresca sola cada 15 segundos: la vendedora manda el pedido desde otro
- * dispositivo y la cajera no tiene que recargar nada. Es UNA consulta chica
- * por caja, no por puesto — solo se monta con \`pedidos_a_caja\` prendido.
+ * cobró. Vive dentro del Ticket como contenido de la pestaña "Por cobrar";
+ * toca uno y la venta actual se carga para cobrar por el camino de siempre.
  */
 
 const CLAVE = ["pedidos", "por-cobrar"] as const;
@@ -46,59 +36,33 @@ const CLAVE = ["pedidos", "por-cobrar"] as const;
  * Fallback de polling. La señal de que hubo un cambio llega por Realtime
  * (`usePedidosRealtime`); esto es la red por si el websocket está caído, la
  * PWA de iOS volvió del fondo con el socket muerto, o la policy rechazó el
- * canal. Antes era 15 s SIN señal: 1.836 invocaciones por día en una sola
- * caja, hubiera pedidos o no.
+ * canal.
  */
 const FALLBACK_MS = 90_000;
 
-export function PedidosPorCobrar({
-  negocioId,
-  puedeCobrar,
-  onCargar,
-  variante = "header",
-}: Readonly<{
-  negocioId: string | null;
-  puedeCobrar: boolean;
-  /** El panel carga el pedido al ticket con TODO su contexto (cliente,
-   * pago, promo, factura) y abre el paso de pago. */
-  onCargar: (pedido: PedidoPorCobrar) => void;
-  /**
-   * "flotante": botón fijo abajo a la derecha, para tablet y celular, donde
-   * el header del ticket vive adentro de un panel que solo se abre con
-   * productos en el carrito — la cajera con el carrito vacío no lo veía.
-   */
-  variante?: "header" | "flotante";
-}>) {
-  const [abierto, setAbierto] = useState(false);
-  const [cancelando, setCancelando] = useState<string | null>(null);
-  // El pedido que espera confirmación de cancelar. Estado y no
-  // `window.confirm`: el diálogo nativo bloquea la pestaña y no es el de la
-  // app.
-  const [aCancelar, setACancelar] = useState<PedidoPorCobrar | null>(null);
+/**
+ * La consulta vive por encima de las pestañas. Así sigue escuchando pedidos
+ * mientras la cajera está en "Venta actual" y el badge se actualiza sin
+ * robarle el foco ni cambiarla de pantalla.
+ */
+export function usePedidosPorCobrar(negocioId: string | null) {
   const queryClient = useQueryClient();
-
   const queryKey = [...CLAVE, negocioId ?? "sin-negocio"];
 
-  const { data, isLoading } = useQuery({
+  const consulta = useQuery({
     queryKey,
     queryFn: async () => {
-      const r = await listarPedidosPorCobrarAction();
-      if (r.error) throw new Error(r.error);
-      return r.data;
+      const resultado = await listarPedidosPorCobrarAction();
+      if (resultado.error) throw new Error(resultado.error);
+      return resultado.data;
     },
     refetchInterval: FALLBACK_MS,
-    // Default de React Query v5, explícito porque importa: con la pestaña
-    // oculta no se pollea. Al volver, `refetchOnWindowFocus` trae lo nuevo.
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnReconnect: true,
     enabled: Boolean(negocioId),
   });
 
-  // La señal: cualquier INSERT/UPDATE/DELETE en `pedidos` del negocio activo
-  // invalida la query, y React Query vuelve a pedir la lista completa. El
-  // payload del evento no se mira. `useCallback` con la clave estable para
-  // que el hook no vea una función nueva en cada render.
   const negocioClave = negocioId ?? "sin-negocio";
   const alCambiar = useCallback(() => {
     void queryClient.invalidateQueries({
@@ -107,140 +71,187 @@ export function PedidosPorCobrar({
   }, [queryClient, negocioClave]);
   usePedidosRealtime(negocioId, alCambiar);
 
-  const pedidos = data ?? [];
+  return {
+    pedidos: consulta.data ?? [],
+    isLoading: consulta.isLoading,
+    isError: consulta.isError,
+  };
+}
 
-  const cargarAlCarrito = (p: PedidoPorCobrar) => {
-    onCargar(p);
-    setAbierto(false);
-    toast.info(`Pedido #${p.numero} cargado. Revisá y cobrá.`);
+export function PedidosPorCobrar({
+  pedidos,
+  isLoading,
+  isError,
+  pedidosAbiertosIds,
+  onCargar,
+  onVerAbierto,
+}: Readonly<{
+  pedidos: PedidoPorCobrar[];
+  isLoading: boolean;
+  isError: boolean;
+  /** Los pedidos abiertos en alguna pestaña no se pueden cancelar. */
+  pedidosAbiertosIds: string[];
+  /** Carga el pedido con TODO su contexto (cliente, pago, promo, factura). */
+  onCargar: (pedido: PedidoPorCobrar) => void;
+  /** Lleva a la pestaña existente si el pedido ya estaba cargado. */
+  onVerAbierto: (pedidoId: string) => void;
+}>) {
+  const [busqueda, setBusqueda] = useState("");
+  const [cancelando, setCancelando] = useState<string | null>(null);
+  // Estado y no `window.confirm`: el diálogo nativo bloquea la pestaña y no
+  // usa el lenguaje visual de la app.
+  const [aCancelar, setACancelar] = useState<PedidoPorCobrar | null>(null);
+  const queryClient = useQueryClient();
+
+  const pedidosFiltrados = useMemo(() => {
+    const termino = busqueda.trim().toLocaleLowerCase("es");
+    if (!termino) return pedidos;
+    return pedidos.filter((pedido) =>
+      [
+        String(pedido.numero),
+        pedido.vendedor_nombre,
+        pedido.cliente_nombre,
+        pedido.nota,
+      ].some((valor) => valor?.toLocaleLowerCase("es").includes(termino)),
+    );
+  }, [busqueda, pedidos]);
+
+  const cargarAlCarrito = (pedido: PedidoPorCobrar) => {
+    onCargar(pedido);
+    toast.info(`Pedido #${pedido.numero} cargado. Revisá y cobrá.`);
   };
 
-  const cancelar = async (p: PedidoPorCobrar) => {
+  const cancelar = async (pedido: PedidoPorCobrar) => {
     setACancelar(null);
-    setCancelando(p.id);
-    const r = await cancelarPedidoAction(p.id);
+    setCancelando(pedido.id);
+    const resultado = await cancelarPedidoAction(pedido.id);
     setCancelando(null);
-    if (r.success) {
-      toast.success(`Pedido #${p.numero} cancelado.`);
-      queryClient.invalidateQueries({ queryKey: CLAVE });
+    if (resultado.success) {
+      toast.success(`Pedido #${pedido.numero} cancelado.`);
+      void queryClient.invalidateQueries({ queryKey: CLAVE });
     } else {
-      toast.error(r.error ?? "No se pudo cancelar.");
+      toast.error(resultado.error ?? "No se pudo cancelar.");
     }
   };
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setAbierto(true)}
-        className={
-          variante === "flotante"
-            ? `fixed right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold shadow-lg cursor-pointer transition-colors ${
-                pedidos.length > 0
-                  ? "bg-primary text-white hover:bg-primary/90"
-                  : "bg-sidebar text-muted-foreground hover:text-foreground"
-              } bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6`
-            : "relative -my-2 inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-        }
-        aria-label="Pedidos por cobrar"
-      >
-        <ClipboardList className={variante === "flotante" ? "h-5 w-5" : "h-4 w-4"} />
-        Por cobrar
-        {pedidos.length > 0 && (
-          <span
-            className={`ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-bold ${
-              variante === "flotante" ? "bg-white text-primary" : "bg-primary text-white"
-            }`}
-          >
-            {pedidos.length}
-          </span>
-        )}
-      </button>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-border px-3 py-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={busqueda}
+            onChange={(event) => setBusqueda(event.target.value)}
+            placeholder="Buscar pedido #, cliente o vendedor"
+            className="h-9 pl-9 text-sm"
+            aria-label="Buscar pedidos por cobrar"
+          />
+        </div>
+      </div>
 
-      <Sheet open={abierto} onOpenChange={setAbierto}>
-        <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
-          <SheetHeader className="px-5 pt-5 pb-3 border-b border-border">
-            <SheetTitle>Pedidos por cobrar</SheetTitle>
-            <SheetDescription>
-              Lo que mandaron los puestos y todavía no se cobró. Tocá uno para
-              cargarlo al ticket.
-            </SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {isLoading && (
-              <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
-              </div>
-            )}
-            {!isLoading && pedidos.length === 0 && (
-              <p className="p-6 text-center text-sm text-muted-foreground">
-                No hay pedidos esperando. Cuando un puesto mande uno, aparece acá
-                solo.
-              </p>
-            )}
-            {pedidos.map((p) => (
-              <div
-                key={p.id}
-                className="rounded-xl border border-border bg-card p-3 space-y-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-lg font-bold leading-tight">
-                      #{p.numero}
-                      <span className="ml-2 text-xs font-medium text-muted-foreground">
-                        {p.vendedor_nombre ?? "Sin nombre"} · {haceCuanto(p.creado_en)}
-                      </span>
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {p.cliente_nombre ?? "Consumidor final"}
-                      {p.nota ? ` · ${p.nota}` : ""}
-                    </p>
-                  </div>
-                  <p className="text-base font-mono font-semibold shrink-0">
-                    {formatearMoneda(p.total_estimado)}
-                  </p>
-                </div>
-                <ul className="text-xs text-muted-foreground space-y-0.5">
-                  {p.items.slice(0, 4).map((i, idx) => (
-                    <li key={idx} className="truncate">
-                      {i.cantidad}× {i.nombre}
-                      {i.variante ? ` (${i.variante})` : ""}
-                    </li>
-                  ))}
-                  {p.items.length > 4 && (
-                    <li>… y {p.items.length - 4} más</li>
-                  )}
-                </ul>
-                <div className="flex gap-2 pt-1">
-                  {puedeCobrar && (
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => cargarAlCarrito(p)}
-                    >
-                      Cargar y cobrar
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={cancelando === p.id}
-                    onClick={() => setACancelar(p)}
-                    aria-label="Cancelar pedido"
-                  >
-                    {cancelando === p.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-            ))}
+      <div className="flex-1 space-y-2 overflow-y-auto p-3">
+        {isLoading && (
+          <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Cargando…
           </div>
-        </SheetContent>
-      </Sheet>
+        )}
+        {!isLoading && isError && (
+          <p className="p-6 text-center text-sm text-destructive">
+            No se pudo cargar la cola. Volvé a intentar en unos segundos.
+          </p>
+        )}
+        {!isLoading && !isError && pedidos.length === 0 && (
+          <div className="flex flex-col items-center gap-2 p-8 text-center text-muted-foreground">
+            <ClipboardList className="h-8 w-8 opacity-50" />
+            <p className="text-sm font-medium text-foreground">
+              No hay pedidos esperando
+            </p>
+            <p className="text-xs">
+              Cuando un puesto mande uno, va a aparecer acá solo.
+            </p>
+          </div>
+        )}
+        {!isLoading &&
+          !isError &&
+          pedidos.length > 0 &&
+          pedidosFiltrados.length === 0 && (
+            <p className="p-6 text-center text-sm text-muted-foreground">
+              No encontramos pedidos con “{busqueda.trim()}”.
+            </p>
+          )}
+        {pedidosFiltrados.map((pedido) => (
+          <div
+            key={pedido.id}
+            className="space-y-2 rounded-xl border border-border bg-card p-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-lg font-bold leading-tight">
+                  #{pedido.numero}
+                  <span className="ml-2 text-xs font-medium text-muted-foreground">
+                    {pedido.vendedor_nombre ?? "Sin nombre"} ·{" "}
+                    {haceCuanto(pedido.creado_en)}
+                  </span>
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {pedido.cliente_nombre ?? "Consumidor final"}
+                  {pedido.nota ? ` · ${pedido.nota}` : ""}
+                </p>
+              </div>
+              <p className="shrink-0 font-mono text-base font-semibold">
+                {formatearMoneda(pedido.total_estimado)}
+              </p>
+            </div>
+            <ul className="space-y-0.5 text-xs text-muted-foreground">
+              {pedido.items.slice(0, 4).map((item, index) => (
+                <li key={index} className="truncate">
+                  {item.cantidad}× {item.nombre}
+                  {item.variante ? ` (${item.variante})` : ""}
+                </li>
+              ))}
+              {pedido.items.length > 4 && (
+                <li>… y {pedido.items.length - 4} más</li>
+              )}
+            </ul>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                className="flex-1"
+                variant={
+                  pedidosAbiertosIds.includes(pedido.id)
+                    ? "outline"
+                    : "default"
+                }
+                onClick={() =>
+                  pedidosAbiertosIds.includes(pedido.id)
+                    ? onVerAbierto(pedido.id)
+                    : cargarAlCarrito(pedido)
+                }
+              >
+                {pedidosAbiertosIds.includes(pedido.id)
+                  ? "Ver venta abierta"
+                  : "Cargar y cobrar"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={
+                  pedidosAbiertosIds.includes(pedido.id) ||
+                  cancelando === pedido.id
+                }
+                onClick={() => setACancelar(pedido)}
+                aria-label={`Cancelar pedido #${pedido.numero}`}
+              >
+                {cancelando === pedido.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
 
       <AlertDialog
         open={aCancelar !== null}
@@ -248,7 +259,9 @@ export function PedidosPorCobrar({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Cancelar el pedido #{aCancelar?.numero}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              ¿Cancelar el pedido #{aCancelar?.numero}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {aCancelar?.vendedor_nombre ?? "La vendedora"} lo armó{" "}
               {aCancelar ? haceCuanto(aCancelar.creado_en) : ""} por{" "}
@@ -268,14 +281,17 @@ export function PedidosPorCobrar({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </>
+    </div>
   );
 }
 
 function haceCuanto(iso: string): string {
-  const min = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  const min = Math.max(
+    0,
+    Math.round((Date.now() - new Date(iso).getTime()) / 60_000),
+  );
   if (min < 1) return "recién";
   if (min < 60) return `hace ${min} min`;
-  const h = Math.floor(min / 60);
-  return `hace ${h} h`;
+  const horas = Math.floor(min / 60);
+  return `hace ${horas} h`;
 }
