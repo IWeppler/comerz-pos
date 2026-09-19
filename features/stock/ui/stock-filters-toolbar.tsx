@@ -253,7 +253,7 @@ export function StockFiltersToolbar({
   return (
     <>
       {/* 1. BARRA SUPERIOR: Buscador y Acciones */}
-      <div className="flex flex-row gap-2 px-2">
+      <div className="flex flex-row gap-2 px-2 py-1.5 border-b border-border">
         {/* Los dos caminos de ingreso se montan SIEMPRE, sin importar el
             rubro: el modal unificado ofrece los dos y el rubro solo decide qué
             plantilla se baja. Antes se montaba uno solo —remito para
