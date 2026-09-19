@@ -49,6 +49,19 @@ export type TotalesConRecargo = {
 };
 
 /**
+ * Los importes llegan desde cálculos del carrito (precio por cantidad), así
+ * que pueden contener residuos de punto flotante como 30.000000000000004.
+ * PostgreSQL `numeric` conserva literalmente el JSON recibido: si base y
+ * bruto se serializan con distinta escala, la igualdad exacta del CHECK deja
+ * de cumplirse aunque representen el mismo importe para la persona.
+ */
+export function normalizarMonto(monto: number | string): number {
+  const valor = Number(monto);
+  if (!Number.isFinite(valor)) return 0;
+  return Math.round((valor + Number.EPSILON) * 100) / 100;
+}
+
+/**
  * Redondeo al peso entero, decidido con el dueño: los tickets del mostrador
  * no manejan centavos. Se redondea el RECARGO, no el total, así la base
  * (que es lo que imputa a la deuda y a la venta) queda intacta y el bruto
@@ -85,7 +98,7 @@ export function calcularPagosConRecargo(
   const porId = new Map(metodos.map((metodo) => [metodo.id, metodo]));
 
   const pagosConRecargo = pagos.map((pago) => {
-    const montoBase = Number(pago.montoAsignado) || 0;
+    const montoBase = normalizarMonto(pago.montoAsignado);
     const recargoPorcentaje = Number(
       porId.get(pago.metodoPagoId)?.recargo_porcentaje ?? 0,
     );
@@ -96,21 +109,22 @@ export function calcularPagosConRecargo(
       montoBase,
       recargoPorcentaje,
       recargoMonto,
-      montoBruto: montoBase + recargoMonto,
+      montoBruto: normalizarMonto(montoBase + recargoMonto),
     };
   });
 
-  const totalBase = pagosConRecargo.reduce((acc, p) => acc + p.montoBase, 0);
-  const totalRecargo = pagosConRecargo.reduce(
-    (acc, p) => acc + p.recargoMonto,
-    0,
+  const totalBase = normalizarMonto(
+    pagosConRecargo.reduce((acc, p) => acc + p.montoBase, 0),
+  );
+  const totalRecargo = normalizarMonto(
+    pagosConRecargo.reduce((acc, p) => acc + p.recargoMonto, 0),
   );
 
   return {
     pagos: pagosConRecargo,
     totalBase,
     totalRecargo,
-    totalACobrar: totalBase + totalRecargo,
+    totalACobrar: normalizarMonto(totalBase + totalRecargo),
   };
 }
 

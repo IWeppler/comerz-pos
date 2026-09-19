@@ -11,11 +11,25 @@ export async function getPosicionDineroAction(
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const { data, error } = await supabase.rpc("posicion_dinero_ledger", {
+  let { data, error } = await supabase.rpc("posicion_dinero_ledger", {
     p_desde: null,
     p_hasta: null,
     p_periodo: periodo,
   });
+
+  // Compatibilidad de despliegue: la app puede salir antes que la migración
+  // de Etapa 7. Mientras la RPC nueva no exista, la pestaña Dinero conserva
+  // el reporte anterior en vez de quedar inutilizable.
+  if (error?.code === "PGRST202") {
+    console.warn(
+      "posicion_dinero_ledger todavía no está disponible; usando posicion_dinero.",
+    );
+    ({ data, error } = await supabase.rpc("posicion_dinero", {
+      p_desde: null,
+      p_hasta: null,
+      p_periodo: periodo,
+    }));
+  }
 
   if (error) {
     if (error.code === "42501") {

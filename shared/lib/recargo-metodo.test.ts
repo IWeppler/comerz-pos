@@ -53,6 +53,22 @@ describe("calcularPagosConRecargo", () => {
     expect(pagos[0].montoBruto).toBe(pagos[0].montoBase + pagos[0].recargoMonto);
   });
 
+  it("elimina residuos binarios de una venta fraccionada antes de persistir", () => {
+    const { pagos } = calcularPagosConRecargo(
+      [{ metodoPagoId: "tarj", montoAsignado: (0.1 + 0.2) * 100 }],
+      METODOS,
+    );
+
+    expect(pagos[0]).toMatchObject({
+      montoBase: 30,
+      recargoMonto: 5,
+      montoBruto: 35,
+    });
+    expect(pagos[0].montoBruto).toBe(
+      pagos[0].montoBase + pagos[0].recargoMonto,
+    );
+  });
+
   it("trata un método desconocido como sin recargo, sin romper la venta", () => {
     const totales = calcularPagosConRecargo(
       [{ metodoPagoId: "metodo-borrado", montoAsignado: 8000 }],
