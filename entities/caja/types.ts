@@ -172,6 +172,11 @@ export interface EgresoCaja {
 
 export interface TransferenciaCaja {
   movimiento_id: number;
+  /** TRANSFERENCIA o INGRESO (libre, `20260922100000`): los dos son plata
+   * que entra o sale del cajón sin ser venta ni gasto, y el arqueo los suma
+   * con el mismo término. */
+  origen_tipo: "TRANSFERENCIA" | "INGRESO" | string;
+  origen_id: string;
   /** Positivo si entró al cajón, negativo si salió. */
   importe: number | string;
   descripcion: string;

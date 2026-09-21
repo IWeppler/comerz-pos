@@ -27,6 +27,7 @@ import {
   ShoppingBag,
   BookUser,
   TrendingDown,
+  TrendingUp,
   Repeat2,
 } from "lucide-react";
 import { getDetallesTurnoAction } from "../actions/caja-action";
@@ -46,7 +47,7 @@ interface CajaDetailSheetProps {
 type MovimientoDetalle = {
   id: string;
   tipo: "INGRESO" | "EGRESO";
-  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA";
+  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA" | "INGRESO";
   concepto: string;
   metodo: string;
   metodo_tipo: string;
@@ -181,9 +182,10 @@ export function CajaDetailSheet({
           (movimiento) => ({
             id: `transferencia-${movimiento.movimiento_id}`,
             tipo: Number(movimiento.importe) >= 0 ? "INGRESO" : "EGRESO",
-            origen: "TRANSFERENCIA",
+            origen: movimiento.origen_tipo === "INGRESO" ? "INGRESO" : "TRANSFERENCIA",
             concepto: movimiento.descripcion,
-            metodo: "TRANSFERENCIA INTERNA",
+            metodo:
+              movimiento.origen_tipo === "INGRESO" ? "INGRESO LIBRE" : "TRANSFERENCIA INTERNA",
             metodo_tipo: "EFECTIVO",
             monto: Math.abs(Number(movimiento.importe)),
             recargo: 0,
@@ -443,6 +445,11 @@ export function CajaDetailSheet({
                         {mov.origen === "TRANSFERENCIA" && (
                           <div className="text-info shrink-0">
                             <Repeat2 className="w-4 h-4" />
+                          </div>
+                        )}
+                        {mov.origen === "INGRESO" && (
+                          <div className="text-success shrink-0">
+                            <TrendingUp className="w-4 h-4" />
                           </div>
                         )}
                         <div>

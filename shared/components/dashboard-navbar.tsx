@@ -12,6 +12,8 @@ interface DashboardNavbarProps {
   userId: string;
   /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
   puedeOperarCaja?: boolean;
+  /** Permiso `caja.registrar_ingreso`: "Anotar ingreso" en el modal de caja. */
+  puedeRegistrarIngreso?: boolean;
   /** Nombre del perfil, para saludar en el panel. Ausente = saludo sin nombre. */
   userName?: string;
 }
@@ -20,6 +22,7 @@ export function DashboardNavbar({
   modoCaja,
   userId,
   puedeOperarCaja = true,
+  puedeRegistrarIngreso = false,
   userName,
 }: Readonly<DashboardNavbarProps>) {
   const { toggleSidebar } = useSidebarStore();
@@ -136,7 +139,11 @@ export function DashboardNavbar({
         </kbd>
       </button>
       {puedeOperarCaja && (
-        <CajaStatusButton modoCaja={modoCaja} userId={userId} />
+        <CajaStatusButton
+          modoCaja={modoCaja}
+          userId={userId}
+          puedeRegistrarIngreso={puedeRegistrarIngreso}
+        />
       )}
     </header>
   );

@@ -10,6 +10,7 @@ import {
   puedeVerVistaGerencialAction,
   puedeVerMovimientosAction,
   puedeAnularMovimientoAction,
+  puedeRegistrarIngresoAction,
 } from "@/features/caja/actions/permisos-caja";
 import { MovimientosFinancierosTable } from "@/features/caja/ui/movimientos-financieros-table";
 import { puedeOperarCaja } from "@/features/caja/lib/puede-operar-caja";
@@ -54,12 +55,13 @@ export default async function CajaPage() {
   // acá: es la vendedora de "varios puestos, una caja", o cualquiera a quien
   // le sacaron "Operar la caja" desde Empleados y Permisos. El link del
   // sidebar ya no se muestra; esto es lo que impide entrar tipeando /caja.
-  const [operaCaja, veGerencial, veMovimientosGate, puedeAnular] =
+  const [operaCaja, veGerencial, veMovimientosGate, puedeAnular, puedeRegistrarIngreso] =
     await Promise.all([
       puedeOperarCaja(),
       puedeVerVistaGerencialAction(),
       puedeVerMovimientosAction(),
       puedeAnularMovimientoAction(),
+      puedeRegistrarIngresoAction(),
     ]);
   if (!operaCaja && !veGerencial && !veMovimientosGate) redirect("/pos");
 
@@ -290,6 +292,7 @@ export default async function CajaPage() {
                   // fuentes salía la lista duplicada que había acá abajo.
                   saldos={posicion.data.cuentas ?? []}
                   puedeAnular={puedeAnular}
+                  puedeRegistrarIngreso={puedeRegistrarIngreso}
                 />
               )}
               <PosicionDinero

@@ -18,6 +18,7 @@ import { NegocioActivoProvider } from "@/shared/components/negocio-activo-provid
 import { BannerVerificacionEmail } from "@/features/auth/ui/banner-verificacion";
 import { BannerCertificadoArca } from "@/features/arca/ui/banner-certificado";
 import { puedeOperarCaja } from "@/features/caja/lib/puede-operar-caja";
+import { puedeRegistrarIngresoAction } from "@/features/caja/actions/permisos-caja";
 import { PlanProvider } from "@/features/planes/ui/plan-provider";
 import { getContextoPlanAction } from "@/features/planes/actions/contexto-plan";
 import { leerConfigPos } from "@/entities/config/lib/leer-config-pos";
@@ -64,6 +65,7 @@ export default async function DashboardLayout({
     config,
     puedeCobrarCc,
     puedeOperarCajaEsta,
+    puedeRegistrarIngreso,
   ] = await Promise.all([
       supabase.from("perfiles").select("nombre").eq("id", user.id).single(),
       // Cacheado por request: la página de abajo lo vuelve a pedir en el mismo
@@ -79,6 +81,8 @@ export default async function DashboardLayout({
       // Si no opera caja, el botón "Caja abierta/cerrada" de la barra no se
       // muestra: es la vendedora de "varios puestos, una caja".
       puedeOperarCaja(),
+      // "Anotar ingreso" en el modal de caja: solo ADMIN por defecto.
+      puedeRegistrarIngresoAction(),
     ]);
 
   const userRole = rolActual || "VENDEDOR";
@@ -152,6 +156,7 @@ export default async function DashboardLayout({
         negocios={negocios}
         negocioActivoId={negocioActivoId}
         puedeOperarCaja={puedeOperarCajaEsta}
+        puedeRegistrarIngreso={puedeRegistrarIngreso}
       />
 
       {/* Contenedor principal de la derecha */}
@@ -180,6 +185,7 @@ export default async function DashboardLayout({
             modoCaja={systemBranding.modo_caja || "UNICA"}
             userId={user.id}
             puedeOperarCaja={puedeOperarCajaEsta}
+            puedeRegistrarIngreso={puedeRegistrarIngreso}
             userName={perfil?.nombre || undefined}
           />
 

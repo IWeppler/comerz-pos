@@ -96,6 +96,8 @@ interface SidebarProps {
   negocioActivoId?: string;
   /** Permiso `caja.operar`. Sin él no se muestra el estado de caja. */
   puedeOperarCaja?: boolean;
+  /** Permiso `caja.registrar_ingreso`: "Anotar ingreso" en el modal de caja. */
+  puedeRegistrarIngreso?: boolean;
 }
 
 export function Sidebar({
@@ -107,6 +109,7 @@ export function Sidebar({
   negocios = [],
   negocioActivoId,
   puedeOperarCaja = true,
+  puedeRegistrarIngreso = false,
 }: Readonly<SidebarProps>) {
   const pathname = usePathname();
   const contextoPlan = useContextoPlan();
@@ -204,6 +207,7 @@ export function Sidebar({
             <CajaStatusButton
               modoCaja={branding.modo_caja || "UNICA"}
               userId={userId}
+              puedeRegistrarIngreso={puedeRegistrarIngreso}
               className="mr-1"
             />
           )}

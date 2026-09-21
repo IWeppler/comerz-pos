@@ -884,6 +884,30 @@ tiene 11.
   `posicion_dinero`. Medido en Evens, septiembre: cobrado $13,4M al peso
   contra la suma directa, y CERO gastos operativos registrados — Evens no
   carga gastos, solo salen devoluciones.
+- **Ingresos libres: plata que entra sin venir de una venta** (`20260922100000`,
+  `ingresos_financieros` + `registrar_ingreso_financiero` /
+  `anular_ingreso_financiero`). Hasta acá el ledger solo sabía que entrara
+  plata por un cobro: el aporte de la dueña, un préstamo o un alquiler
+  cobrado no tenían puerta y terminaban como faltante de arqueo o saldo
+  negativo. Espejo del egreso: tabla propia + fila de ledger (origen
+  `INGRESO`), tipo con impacto declarado —`APORTE_SOCIO` y `PRESTAMO` en 0,
+  solo `INGRESO_EXTRAORDINARIO` es resultado (`ingreso_impacto_resultado`,
+  espejo TS `tipo-ingreso.ts`)—, cuenta opcional con la misma regla (con
+  turno → cajón, sin turno → caja general) y cuenta arqueada exige turno
+  ABIERTO de esa cuenta. **El arqueo lo ve**: las CINCO consultas que suman
+  las transferencias al cajón (`flujo_caja_turno`, `efectivo_actual_turnos`,
+  `posicion_dinero`, `resumen_gerencial_caja`, `transferencias_caja_turno`)
+  pasaron a `origen_tipo in (TRANSFERENCIA,INGRESO)`, parcheadas sobre el
+  cuerpo vivo con guard de "exactamente una vez"; el invariante caja diaria =
+  turnos abiertos se re-verifica. Toda consulta nueva que sume ese término
+  tiene que incluir los dos. Anular es REVERSA (fila `ANULACION` fechada en
+  el ingreso), no borrado: la tabla no la suma nadie, suma el ledger.
+  Permiso `caja.registrar_ingreso`, solo ADMIN por defecto (es la segunda
+  forma de hacer aparecer plata sin una venta; con ese botón se "cuadra" un
+  faltante). Botones: Dinero y el modal de caja del navbar. El resumen del
+  período los muestra aparte (`otros_ingresos`) y los suma al `neto_caja`.
+  **A propósito NO suman a la ganancia del panel** (decidido el 22/9/2026):
+  `get-dashboard-metrics` lee ventas y egresos, no el ledger.
 - Métodos de pago, dos porcentajes que NO son lo mismo: `comision` es lo que
   el comercio le paga al procesador (se resta, interno) y `recargo_porcentaje`
   es lo que le cobra al cliente (se suma, se muestra). El cálculo vive en

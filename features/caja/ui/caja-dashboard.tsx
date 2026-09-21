@@ -23,6 +23,7 @@ import {
   ShoppingBag,
   BookUser,
   TrendingDown,
+  TrendingUp,
   Repeat2,
   Ban,
 } from "lucide-react";
@@ -58,7 +59,7 @@ export interface CajaDashboardProps {
 type MovimientoExtendido = {
   id: string;
   tipo: "INGRESO" | "EGRESO";
-  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA";
+  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA" | "INGRESO";
   concepto: string;
   metodo: string;
   metodo_tipo: string;
@@ -231,9 +232,10 @@ export function CajaDashboard({
       (movimiento) => ({
         id: `transferencia-${movimiento.movimiento_id}`,
         tipo: Number(movimiento.importe) >= 0 ? "INGRESO" : "EGRESO",
-        origen: "TRANSFERENCIA",
+        origen: movimiento.origen_tipo === "INGRESO" ? "INGRESO" : "TRANSFERENCIA",
         concepto: movimiento.descripcion,
-        metodo: "TRANSFERENCIA INTERNA",
+        metodo:
+          movimiento.origen_tipo === "INGRESO" ? "INGRESO LIBRE" : "TRANSFERENCIA INTERNA",
         metodo_tipo: "EFECTIVO",
         monto: Math.abs(Number(movimiento.importe)),
         comision: 0,
@@ -440,6 +442,11 @@ export function CajaDashboard({
                             {mov.origen === "TRANSFERENCIA" && (
                               <div className="p-1.5 bg-info/10 text-info rounded-md shrink-0 border">
                                 <Repeat2 className="w-3.5 h-3.5" />
+                              </div>
+                            )}
+                            {mov.origen === "INGRESO" && (
+                              <div className="p-1.5 bg-success/10 text-success rounded-md shrink-0 border">
+                                <TrendingUp className="w-3.5 h-3.5" />
                               </div>
                             )}
                             <span className="truncate max-w-[110px] sm:max-w-xs text-xs sm:text-sm">

@@ -35,6 +35,14 @@ export type ResumenFinancieroPeriodo = {
     cantidad: number;
     por_medio: Tramo[];
   };
+  /** Plata que entró sin venir de una venta (`ingresos_financieros`,
+   * `20260922100000`), sin los anulados. Entra al `neto_caja` porque es
+   * flujo, y va aparte para que nadie lo lea como cobros. */
+  otros_ingresos: {
+    total: number | string;
+    cantidad: number;
+    por_tipo: { tipo: string; monto: number | string; cantidad: number }[];
+  };
   reintegros: {
     /** Lo devuelto al cliente por cualquier medio (`reintegros_al_cliente`). */
     total: number | string;
@@ -65,7 +73,8 @@ export type ResumenFinancieroPeriodo = {
     sobrantes: number | string;
     turnos_con_diferencia: number;
   };
-  /** cobrado − reintegros − egresos sin DEVOLUCION. Flujo, NO ganancia. */
+  /** cobrado + otros ingresos − reintegros − egresos sin DEVOLUCION. Flujo,
+   * NO ganancia. */
   neto_caja: number | string;
 };
 

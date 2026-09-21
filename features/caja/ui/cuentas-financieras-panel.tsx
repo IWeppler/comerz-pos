@@ -33,6 +33,7 @@ import {
 } from "@/shared/ui/select";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { EgresoModal } from "./egreso-modal";
+import { IngresoModal } from "./ingreso-modal";
 import { DetalleCuentaSheet } from "./detalle-cuenta-sheet";
 import {
   crearCuentaFinancieraAction,
@@ -75,6 +76,7 @@ export function CuentasFinancierasPanel({
   transferencias,
   saldos,
   puedeAnular,
+  puedeRegistrarIngreso = false,
 }: Readonly<{
   cuentas: CuentaFinanciera[];
   transferencias: TransferenciaFinanciera[];
@@ -86,6 +88,9 @@ export function CuentasFinancierasPanel({
    * acceso — la RPC vuelve a chequear el permiso — pero mostrarlo a quien
    * no lo tiene invita un click que solo va a devolver SIN_PERMISO. */
   puedeAnular: boolean;
+  /** `caja.registrar_ingreso` (solo ADMIN por defecto): muestra "Anotar
+   * Ingreso". Misma lógica que arriba: la RPC es el freno. */
+  puedeRegistrarIngreso?: boolean;
 }>) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -200,10 +205,11 @@ export function CuentasFinancierasPanel({
           </p>
         </div>
         {/* El orden es el de la frecuencia de uso: un egreso se carga todos los
-            días, una transferencia cada tanto, una cuenta tres veces en la
-            vida del comercio. */}
+            días, un ingreso libre y una transferencia cada tanto, una cuenta
+            tres veces en la vida del comercio. */}
         <div className="flex flex-wrap gap-2">
           <EgresoModal triggerVariant="secondary" />
+          {puedeRegistrarIngreso && <IngresoModal triggerVariant="outline" />}
 
           <Dialog open={transferirAbierto} onOpenChange={setTransferirAbierto}>
             <DialogTrigger asChild>

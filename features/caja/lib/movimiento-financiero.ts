@@ -22,6 +22,8 @@
  * ─────────────────────────────────────────────────────────────────────────
  */
 
+import { esResultadoDelNegocio } from "./tipo-ingreso";
+
 export interface MovimientoCuenta {
   id: number;
   fecha: string;
@@ -80,6 +82,12 @@ export function etiquetaMovimiento(
       if (evento === "AJUSTE_SALDO_INICIAL") return "Saldo inicial declarado";
       return "Ajuste";
 
+    case "INGRESO":
+      // Plata que entró sin venir de una venta (`20260922100000`). La
+      // anulación es una reversa con el mismo origen_id, nunca un borrado.
+      if (evento === "ANULACION" || importe < 0) return "Ingreso anulado";
+      return "Ingreso";
+
     default:
       return "Movimiento";
   }
@@ -94,8 +102,15 @@ export function etiquetaMovimiento(
  * viaja en el detalle — y tenerla en dos lugares sería tener dos verdades.
  * Si algún día el detalle la trae, esta función se borra y se usa la columna.
  */
-export function mueveElResultado(origenTipo: string, evento: string): boolean {
+export function mueveElResultado(
+  origenTipo: string,
+  evento: string,
+  /** Para INGRESO: el tipo (`datos->>'tipo'`). Solo el extraordinario es
+   * resultado; sin tipo se asume que no lo es (fail-closed). */
+  tipoOrigen?: string | null,
+): boolean {
   if (origenTipo === "EGRESO") return true;
   if (origenTipo === "TURNO_CAJA") return evento === "AJUSTE_ARQUEO";
+  if (origenTipo === "INGRESO") return esResultadoDelNegocio(tipoOrigen);
   return false;
 }

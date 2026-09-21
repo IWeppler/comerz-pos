@@ -6,6 +6,7 @@ import { useCajaStatusStore } from "@/shared/store/caja-status-store";
 import { useCajaModalStore } from "@/shared/store/caja-modal-store";
 import { CajaQuickModal } from "./caja-quick-modal";
 import { EgresoModal } from "./egreso-modal";
+import { IngresoModal } from "./ingreso-modal";
 import {
   Tooltip,
   TooltipContent,
@@ -18,6 +19,8 @@ interface CajaStatusButtonProps {
   modoCaja: string;
   userId: string;
   className?: string;
+  /** `caja.registrar_ingreso`: habilita "Anotar ingreso" en el modal. */
+  puedeRegistrarIngreso?: boolean;
 }
 
 /**
@@ -30,6 +33,7 @@ export function CajaStatusButton({
   modoCaja,
   userId,
   className = "",
+  puedeRegistrarIngreso = false,
 }: Readonly<CajaStatusButtonProps>) {
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const turno = useCajaStatusStore((state) => state.turno);
@@ -40,6 +44,7 @@ export function CajaStatusButton({
   // El egreso se dispara desde el modal de caja, pero se monta acá como
   // hermano: anidar un Dialog dentro de otro rompe foco y scroll-lock.
   const [isEgresoOpen, setIsEgresoOpen] = useState(false);
+  const [isIngresoOpen, setIsIngresoOpen] = useState(false);
 
   const boton = (
     <button
@@ -93,6 +98,9 @@ export function CajaStatusButton({
         modoCaja={modoCaja}
         userId={userId}
         onAnotarGasto={() => setIsEgresoOpen(true)}
+        onAnotarIngreso={
+          puedeRegistrarIngreso ? () => setIsIngresoOpen(true) : undefined
+        }
       />
 
       <EgresoModal
@@ -100,6 +108,14 @@ export function CajaStatusButton({
         onOpenChange={setIsEgresoOpen}
         mostrarTrigger={false}
       />
+
+      {puedeRegistrarIngreso && (
+        <IngresoModal
+          open={isIngresoOpen}
+          onOpenChange={setIsIngresoOpen}
+          mostrarTrigger={false}
+        />
+      )}
     </>
   );
 }

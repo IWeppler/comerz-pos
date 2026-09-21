@@ -10,6 +10,7 @@ import {
   ReceiptText,
   RotateCcw,
   Scale,
+  TrendingUp,
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -25,6 +26,7 @@ import {
   TooltipTrigger,
 } from "@/shared/ui/tooltip";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { etiquetaTipoIngreso } from "../lib/tipo-ingreso";
 import {
   getResumenFinancieroAction,
   type ResumenFinancieroPeriodo as ResumenFinancieroData,
@@ -82,6 +84,17 @@ export function ResumenFinancieroPeriodo({
       Icono: MEDIOS[fila.metodo_tipo]?.Icono ?? Wallet,
     }),
   );
+  // Ingresos libres por tipo. Los que no son ganancia (aporte, préstamo) lo
+  // dicen en el nombre: es la misma advertencia que lleva el neto.
+  const otrosIngresosPorTipo: FilaMonto[] = resumen.otros_ingresos.por_tipo.map(
+    (fila) => ({
+      id: fila.tipo,
+      nombre: etiquetaTipoIngreso(fila.tipo),
+      monto: Number(fila.monto),
+      cantidad: fila.cantidad,
+      Icono: TrendingUp,
+    }),
+  );
   const gastosPorCategoria: FilaMonto[] =
     resumen.egresos.gastos_por_categoria.map((fila) => ({
       id: fila.categoria_id ?? "sin-categoria",
@@ -115,10 +128,14 @@ export function ResumenFinancieroPeriodo({
           <Tarjeta
             titulo="Cobrado"
             monto={Number(resumen.ingresos.cobrado)}
-            detalle={`Ventas ${formatearMoneda(Number(resumen.ingresos.cobrado_ventas))} · Cobros de deuda ${formatearMoneda(Number(resumen.ingresos.cobros_de_deuda))}`}
+            detalle={`Ventas ${formatearMoneda(Number(resumen.ingresos.cobrado_ventas))} · Cobros de deuda ${formatearMoneda(Number(resumen.ingresos.cobros_de_deuda))}${
+              resumen.otros_ingresos.cantidad > 0
+                ? ` · Otros ingresos ${formatearMoneda(Number(resumen.otros_ingresos.total))}`
+                : ""
+            }`}
             Icono={Banknote}
             cargando={cargando}
-            ayuda="Todo lo cobrado en el período, separado entre cobros de ventas y cobros de deuda de cuenta corriente."
+            ayuda="Todo lo cobrado en el período, separado entre cobros de ventas y cobros de deuda de cuenta corriente. Los otros ingresos (aportes, préstamos, extraordinarios) NO están en este número: van aparte, más abajo, y sí entran al neto de caja."
           />
           <Tarjeta
             titulo="Reintegros"
@@ -147,6 +164,16 @@ export function ResumenFinancieroPeriodo({
           sustantivo="cobro"
           cargando={cargando}
         />
+
+        {resumen.otros_ingresos.cantidad > 0 && (
+          <ListaMontos
+            titulo="Otros ingresos (no son ventas)"
+            filas={otrosIngresosPorTipo}
+            vacio="No hubo otros ingresos en este período."
+            sustantivo="ingreso"
+            cargando={cargando}
+          />
+        )}
 
         <ListaMontos
           titulo="Gastos operativos por categoría"

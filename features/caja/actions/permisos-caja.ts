@@ -46,3 +46,16 @@ export async function puedeAnularMovimientoAction(): Promise<boolean> {
 
   return tienePermiso(supabase, PERMISOS.CAJA_ANULAR_MOVIMIENTO);
 }
+
+/**
+ * ¿Puede registrar un ingreso que no viene de una venta (aporte, préstamo,
+ * otro)? Solo ADMIN por defecto (`20260922100000`): es la segunda forma de
+ * hacer aparecer plata sin una venta, y con ese botón se "cuadra" un
+ * faltante. La RPC `registrar_ingreso_financiero` vuelve a chequearlo.
+ */
+export async function puedeRegistrarIngresoAction(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  return tienePermiso(supabase, PERMISOS.CAJA_REGISTRAR_INGRESO);
+}

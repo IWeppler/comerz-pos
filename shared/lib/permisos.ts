@@ -40,6 +40,7 @@ export const PERMISOS = {
   VENTAS_COBRAR: "ventas.cobrar",
   CAJA_OPERAR: "caja.operar",
   CAJA_REGISTRAR_EGRESO: "caja.registrar_egreso",
+  CAJA_REGISTRAR_INGRESO: "caja.registrar_ingreso",
   CAJA_TRANSFERIR: "caja.transferir",
   CAJA_VER_MOVIMIENTOS: "caja.ver_movimientos",
   CAJA_ANULAR_MOVIMIENTO: "caja.anular_movimiento",

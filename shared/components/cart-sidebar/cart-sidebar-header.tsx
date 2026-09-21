@@ -66,7 +66,7 @@ export function CartSidebarHeader({
           <button
             type="button"
             onClick={onTitleClick}
-            className="truncate rounded-sm text-left"
+            className="truncate rounded-sm text-left cursor-pointer"
           >
             {isPOSMode ? "Ticket" : "Tu Carrito"}
           </button>

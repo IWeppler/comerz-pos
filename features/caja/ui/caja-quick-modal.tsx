@@ -9,6 +9,7 @@ import {
   Unlock,
   Clock,
   TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import {
   Dialog,
@@ -37,6 +38,9 @@ interface CajaQuickModalProps {
   /** Abre el modal de egreso (cerrando este). El egreso es plata que sale
    * del cajón: su lugar es acá, no en el header del panel. */
   onAnotarGasto: () => void;
+  /** Abre el modal de ingreso libre. Ausente = no tiene
+   * `caja.registrar_ingreso` y el botón no se muestra. */
+  onAnotarIngreso?: () => void;
 }
 
 /**
@@ -53,6 +57,7 @@ export function CajaQuickModal({
   modoCaja,
   userId,
   onAnotarGasto,
+  onAnotarIngreso,
 }: Readonly<CajaQuickModalProps>) {
   const router = useRouter();
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
@@ -108,8 +113,16 @@ export function CajaQuickModal({
   // además de su acceso propio en /caja. El cobro de cuenta corriente NO va
   // acá a propósito: tiene su lugar en el POS y en Clientes, y desde el
   // navbar solo agregaba un tercer camino a lo mismo.
+  //
+  // El ingreso libre (aporte, préstamo, otro) es la contracara: plata que
+  // entra al cajón sin ser una venta. Solo aparece para quien tiene el
+  // permiso, que por defecto es la dueña.
   const accionesSecundarias = (
-    <div className="flex flex-col gap-1 border-t border-border px-6 py-3">
+    <div
+      className={`grid gap-1 border-t border-border px-6 py-3 ${
+        onAnotarIngreso ? "grid-cols-2" : "grid-cols-1"
+      }`}
+    >
       <Button
         type="button"
         variant="ghost"
@@ -122,6 +135,20 @@ export function CajaQuickModal({
         <TrendingDown className="mr-2 h-4 w-4" />
         Anotar gasto
       </Button>
+      {onAnotarIngreso && (
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            onOpenChange(false);
+            onAnotarIngreso();
+          }}
+          className="h-9 w-full justify-center text-muted-foreground"
+        >
+          <TrendingUp className="mr-2 h-4 w-4" />
+          Anotar ingreso
+        </Button>
+      )}
     </div>
   );
 

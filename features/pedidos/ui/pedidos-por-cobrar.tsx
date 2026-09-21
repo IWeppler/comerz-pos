@@ -200,13 +200,12 @@ export function PedidosPorCobrar({
               )}
             </ul>
             <div className="flex gap-2 pt-1">
+              {/* h-11: es el botón que la caja toca en cada pedido, con la
+                  clienta esperando; 44px de blanco táctil, no 32. */}
               <Button
-                size="sm"
-                className="flex-1"
+                className="h-10 flex-1"
                 variant={
-                  pedidosAbiertosIds.includes(pedido.id)
-                    ? "outline"
-                    : "default"
+                  pedidosAbiertosIds.includes(pedido.id) ? "outline" : "default"
                 }
                 onClick={() =>
                   pedidosAbiertosIds.includes(pedido.id)
@@ -219,7 +218,6 @@ export function PedidosPorCobrar({
                   : "Cargar y cobrar"}
               </Button>
               <Button
-                size="sm"
                 variant="ghost"
                 disabled={
                   pedidosAbiertosIds.includes(pedido.id) ||
@@ -231,7 +229,7 @@ export function PedidosPorCobrar({
                 {cancelando === pedido.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4 text-muted-foreground" />
                 )}
               </Button>
             </div>

@@ -2,6 +2,13 @@ import { describe, expect, it } from "vitest";
 import { etiquetaMovimiento, mueveElResultado } from "./movimiento-financiero";
 
 describe("etiquetaMovimiento", () => {
+  it("un ingreso libre se lee como ingreso, y su reversa como anulado", () => {
+    expect(etiquetaMovimiento("INGRESO", "REGISTRO", 50000)).toBe("Ingreso");
+    expect(etiquetaMovimiento("INGRESO", "ANULACION", -50000)).toBe(
+      "Ingreso anulado",
+    );
+  });
+
   it("un cobro se lee igual venga del REGISTRO o de una corrección", () => {
     // Las 2.018 filas de CORRECCION_* de la migración del 20/9 son cobros que
     // entraron a la cuenta. El evento es el cómo, no el qué.
@@ -106,5 +113,14 @@ describe("mueveElResultado", () => {
 
   it("declarar el saldo inicial no es un ingreso", () => {
     expect(mueveElResultado("AJUSTE", "AJUSTE_SALDO_INICIAL")).toBe(false);
+  });
+});
+
+describe("mueveElResultado con ingresos libres", () => {
+  it("solo el extraordinario es resultado; sin tipo, no", () => {
+    expect(mueveElResultado("INGRESO", "REGISTRO", "INGRESO_EXTRAORDINARIO")).toBe(true);
+    expect(mueveElResultado("INGRESO", "REGISTRO", "APORTE_SOCIO")).toBe(false);
+    expect(mueveElResultado("INGRESO", "REGISTRO", "PRESTAMO")).toBe(false);
+    expect(mueveElResultado("INGRESO", "REGISTRO", null)).toBe(false);
   });
 });

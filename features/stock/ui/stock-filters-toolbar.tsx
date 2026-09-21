@@ -420,7 +420,7 @@ export function StockFiltersToolbar({
               <ScanBarcode
                 className={`h-4 w-4 sm:mr-2 ${cargaRapidaActiva ? "" : "text-muted-foreground"}`}
               />
-              <span className="hidden sm:inline font-medium">
+              <span className="hidden sm:inline font-medium text-muted-foreground">
                 {cargaRapidaActiva ? "Volver a vender" : "Carga rápida"}
               </span>
             </Button>

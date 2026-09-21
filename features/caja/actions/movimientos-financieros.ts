@@ -28,7 +28,8 @@ export type OrigenMovimiento =
   | "TRANSFERENCIA"
   | "ACREDITACION"
   | "TURNO_CAJA"
-  | "AJUSTE";
+  | "AJUSTE"
+  | "INGRESO";
 
 export type MovimientoFinancieroFila = {
   id: number;
@@ -52,7 +53,11 @@ export type MovimientoFinancieroFila = {
   cuenta_contraparte_nombre: string | null;
   categoria_id: string | null;
   categoria_nombre: string | null;
-  /** OPERATIVO | RETIRO_SOCIO | COMPRA_MERCADERIA | DEVOLUCION, solo en egresos. */
+  /** El TIPO del origen, cuando lo tiene: en egresos OPERATIVO |
+   * RETIRO_SOCIO | COMPRA_MERCADERIA | DEVOLUCION; en ingresos libres
+   * APORTE_SOCIO | PRESTAMO | INGRESO_EXTRAORDINARIO (la RPC lo lee de
+   * `datos->>'tipo'`, que los dos escriben). El nombre quedó del primer
+   * consumidor. */
   egreso_tipo: string | null;
   metodo_pago_id: string | null;
   metodo_nombre: string | null;

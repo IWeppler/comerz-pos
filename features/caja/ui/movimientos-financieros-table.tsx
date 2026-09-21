@@ -24,6 +24,7 @@ import {
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { numeroTicketVenta } from "@/features/sales/lib/numero-ticket";
 import { anularEgresoAction } from "../actions/caja-action";
+import { anularIngresoAction } from "../actions/ingresos-financieros";
 import {
   etiquetaMovimiento,
   mueveElResultado,
@@ -55,6 +56,7 @@ const SIN_CATEGORIA = "__sin_categoria__";
 const ETIQUETA_ORIGEN: Record<OrigenMovimiento, string> = {
   VENTA_PAGO: "Cobros de venta",
   EGRESO: "Gastos",
+  INGRESO: "Ingresos libres",
   TRANSFERENCIA: "Transferencias",
   ACREDITACION: "Acreditaciones",
   TURNO_CAJA: "Apertura / cierre de caja",
@@ -148,6 +150,9 @@ export function MovimientosFinancierosTable({
   );
   const [motivoAnular, setMotivoAnular] = useState("");
   const [anulando, setAnulando] = useState(false);
+  // Anular un ingreso NO saca su fila (es una reversa, no un borrado): se
+  // vuelve a pedir la página para que aparezca la reversa al lado.
+  const [recarga, setRecarga] = useState(0);
 
   useEffect(() => {
     getCuentasFinancierasAction().then(setCuentas);
@@ -202,7 +207,20 @@ export function MovimientosFinancierosTable({
       vigente = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [JSON.stringify(filtrosApi)]);
+  }, [JSON.stringify(filtrosApi), recarga]);
+
+  // Ingresos ya anulados entre las filas cargadas: la reversa lleva el mismo
+  // origen_id y la misma fecha que el REGISTRO, así que caen en la misma
+  // página. Sirve para no ofrecer "Anular" dos veces.
+  const ingresosAnulados = useMemo(
+    () =>
+      new Set(
+        filas
+          .filter((f) => f.origen_tipo === "INGRESO" && f.evento === "ANULACION")
+          .map((f) => f.origen_id),
+      ),
+    [filas],
+  );
 
   const cargarMas = async () => {
     setCargandoMas(true);
@@ -222,6 +240,19 @@ export function MovimientosFinancierosTable({
   const anular = async () => {
     if (!aAnular || !motivoAnular.trim()) return;
     setAnulando(true);
+    if (aAnular.origen_tipo === "INGRESO") {
+      const res = await anularIngresoAction(aAnular.origen_id, motivoAnular);
+      setAnulando(false);
+      if (!res.success) {
+        toast.error(res.error ?? "No se pudo anular el ingreso.");
+        return;
+      }
+      toast.success("Ingreso anulado");
+      setAAnular(null);
+      setMotivoAnular("");
+      setRecarga((n) => n + 1);
+      return;
+    }
     const res = await anularEgresoAction(aAnular.origen_id, motivoAnular);
     setAnulando(false);
     if (!res.success) {
@@ -477,6 +508,7 @@ export function MovimientosFinancierosTable({
                   key={f.id}
                   fila={f}
                   puedeAnular={puedeAnular}
+                  yaAnulado={ingresosAnulados.has(f.origen_id)}
                   onAnular={() => setAAnular(f)}
                 />
               ))
@@ -515,12 +547,15 @@ export function MovimientosFinancierosTable({
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Anular gasto</DialogTitle>
+            <DialogTitle>
+              {aAnular?.origen_tipo === "INGRESO" ? "Anular ingreso" : "Anular gasto"}
+            </DialogTitle>
             <DialogDescription>
               {aAnular?.descripcion} ·{" "}
-              {aAnular ? formatearMoneda(Number(aAnular.importe)) : ""}. Se
-              borra de las cuentas; el registro de que existió y se anuló
-              queda en la bitácora, con el motivo.
+              {aAnular ? formatearMoneda(Number(aAnular.importe)) : ""}.{" "}
+              {aAnular?.origen_tipo === "INGRESO"
+                ? "Se registra la reversa en la cuenta; el ingreso y su anulación quedan a la vista en la bitácora, con el motivo."
+                : "Se borra de las cuentas; el registro de que existió y se anuló queda en la bitácora, con el motivo."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -541,7 +576,7 @@ export function MovimientosFinancierosTable({
               disabled={anulando || !motivoAnular.trim()}
             >
               {anulando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Anular gasto
+              {aAnular?.origen_tipo === "INGRESO" ? "Anular ingreso" : "Anular gasto"}
             </Button>
           </div>
         </DialogContent>
@@ -553,15 +588,18 @@ export function MovimientosFinancierosTable({
 function FilaMovimiento({
   fila: f,
   puedeAnular = false,
+  yaAnulado = false,
   onAnular,
 }: Readonly<{
   fila: MovimientoFinancieroFila;
   puedeAnular?: boolean;
+  /** Ingreso libre cuya reversa ya está entre las filas cargadas. */
+  yaAnulado?: boolean;
   onAnular?: () => void;
 }>) {
   const importe = Number(f.importe);
   const etiqueta = etiquetaMovimiento(f.origen_tipo, f.evento, importe);
-  const afectaResultado = mueveElResultado(f.origen_tipo, f.evento);
+  const afectaResultado = mueveElResultado(f.origen_tipo, f.evento, f.egreso_tipo);
   // Ofrece "Anular" sobre el REGISTRO de un egreso, nunca sobre un
   // reintegro de venta (DEVOLUCION: se corrige desde la venta). El evento es
   // append-only y no cambia, así que la fila REGISTRO de un egreso YA
@@ -572,6 +610,12 @@ function FilaMovimiento({
     f.origen_tipo === "EGRESO" &&
     f.evento === "REGISTRO" &&
     f.egreso_tipo !== "DEVOLUCION";
+  // Un ingreso libre se anula con reversa (no se borra), así que su REGISTRO
+  // sigue en la lista; `yaAnulado` es lo que esconde el botón.
+  const esIngresoAnulable =
+    f.origen_tipo === "INGRESO" && f.evento === "REGISTRO" && !yaAnulado;
+  const esAnulable = esEgresoAnulable || esIngresoAnulable;
+  const etiquetaAnular = esIngresoAnulable ? "Anular ingreso" : "Anular gasto";
 
   return (
     <tr className="max-md:block max-md:border-b max-md:border-border max-md:py-2 max-md:last:border-b-0">
@@ -592,6 +636,12 @@ function FilaMovimiento({
             {etiqueta}
             {!afectaResultado && f.origen_tipo === "EGRESO" && (
               <span className="ml-1 text-warning">(no es gasto)</span>
+            )}
+            {!afectaResultado && f.origen_tipo === "INGRESO" && (
+              <span className="ml-1 text-warning">(no es ganancia)</span>
+            )}
+            {yaAnulado && f.evento === "REGISTRO" && (
+              <span className="ml-1 text-danger">(anulado)</span>
             )}
           </p>
         </div>
@@ -639,11 +689,11 @@ function FilaMovimiento({
       </td>
       {puedeAnular && (
         <td data-label="" className={CELDA_APILADA + " px-3 py-2 max-md:text-right"}>
-          {esEgresoAnulable && (
+          {esAnulable && (
             <button
               type="button"
-              aria-label="Anular gasto"
-              title="Anular gasto"
+              aria-label={etiquetaAnular}
+              title={etiquetaAnular}
               onClick={onAnular}
               className="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
             >

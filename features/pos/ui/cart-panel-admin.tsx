@@ -1000,7 +1000,18 @@ export function CartPanelAdmin({
         (venta) => venta.id === sesion.ventaActivaId,
       );
       alcanceVentasCargado.current = alcanceVentas;
-      if (activa) cargarVentaEnPantalla(activa);
+      if (activa) {
+        cargarVentaEnPantalla(activa);
+        // Restaurar un ticket VACÍO no es retomar una venta: en "una caja,
+        // muchos puntos" la caja abre el POS para cobrar lo que mandaron
+        // los puestos, y arrancar en la venta propia la obligaba a tocar
+        // "Por cobrar" en cada entrada. Con líneas o pedido cargado sí se
+        // vuelve a la venta actual. Solo tiene efecto con caja central: el
+        // render ignora esta vista en el POS común.
+        if (activa.items.length === 0 && !activa.pedidoActivo) {
+          setVistaTicket("POR_COBRAR");
+        }
+      }
     });
     // La carga debe ocurrir únicamente al cambiar de usuario o negocio. Las
     // funciones capturan la pantalla de ese render, pero no gobiernan cuándo
