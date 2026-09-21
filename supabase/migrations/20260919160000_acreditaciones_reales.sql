@@ -3,6 +3,15 @@
 -- concreta. No se modifica venta_pagos ni se infiere la fecha desde el plazo.
 begin;
 
+-- `venta_pagos` no tenía unique (negocio_id, id), así que la FK compuesta de
+-- `acreditaciones_financieras_pagos` no se podía crear y esta migración fallaba
+-- entera. Es redundante con la PK —`id` ya es único— y existe solo para que la
+-- FK pueda atar también el negocio, mismo patrón que
+-- `cuentas_financieras_negocio_id_id_key`. (Agregado el 20/9/2026, al aplicar:
+-- esta migración estaba commiteada pero nunca había corrido en ningún lado.)
+alter table public.venta_pagos
+  add constraint venta_pagos_negocio_id_id_key unique (negocio_id, id);
+
 create table public.acreditaciones_financieras (
   id uuid primary key default gen_random_uuid(),
   negocio_id uuid not null default security.current_negocio_id()
