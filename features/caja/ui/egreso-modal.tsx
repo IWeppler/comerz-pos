@@ -27,15 +27,17 @@ import {
 } from "@/shared/ui/select";
 import { TrendingDown, Loader2 } from "lucide-react";
 import { CajaActionState } from "@/entities/caja/types";
+import { useCajaStatusStore } from "@/shared/store/caja-status-store";
 import {
   getCuentasFinancierasAction,
   type CuentaFinanciera,
 } from "../actions/cuentas-financieras";
 import {
   DEFINICION_TIPO_EGRESO,
-  TIPOS_EGRESO,
+  TIPOS_EGRESO_MANUALES,
   type TipoEgreso,
 } from "../lib/tipo-egreso";
+import { SelectorCategoriaEgreso } from "./selector-categoria-egreso";
 
 interface EgresoModalProps {
   /** Controlado desde afuera (el modal de caja lo abre sin trigger propio).
@@ -51,6 +53,11 @@ interface EgresoModalProps {
 }
 
 const SIN_REMITO = "sin-remito";
+/** Sentinel del Select: "no elegí cuenta, que decida la base". Mapea a "" en
+ * el hidden input, que es lo que `registrarEgresoAction` espera para dejar
+ * que `asignar_cuenta_financiera_actual` resuelva (con turno → Caja diaria,
+ * sin turno → Caja general). Nunca se manda literal al form. */
+const CUENTA_POR_DEFECTO = "__default__";
 
 export function EgresoModal({
   open,
@@ -64,7 +71,16 @@ export function EgresoModal({
   const [ordenId, setOrdenId] = useState<string>(SIN_REMITO);
   const [ordenes, setOrdenes] = useState<OrdenParaEgreso[] | null>(null);
   const [cuentas, setCuentas] = useState<CuentaFinanciera[] | null>(null);
+  // "" = cuenta por defecto (la decide la base). Solo se llena con un id
+  // cuando la persona elige explícitamente otra cuenta.
   const [cuentaId, setCuentaId] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
+
+  // Para mostrar QUÉ cuenta va a usar el default, sin obligar a elegirla:
+  // el mismo store que ya alimenta el botón de caja del navbar (Sidebar lo
+  // mantiene actualizado con polling). Si todavía no llegó (isCajaAbierta
+  // === null), el texto no se aventura a adivinar.
+  const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
 
   const esControlado = open !== undefined;
   const isOpen = esControlado ? open : isOpenInterno;
@@ -79,8 +95,6 @@ export function EgresoModal({
     getCuentasFinancierasAction().then((data) => {
       if (cancelado) return;
       setCuentas(data.filter((cuenta) => cuenta.codigo !== "POR_ACREDITAR"));
-      const cajaDiaria = data.find((cuenta) => cuenta.codigo === "CAJA_DIARIA");
-      setCuentaId((actual) => actual || cajaDiaria?.id || data[0]?.id || "");
     });
     return () => {
       cancelado = true;
@@ -108,8 +122,8 @@ export function EgresoModal({
         toast.success("Egreso registrado correctamente");
         setTipo("OPERATIVO");
         setOrdenId(SIN_REMITO);
-        const cajaDiaria = cuentas?.find((cuenta) => cuenta.codigo === "CAJA_DIARIA");
-        setCuentaId(cajaDiaria?.id || cuentas?.[0]?.id || "");
+        setCuentaId("");
+        setCategoriaId("");
         setIsOpen(false);
       } else {
         toast.error(result.error || "Ocurrió un error");
@@ -120,6 +134,12 @@ export function EgresoModal({
   );
 
   const definicion = DEFINICION_TIPO_EGRESO[tipo];
+  const nombreCuentaPorDefecto =
+    isCajaAbierta === null
+      ? null
+      : isCajaAbierta
+        ? "Caja diaria (tu turno abierto)"
+        : "Caja general (sin turno abierto)";
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -135,20 +155,30 @@ export function EgresoModal({
         <DialogHeader>
           <DialogTitle>Registrar Egreso</DialogTitle>
           <DialogDescription>
-            Indicá para qué salió el dinero y desde qué cuenta. Solo lo que
-            sale de Caja diaria modifica el arqueo.
+            Indicá para qué salió el dinero. Elegir la cuenta es opcional: sin
+            turno abierto sale de Caja general, con turno abierto sale de Caja
+            diaria y afecta el arqueo.
           </DialogDescription>
         </DialogHeader>
 
         <form action={formAction} className="space-y-4 pt-4">
           <div className="space-y-2">
-            <Label htmlFor="cuenta-origen">Sale de</Label>
+            <Label htmlFor="cuenta-origen">Sale de (opcional)</Label>
             <input type="hidden" name="cuenta_origen_id" value={cuentaId} />
-            <Select value={cuentaId} onValueChange={setCuentaId} disabled={!cuentas?.length}>
+            <Select
+              value={cuentaId || CUENTA_POR_DEFECTO}
+              onValueChange={(v) =>
+                setCuentaId(v === CUENTA_POR_DEFECTO ? "" : v)
+              }
+              disabled={!cuentas?.length}
+            >
               <SelectTrigger id="cuenta-origen" className="w-full">
                 <SelectValue placeholder="Cargando cuentas..." />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value={CUENTA_POR_DEFECTO}>
+                  {nombreCuentaPorDefecto ?? "La que corresponda (por defecto)"}
+                </SelectItem>
                 {(cuentas ?? []).map((cuenta) => (
                   <SelectItem key={cuenta.id} value={cuenta.id}>
                     {cuenta.nombre}
@@ -156,11 +186,9 @@ export function EgresoModal({
                 ))}
               </SelectContent>
             </Select>
-            {cuentas?.length === 1 && (
-              <p className="text-[11px] text-muted-foreground">
-                Podés crear caja general, banco o billetera desde Caja → Dinero.
-              </p>
-            )}
+            <p className="text-[11px] text-muted-foreground">
+              Podés crear caja general, banco o billetera desde Caja → Dinero.
+            </p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="tipo-egreso">Tipo de egreso</Label>
@@ -172,13 +200,14 @@ export function EgresoModal({
               onValueChange={(v) => {
                 setTipo(v as TipoEgreso);
                 if (v !== "COMPRA_MERCADERIA") setOrdenId(SIN_REMITO);
+                if (v !== "OPERATIVO") setCategoriaId("");
               }}
             >
               <SelectTrigger id="tipo-egreso" className="w-full">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TIPOS_EGRESO.map((t) => (
+                {TIPOS_EGRESO_MANUALES.map((t) => (
                   <SelectItem key={t} value={t}>
                     {DEFINICION_TIPO_EGRESO[t].label}
                   </SelectItem>
@@ -189,6 +218,16 @@ export function EgresoModal({
               {definicion.descripcion}
             </p>
           </div>
+
+          {tipo === "OPERATIVO" && (
+            <>
+              <input type="hidden" name="categoria_id" value={categoriaId} />
+              <SelectorCategoriaEgreso
+                valor={categoriaId}
+                onChange={setCategoriaId}
+              />
+            </>
+          )}
 
           {tipo === "COMPRA_MERCADERIA" && (
             <div className="space-y-2">
@@ -210,8 +249,12 @@ export function EgresoModal({
                   <SelectItem value={SIN_REMITO}>Sin remito asociado</SelectItem>
                   {(ordenes ?? []).map((o) => (
                     <SelectItem key={o.id} value={o.id}>
-                      {o.proveedor} · {formatearFecha(o.fecha_remito ?? o.creado_en)}{" "}
-                      · ${Math.round(Number(o.saldo_pendiente)).toLocaleString("es-AR")} pendiente
+                      {o.proveedor} ·{" "}
+                      {formatearFecha(o.fecha_remito ?? o.creado_en)} · $
+                      {Math.round(Number(o.saldo_pendiente)).toLocaleString(
+                        "es-AR",
+                      )}{" "}
+                      pendiente
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -269,7 +312,7 @@ export function EgresoModal({
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isPending || !cuentaId}>
+            <Button type="submit" disabled={isPending}>
               {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Guardar Egreso
             </Button>

@@ -274,6 +274,10 @@ export async function registrarEgresoAction(
   const tipo = normalizarTipoEgreso(formData.get("tipo"));
   const ordenCompraId = (formData.get("orden_compra_id") as string) || null;
   const cuentaOrigenId = String(formData.get("cuenta_origen_id") ?? "");
+  // Solo un gasto OPERATIVO lleva categoría (CHECK en la base). Para el
+  // resto se descarta en silencio en vez de rebotar: el tipo ya dice todo.
+  const categoriaId =
+    tipo === "OPERATIVO" ? String(formData.get("categoria_id") ?? "") || null : null;
 
   if (!concepto || !monto || monto <= 0) {
     return { error: "Ingresa un concepto y un monto válido.", success: false };
@@ -286,9 +290,11 @@ export async function registrarEgresoAction(
       success: false,
     };
   }
-  if (!cuentaOrigenId) {
-    return { error: "Elegí desde qué cuenta sale el dinero.", success: false };
-  }
+  // La cuenta es OPCIONAL desde `20260921170000`. Vacía, la decide la base
+  // por una regla que no depende de la pantalla: con turno abierto sale del
+  // cajón (CAJA_DIARIA); sin turno, de la caja general. Es lo que permite
+  // registrar un gasto desde Dinero sin elegir nada, y lo que hace que un
+  // egreso sin turno ya no caiga en una caja arqueada que lo rechaza.
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -301,8 +307,12 @@ export async function registrarEgresoAction(
     return { error: "No autorizado.", success: false };
   }
 
-  if (!(await tienePermiso(supabase, PERMISOS.CAJA_OPERAR))) {
-    return { error: SIN_PERMISO_CAJA, success: false };
+  // Permiso propio desde `20260921160000`, separado de `caja.operar`: abrir
+  // el turno y sacar plata del cajón son dos confianzas distintas. La policy
+  // de INSERT de `egresos` pide lo mismo, así que este chequeo es el mensaje
+  // amable, no el freno.
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_REGISTRAR_EGRESO))) {
+    return { error: "No tenés permiso para registrar gastos.", success: false };
   }
 
   const { turnoId, requiereCajaAbierta } = await resolverTurnoActivo(
@@ -310,21 +320,23 @@ export async function registrarEgresoAction(
     user.id,
   );
 
-  const { data: cuenta } = await supabase
-    .from("cuentas_financieras")
-    .select("id, requiere_arqueo")
-    .eq("id", cuentaOrigenId)
-    .eq("activa", true)
-    .maybeSingle();
-  if (!cuenta) {
-    return { error: "La cuenta elegida no está disponible.", success: false };
-  }
+  if (cuentaOrigenId) {
+    const { data: cuenta } = await supabase
+      .from("cuentas_financieras")
+      .select("id, requiere_arqueo")
+      .eq("id", cuentaOrigenId)
+      .eq("activa", true)
+      .maybeSingle();
+    if (!cuenta) {
+      return { error: "La cuenta elegida no está disponible.", success: false };
+    }
 
-  if (cuenta.requiere_arqueo && requiereCajaAbierta && !turnoId) {
-    return {
-      error: "Necesitas abrir la caja antes de registrar un gasto.",
-      success: false,
-    };
+    if (cuenta.requiere_arqueo && requiereCajaAbierta && !turnoId) {
+      return {
+        error: "Necesitas abrir la caja antes de registrar un gasto.",
+        success: false,
+      };
+    }
   }
 
   const { error } = await supabase.from("egresos").insert({
@@ -334,7 +346,8 @@ export async function registrarEgresoAction(
     orden_compra_id: tipo === "COMPRA_MERCADERIA" ? ordenCompraId : null,
     creado_por: user.id,
     turno_caja_id: turnoId,
-    cuenta_origen_id: cuentaOrigenId,
+    cuenta_origen_id: cuentaOrigenId || null,
+    categoria_id: categoriaId,
   });
 
   if (error) {
@@ -345,5 +358,69 @@ export async function registrarEgresoAction(
   revalidatePath("/");
   revalidatePath("/caja");
 
+  return { error: null, success: true };
+}
+
+// ============================================================================
+// 6. ANULAR EGRESO
+// ============================================================================
+/**
+ * Anular un gasto (`20260921210000`, RPC `anular_egreso`). La fila se BORRA
+ * —así el arqueo, el panel, el resumen y las exportaciones dejan de contarla
+ * sin que ninguno tenga que aprender a filtrar— y la bitácora financiera
+ * conserva el snapshot completo con motivo, quién y cuándo
+ * (`ELIMINACION_REVERSA`, fechada en el egreso). Nada se pierde; deja de
+ * estar en las cuentas, que es lo que "anular" quiere decir.
+ *
+ * Toda la regla vive en la RPC: permiso `caja.anular_movimiento`, motivo
+ * obligatorio, turno ABIERTO si la cuenta es arqueada (uno cerrado ya se
+ * firmó), y nunca un reintegro de venta (tipo DEVOLUCION: eso se corrige
+ * desde la venta). Acá solo se traducen los códigos.
+ */
+const MENSAJES_ANULAR_EGRESO: Record<string, string> = {
+  SIN_PERMISO: "Solo una administradora puede anular un gasto.",
+  MOTIVO_REQUERIDO: "Contá por qué se anula.",
+  EGRESO_NO_ENCONTRADO: "Ese gasto no existe o ya fue anulado.",
+  EGRESO_ES_REINTEGRO_DE_VENTA:
+    "Ese movimiento es la devolución de una venta: se corrige desde la venta, no desde los gastos.",
+  EGRESO_DE_CAJA_SIN_TURNO: "Ese gasto de caja no tiene turno; revisalo desde el historial.",
+  TURNO_CERRADO:
+    "El turno de ese gasto ya se cerró y se firmó. Registralo como ingreso de corrección en el turno abierto.",
+  SIN_NEGOCIO_ACTIVO: "No hay un comercio activo en esta sesión.",
+};
+
+export async function anularEgresoAction(
+  egresoId: string,
+  motivo: string,
+): Promise<{ error: string | null; success: boolean }> {
+  if (!egresoId || !motivo.trim()) {
+    return { error: MENSAJES_ANULAR_EGRESO.MOTIVO_REQUERIDO, success: false };
+  }
+  const supabase = createClient(await cookies());
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "No autorizado.", success: false };
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_ANULAR_MOVIMIENTO))) {
+    return { error: MENSAJES_ANULAR_EGRESO.SIN_PERMISO, success: false };
+  }
+
+  const { error } = await supabase.rpc("anular_egreso", {
+    p_egreso_id: egresoId,
+    p_motivo: motivo.trim(),
+  });
+  if (error) {
+    console.error("Error anulando egreso:", error);
+    const codigo = Object.keys(MENSAJES_ANULAR_EGRESO).find((c) =>
+      error.message.includes(c),
+    );
+    return {
+      error: codigo ? MENSAJES_ANULAR_EGRESO[codigo] : "No se pudo anular el gasto.",
+      success: false,
+    };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/caja");
   return { error: null, success: true };
 }

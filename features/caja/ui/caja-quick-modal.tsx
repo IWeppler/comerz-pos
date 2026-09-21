@@ -9,7 +9,6 @@ import {
   Unlock,
   Clock,
   TrendingDown,
-  Repeat2,
 } from "lucide-react";
 import {
   Dialog,
@@ -122,18 +121,6 @@ export function CajaQuickModal({
       >
         <TrendingDown className="mr-2 h-4 w-4" />
         Anotar gasto
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        onClick={() => {
-          onOpenChange(false);
-          router.push("/caja?vista=dinero&accion=transferir");
-        }}
-        className="h-9 w-full justify-center text-muted-foreground"
-      >
-        <Repeat2 className="mr-2 h-4 w-4" />
-        Mover dinero entre cuentas
       </Button>
     </div>
   );

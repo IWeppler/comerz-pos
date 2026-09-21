@@ -56,6 +56,18 @@ describe("etiquetaMovimiento", () => {
     );
   });
 
+  it("un gasto anulado o corregido lo dice, porque la fila de egresos ya no está", () => {
+    expect(etiquetaMovimiento("EGRESO", "ELIMINACION_REVERSA", 150000)).toBe(
+      "Gasto anulado",
+    );
+    expect(etiquetaMovimiento("EGRESO", "CORRECCION_REVERSA", 150000)).toBe(
+      "Gasto corregido",
+    );
+    expect(etiquetaMovimiento("EGRESO", "CORRECCION_APLICADA", -150000)).toBe(
+      "Gasto corregido",
+    );
+  });
+
   it("la acreditación se lee distinto en el puente y en el destino", () => {
     expect(etiquetaMovimiento("ACREDITACION", "ACREDITACION_ENTRADA", 8000)).toBe(
       "Se acreditó",

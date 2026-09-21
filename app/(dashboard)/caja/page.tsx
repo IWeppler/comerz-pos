@@ -6,7 +6,12 @@ import { CajaDashboard } from "@/features/caja/ui/caja-dashboard";
 import { VistaGerencial } from "@/features/caja/ui/vista-gerencial";
 import { CajaVistas } from "@/features/caja/ui/caja-vistas";
 import { CajaHistoryTable } from "@/features/caja/ui/caja-history-table";
-import { puedeVerVistaGerencialAction } from "@/features/caja/actions/permisos-caja";
+import {
+  puedeVerVistaGerencialAction,
+  puedeVerMovimientosAction,
+  puedeAnularMovimientoAction,
+} from "@/features/caja/actions/permisos-caja";
+import { MovimientosFinancierosTable } from "@/features/caja/ui/movimientos-financieros-table";
 import { puedeOperarCaja } from "@/features/caja/lib/puede-operar-caja";
 import {
   getDetalleMediosPagoAction,
@@ -15,6 +20,8 @@ import {
 } from "@/features/caja/actions/get-resumen-gerencial";
 import { getPosicionDineroAction } from "@/features/caja/actions/get-posicion-dinero";
 import { PosicionDinero } from "@/features/caja/ui/posicion-dinero";
+import { getResumenFinancieroAction } from "@/features/caja/actions/get-resumen-financiero";
+import { ResumenFinancieroPeriodo } from "@/features/caja/ui/resumen-financiero-periodo";
 import { getVentasFacturadasAction } from "@/features/caja/actions/get-ventas-facturadas";
 import { VentasFacturadas } from "@/features/caja/ui/ventas-facturadas";
 import {
@@ -47,11 +54,14 @@ export default async function CajaPage() {
   // acá: es la vendedora de "varios puestos, una caja", o cualquiera a quien
   // le sacaron "Operar la caja" desde Empleados y Permisos. El link del
   // sidebar ya no se muestra; esto es lo que impide entrar tipeando /caja.
-  const [operaCaja, veGerencial] = await Promise.all([
-    puedeOperarCaja(),
-    puedeVerVistaGerencialAction(),
-  ]);
-  if (!operaCaja && !veGerencial) redirect("/pos");
+  const [operaCaja, veGerencial, veMovimientosGate, puedeAnular] =
+    await Promise.all([
+      puedeOperarCaja(),
+      puedeVerVistaGerencialAction(),
+      puedeVerMovimientosAction(),
+      puedeAnularMovimientoAction(),
+    ]);
+  if (!operaCaja && !veGerencial && !veMovimientosGate) redirect("/pos");
 
   // El rol es por negocio (usuarios_negocios).
   const rolActual = await getRolActual();
@@ -205,18 +215,26 @@ export default async function CajaPage() {
   // esto es lo que decide si se renderiza, no lo que protege el dato.
   const puedeVerGerencial = await puedeVerVistaGerencialAction();
 
-  const [resumenGerencial, detalleMedios, posicion, facturadas, estadoCuentas] =
+  const [
+    resumenGerencial,
+    detalleMedios,
+    posicion,
+    resumenFinanciero,
+    facturadas,
+    estadoCuentas,
+  ] =
     puedeVerGerencial
       ? await Promise.all([
           getResumenGerencialAction(),
           getDetalleMediosPagoAction(),
           getPosicionDineroAction(PERIODO_INICIAL_DINERO),
+          getResumenFinancieroAction(PERIODO_INICIAL_DINERO),
           facturaConArca
             ? getVentasFacturadasAction(PERIODO_INICIAL_DINERO)
             : Promise.resolve(null),
           getEstadoCuentasFinancierasAction(),
         ])
-      : [null, null, null, null, null];
+      : [null, null, null, null, null, null];
 
   // 8. ¿Esta persona opera caja, o solo mira números? No hay un flag para
   // esto: se deduce de si tiene un turno propio abierto o abrió alguno en el
@@ -248,6 +266,7 @@ export default async function CajaPage() {
             modoCaja={modoCaja}
             userRole={userRole}
             userId={user.id}
+            puedeAnular={puedeAnular}
           />
         }
         resumenHoy={
@@ -270,12 +289,19 @@ export default async function CajaPage() {
                   // devuelve la estructura de cuentas y nada más. De tener dos
                   // fuentes salía la lista duplicada que había acá abajo.
                   saldos={posicion.data.cuentas ?? []}
+                  puedeAnular={puedeAnular}
                 />
               )}
               <PosicionDinero
                 posicionInicial={posicion.data}
                 periodoInicial={PERIODO_INICIAL_DINERO}
               />
+              {resumenFinanciero?.data && (
+                <ResumenFinancieroPeriodo
+                  resumenInicial={resumenFinanciero.data}
+                  periodoInicial={PERIODO_INICIAL_DINERO}
+                />
+              )}
               {facturadas?.data && (
                 <VentasFacturadas
                   inicial={facturadas.data}
@@ -283,6 +309,17 @@ export default async function CajaPage() {
                 />
               )}
             </div>
+          ) : undefined
+        }
+        movimientos={
+          // Permiso PROPIO (`caja.ver_movimientos`), distinto de
+          // `caja.ver_gerencial`: hoy los mismos roles tienen los dos, pero
+          // son dos preguntas separadas ("¿cuánto hay?" vs "¿qué pasó?") y no
+          // se pide prestado el gate de Dinero. El componente se autoabastece
+          // (RPC en ~20ms) en vez de esperar datos server-side, así el resto
+          // de la página no espera por una pestaña que puede no abrirse.
+          veMovimientosGate ? (
+            <MovimientosFinancierosTable puedeAnular={puedeAnular} />
           ) : undefined
         }
         historial={

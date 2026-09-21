@@ -20,3 +20,29 @@ export async function puedeVerVistaGerencialAction(): Promise<boolean> {
 
   return tienePermiso(supabase, PERMISOS.CAJA_VER_GERENCIAL);
 }
+
+/**
+ * ¿Puede ver la tabla general de movimientos de dinero (todas las cuentas,
+ * todos los orígenes) y el detalle de cada cuenta? Mismo criterio que
+ * arriba: server-side, y la RPC (`movimientos_financieros_negocio`,
+ * `movimientos_de_cuenta`) vuelve a chequear el permiso por su cuenta.
+ */
+export async function puedeVerMovimientosAction(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  return tienePermiso(supabase, PERMISOS.CAJA_VER_MOVIMIENTOS);
+}
+
+/**
+ * ¿Puede anular un gasto o revertir una transferencia? Es la única forma de
+ * hacer desaparecer plata ya registrada, así que el permiso es más angosto
+ * que ver los movimientos: hoy solo ADMIN. Las dos RPCs (`anular_egreso`,
+ * `revertir_transferencia_financiera`) vuelven a chequearlo por su cuenta.
+ */
+export async function puedeAnularMovimientoAction(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  return tienePermiso(supabase, PERMISOS.CAJA_ANULAR_MOVIMIENTO);
+}

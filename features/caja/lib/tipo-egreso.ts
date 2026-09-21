@@ -1,5 +1,5 @@
 /**
- * Los tres tipos de plata que sale de la caja, y qué hace cada uno.
+ * Los cuatro tipos de plata que sale de la caja, y qué hace cada uno.
  *
  * La distinción no es contable-por-prolijidad: hasta que existió esta
  * columna, la ganancia del panel restaba los tres por igual, así que un
@@ -9,11 +9,18 @@
  *
  * Dos ejes independientes:
  *
- *  - `afectaEfectivo`: si se lleva plata del cajón. Los TRES lo hacen, y por
+ *  - `afectaEfectivo`: si se lleva plata del cajón. Los CUATRO lo hacen, y por
  *    eso el arqueo de cierre no cambia — el efectivo esperado sigue restando
  *    todo. Está declarado igual y no dado por sentado: es la clase de cosa
  *    que alguien "optimiza" a futuro y descuadra una caja.
  *  - `afectaResultado`: si es gasto del negocio. Solo OPERATIVO.
+ *
+ * DEVOLUCION entró el 21/9/2026 (`20260921180000`) porque `anular_venta` y
+ * `registrar_devolucion` insertaban el reintegro en efectivo sin tipo, caía
+ * en OPERATIVO, y la misma plata se descontaba dos veces: la venta anulada ya
+ * había salido de los ingresos y el egreso volvía a restar como gasto. 41
+ * egresos, $1.977.999. La marca la escriben esas dos RPCs; acá solo se define
+ * qué significa. El espejo SQL es `egreso_impacto_resultado`.
  *
  * Vive en lib y no en la action porque lo consumen el modal (cliente), la
  * action (server) y el cálculo de métricas del panel: una sola definición.
@@ -23,7 +30,20 @@ export const TIPOS_EGRESO = [
   "OPERATIVO",
   "RETIRO_SOCIO",
   "COMPRA_MERCADERIA",
+  "DEVOLUCION",
 ] as const;
+
+/**
+ * Lo que se puede elegir a MANO al registrar un gasto. DEVOLUCION queda
+ * afuera: esa marca la escriben `anular_venta` y `registrar_devolucion`
+ * (columna, no heurística — ver más arriba); si el modal la ofreciera, una
+ * vendedora podría marcar "Devolución a cliente" en un gasto que no es
+ * ningún reintegro de venta, y la distinción quedaría en manos de quien
+ * tipea, que es justo lo que la columna vino a evitar.
+ */
+export const TIPOS_EGRESO_MANUALES = TIPOS_EGRESO.filter(
+  (t) => t !== "DEVOLUCION",
+);
 
 export type TipoEgreso = (typeof TIPOS_EGRESO)[number];
 
@@ -54,6 +74,13 @@ export const DEFINICION_TIPO_EGRESO: Record<TipoEgreso, DefinicionTipoEgreso> = 
     label: "Compra de mercadería",
     descripcion:
       "Pago a proveedor. No resta de la ganancia: el costo ya se cuenta cuando se vende el producto.",
+    afectaEfectivo: true,
+    afectaResultado: false,
+  },
+  DEVOLUCION: {
+    label: "Devolución a cliente",
+    descripcion:
+      "Reintegro en efectivo de una venta anulada o devuelta. Sale de la caja pero NO es un gasto: la venta ya salió de los ingresos.",
     afectaEfectivo: true,
     afectaResultado: false,
   },

@@ -81,7 +81,7 @@
      blanco encima: sirve para las dos cosas. El token se usa 140 veces, casi
      siempre como `text-warning` sobre un `bg-warning/10`, donde el fondo
      sigue siendo un tinte claro. */
-  --warning: oklch(0.55 0.13 65);
+  --warning: oklch(82.8% 0.189 84.429);
   /* Para texto sobre superficies `bg-warning/10`: 7,65:1 (#7e4500). Existe
      porque `text-warning-foreground` se usaba en dos banners y el token no
      estaba definido, o sea que no resolvía a nada. */

@@ -1,19 +1,34 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import {
   Banknote,
   CreditCard,
   Lock,
+  Loader2,
   ShoppingBag,
   BookUser,
   TrendingDown,
   Repeat2,
+  Ban,
 } from "lucide-react";
 import { etiquetaTipoEgreso } from "../lib/tipo-egreso";
 import { calcularTotalesTurno } from "../lib/totales-turno";
+import { anularEgresoAction } from "../actions/caja-action";
 import {
   TurnoCajaHistorial,
   EgresoCaja,
@@ -33,6 +48,11 @@ export interface CajaDashboardProps {
   modoCaja?: string;
   userRole?: string;
   userId?: string;
+  /** `caja.anular_movimiento`: habilita "Anular" en cada gasto del turno que
+   * todavía no es un reintegro de venta. El turno está ABIERTO acá siempre
+   * que se ve esta tabla (es "Mi turno"), así que la RPC nunca rebota por
+   * `TURNO_CERRADO` desde esta pantalla. */
+  puedeAnular?: boolean;
 }
 
 type MovimientoExtendido = {
@@ -51,6 +71,10 @@ type MovimientoExtendido = {
    * entró— pero no es facturación. Ver `totales` más abajo. */
   anulada?: boolean;
   afecta_facturacion?: boolean;
+  /** Solo en origen EGRESO: OPERATIVO | RETIRO_SOCIO | COMPRA_MERCADERIA |
+   * DEVOLUCION. Decide si se ofrece "Anular" — un DEVOLUCION lo generó una
+   * venta y se corrige desde ahí, no desde acá. */
+  egresoTipo?: string | null;
 };
 
 export function CajaDashboard({
@@ -63,10 +87,31 @@ export function CajaDashboard({
   modoCaja: _modoCaja,
   userRole: _userRole,
   userId,
+  puedeAnular = false,
 }: Readonly<CajaDashboardProps>) {
   void _modoCaja;
   void _userRole;
   void _historial;
+
+  const router = useRouter();
+  const [aAnular, setAAnular] = useState<MovimientoExtendido | null>(null);
+  const [motivoAnular, setMotivoAnular] = useState("");
+  const [anulando, setAnulando] = useState(false);
+
+  const anular = async () => {
+    if (!aAnular || !motivoAnular.trim()) return;
+    setAnulando(true);
+    const res = await anularEgresoAction(aAnular.id, motivoAnular);
+    setAnulando(false);
+    if (!res.success) {
+      toast.error(res.error ?? "No se pudo anular el gasto.");
+      return;
+    }
+    toast.success("Gasto anulado");
+    setAAnular(null);
+    setMotivoAnular("");
+    router.refresh();
+  };
 
   // El turno propio se matchea siempre por vendedor_id en modo POR_USUARIO,
   // donde cada vendedor tiene su propia caja. En modo UNICA la caja es una
@@ -179,6 +224,7 @@ export function CajaDashboard({
       neto: Number(e.monto),
       fecha: e.fecha,
       usuario: e.perfiles?.nombre || "Usuario",
+      egresoTipo: e.tipo,
     }));
 
     const transferenciasMapeadas: MovimientoExtendido[] = transferenciasCaja.map(
@@ -346,13 +392,16 @@ export function CajaDashboard({
                     <th className="px-3 py-3 sm:px-6 sm:py-4">Metodo</th>
                     <th className="px-3 py-3 sm:px-6 sm:py-4 text-right">Monto</th>
                     <th className="px-3 py-3 sm:px-6 sm:py-4 hidden sm:table-cell">Usuario</th>
+                    {puedeAnular && (
+                      <th className="px-3 py-3 sm:px-6 sm:py-4 w-10" aria-hidden />
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
                   {movimientos.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={puedeAnular ? 6 : 5}
                         className="px-6 py-12 text-center text-muted-foreground bg-transparent"
                       >
                         Aun no hay movimientos registrados en este turno.
@@ -362,7 +411,7 @@ export function CajaDashboard({
                     movimientos.map((mov) => (
                       <tr
                         key={`${mov.tipo}-${mov.id}`}
-                        className="hover:bg-muted/30 transition-colors cursor-pointer"
+                        className="hover:bg-muted/30 transition-colors"
                       >
                         <td className="px-3 py-3 sm:px-6 sm:py-4 text-muted-foreground text-xs font-medium">
                           {new Date(mov.fecha).toLocaleTimeString("es-AR", {
@@ -421,6 +470,25 @@ export function CajaDashboard({
                         <td className="px-3 py-3 sm:px-6 sm:py-4 text-muted-foreground hidden sm:table-cell text-sm">
                           {mov.usuario}
                         </td>
+                        {puedeAnular && (
+                          <td className="px-3 py-3 sm:px-6 sm:py-4">
+                            {/* Solo un gasto propio (no venta, no cobro, no
+                                transferencia) y que no sea un reintegro de
+                                venta: ese se corrige desde la venta. */}
+                            {mov.origen === "EGRESO" &&
+                              mov.egresoTipo !== "DEVOLUCION" && (
+                                <button
+                                  type="button"
+                                  aria-label="Anular gasto"
+                                  title="Anular gasto"
+                                  onClick={() => setAAnular(mov)}
+                                  className="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
+                                >
+                                  <Ban className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                          </td>
+                        )}
                       </tr>
                     ))
                   )}
@@ -434,6 +502,49 @@ export function CajaDashboard({
       {/* El historial se renderiza afuera (page.tsx): tiene que verse también
           cuando la dueña está en "Vista general" y este componente no se
           monta. */}
+
+      <Dialog
+        open={aAnular !== null}
+        onOpenChange={(abierto) => {
+          if (!abierto) {
+            setAAnular(null);
+            setMotivoAnular("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Anular gasto</DialogTitle>
+            <DialogDescription>
+              {aAnular?.concepto} ·{" "}
+              {aAnular ? formatearMoneda(aAnular.monto) : ""}. Se borra de las
+              cuentas; el registro de que existió y se anuló queda en la
+              bitácora, con el motivo.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="motivo-anular-egreso">Motivo</Label>
+              <Input
+                id="motivo-anular-egreso"
+                value={motivoAnular}
+                onChange={(e) => setMotivoAnular(e.target.value)}
+                placeholder="Ej: Se cargó dos veces"
+                autoFocus
+              />
+            </div>
+            <Button
+              className="w-full"
+              variant="destructive"
+              onClick={anular}
+              disabled={anulando || !motivoAnular.trim()}
+            >
+              {anulando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Anular gasto
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

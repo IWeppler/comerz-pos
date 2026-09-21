@@ -53,6 +53,12 @@ export function etiquetaMovimiento(
       return "Cobro sin efecto en la cuenta";
 
     case "EGRESO":
+      // La anulación (`anular_egreso`, 20260921210000) BORRA la fila de
+      // egresos y deja acá la única huella, con el motivo en la descripción.
+      // Una corrección son dos filas (reversa + aplicada) y las dos se
+      // nombran igual: desde la cuenta es "se corrigió un gasto".
+      if (evento === "ELIMINACION_REVERSA") return "Gasto anulado";
+      if (evento.startsWith("CORRECCION")) return "Gasto corregido";
       // El signo no cambia nada acá: un egreso siempre saca.
       return "Gasto";
 

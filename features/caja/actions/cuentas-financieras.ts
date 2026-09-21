@@ -27,6 +27,10 @@ export type TransferenciaFinanciera = {
   origen_nombre: string;
   destino_nombre: string;
   registrado_por_nombre: string | null;
+  /** Si esta fila es la reversa de otra, el id de la original. */
+  revierte_a: string | null;
+  /** Si esta fila ya fue revertida, el id de su reversa. */
+  revertida_por: string | null;
 };
 
 export async function getCuentasFinancierasAction(): Promise<CuentaFinanciera[]> {
@@ -110,7 +114,7 @@ export async function registrarTransferenciaFinancieraAction(
   const supabase = createClient(await cookies());
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "No autorizado.", success: false };
-  if (!(await tienePermiso(supabase, PERMISOS.CAJA_VER_GERENCIAL))) {
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_TRANSFERIR))) {
     return { error: "No tenés permiso para transferir entre cuentas.", success: false };
   }
 
@@ -226,4 +230,60 @@ export async function getMovimientosCuentaAction(
   }
 
   return { data: (data ?? []) as MovimientoCuenta[], error: null };
+}
+
+/**
+ * Revertir una transferencia (`20260921200000`): registra la compensatoria
+ * destino → origen por el mismo monto, con `revierte_a` apuntando a la
+ * original. Las dos quedan en el ledger; nada se borra. Una vez por original,
+ * y una reversa no se revierte. Permiso `caja.anular_movimiento`.
+ *
+ * Si alguna de las dos cuentas es la caja diaria, la plata vuelve al turno
+ * ABIERTO de quien revierte, no al turno original: ese ya se cerró y se firmó.
+ */
+const MENSAJES_REVERSA: Record<string, string> = {
+  SIN_PERMISO: "Solo una administradora puede revertir una transferencia.",
+  MOTIVO_REQUERIDO: "Contá por qué se revierte.",
+  TRANSFERENCIA_NO_ENCONTRADA: "Esa transferencia no existe.",
+  ES_UNA_REVERSA:
+    "Esa fila ya es una reversa. Si hace falta, registrá la transferencia de nuevo.",
+  TRANSFERENCIA_YA_REVERTIDA: "Esa transferencia ya fue revertida.",
+  CAJA_DIARIA_REQUIERE_TURNO_ABIERTO:
+    "Para devolver plata a la caja diaria tenés que tener tu turno abierto.",
+  CUENTA_NO_DISPONIBLE: "Una de las cuentas de la transferencia ya no está disponible.",
+  SIN_NEGOCIO_ACTIVO: "No hay un comercio activo en esta sesión.",
+};
+
+export async function revertirTransferenciaFinancieraAction(
+  transferenciaId: string,
+  motivo: string,
+): Promise<{ error: string | null; reversaId: string | null }> {
+  if (!transferenciaId || !motivo.trim()) {
+    return { error: MENSAJES_REVERSA.MOTIVO_REQUERIDO, reversaId: null };
+  }
+  const supabase = createClient(await cookies());
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "No autorizado.", reversaId: null };
+  if (!(await tienePermiso(supabase, PERMISOS.CAJA_ANULAR_MOVIMIENTO))) {
+    return { error: MENSAJES_REVERSA.SIN_PERMISO, reversaId: null };
+  }
+
+  const { turnoId } = await resolverTurnoActivo(supabase, user.id);
+  const { data, error } = await supabase.rpc("revertir_transferencia_financiera", {
+    p_transferencia_id: transferenciaId,
+    p_motivo: motivo.trim(),
+    p_turno_caja_id: turnoId,
+  });
+  if (error) {
+    console.error("Error revirtiendo transferencia:", error);
+    const codigo = Object.keys(MENSAJES_REVERSA).find((c) => error.message.includes(c));
+    return {
+      error: codigo ? MENSAJES_REVERSA[codigo] : "No se pudo revertir la transferencia.",
+      reversaId: null,
+    };
+  }
+
+  revalidatePath("/caja");
+  revalidatePath("/", "layout");
+  return { error: null, reversaId: (data as string) ?? null };
 }

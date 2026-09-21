@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { History, PiggyBank, Wallet } from "lucide-react";
+import { History, List, PiggyBank, Wallet } from "lucide-react";
 
-type Vista = "hoy" | "dinero" | "historial";
+type Vista = "hoy" | "dinero" | "movimientos" | "historial";
 
 interface CajaVistasProps {
   /** Flujo de cajera: apertura, movimientos del turno y cierre. */
@@ -16,6 +16,11 @@ interface CajaVistasProps {
   /** Dónde está la plata: efectivo, por acreditar, acreditado. Misma
    * condición de permiso que `resumenHoy`. */
   dinero?: ReactNode;
+  /** Qué pasó: una fila por movimiento, todas las cuentas, con filtros.
+   * Ausente = el usuario no tiene `caja.ver_movimientos`. Es OTRA pregunta
+   * que "Dinero" (dónde está ahora) — Dinero es la foto, esto es el detalle
+   * de cada paso que llevó a esa foto. */
+  movimientos?: ReactNode;
   /** Turnos pasados. Lo ve cualquiera: son los turnos que ya podía ver. */
   historial: ReactNode;
   /** false para la dueña que nunca abre caja: no se le muestra el bloque de
@@ -44,6 +49,7 @@ export function CajaVistas({
   miTurno,
   resumenHoy,
   dinero,
+  movimientos,
   historial,
   esCajera,
   vistaInicial,
@@ -58,6 +64,9 @@ export function CajaVistas({
       : []),
     ...(dinero
       ? [{ valor: "dinero" as const, label: "Dinero", Icono: PiggyBank }]
+      : []),
+    ...(movimientos
+      ? [{ valor: "movimientos" as const, label: "Movimientos", Icono: List }]
       : []),
     { valor: "historial" as const, label: "Historial", Icono: History },
   ];
@@ -82,6 +91,7 @@ export function CajaVistas({
       </div>
     ),
     dinero,
+    movimientos,
     historial,
   };
 

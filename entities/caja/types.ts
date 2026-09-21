@@ -156,7 +156,7 @@ export interface EgresoCaja {
   monto: number | string;
   concepto: string;
   fecha: string;
-  /** OPERATIVO | RETIRO_SOCIO | COMPRA_MERCADERIA. Opcional en el tipo porque
+  /** OPERATIVO | RETIRO_SOCIO | COMPRA_MERCADERIA | DEVOLUCION. Opcional en el tipo porque
    * hay consultas viejas que no la seleccionan; ausente se lee como
    * OPERATIVO (ver normalizarTipoEgreso, fail-closed). */
   tipo?: string | null;

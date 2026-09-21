@@ -728,6 +728,162 @@ tiene 11.
   Cada fila dice además si el movimiento **afecta la ganancia o solo mueve
   plata**. Es la distinción que sostiene el módulo entero y la que más cuesta
   explicar: un pase entre cuentas no es un gasto.
+- **Permisos de caja: VER la plata y MOVER la plata son dos confianzas**
+  (`20260921160000`). Hasta ahí `caja.ver_gerencial` era la llave de todo lo
+  nuevo del ledger. Cuatro permisos: `caja.registrar_egreso` (sale de adentro
+  de `caja.operar`; se dio a quien lo tenía), `caja.transferir` y
+  `caja.ver_movimientos` (a quien tenía `ver_gerencial`), y
+  `caja.anular_movimiento` (solo ADMIN, mismo criterio que
+  `ventas.elegir_medio_devolucion`). Nadie perdió nada, los guards lo cuentan.
+  **Lo que importaba de verdad: `egresos_insert_propio` solo pedía
+  `creado_por = auth.uid()`** — cualquier miembro, con cualquier rol, podía
+  insertar un egreso desde la consola. Ahora pide `caja.registrar_egreso` **o
+  `ventas.anular`**: `anular_venta` es SECURITY INVOKER e inserta el egreso de
+  la devolución en efectivo con la sesión de quien anula, y sin esa excepción
+  una anulación se caería por un permiso que no es de ella. La pantalla de
+  roles lee el catálogo `permisos` entero, así que los nuevos aparecen solos.
+- **Caja chica y caja grande** (`20260921170000`). `CAJA_GENERAL` pasó a ser
+  cuenta de SISTEMA (nace con el negocio como CAJA_DIARIA y POR_ACREDITAR; las
+  dos que ya existían a mano —"Caja Grande" de El Nono Cacho y la de Kiosco
+  Demo— se adoptaron con su nombre, no se duplicaron). La división es por
+  quién la cuenta: la diaria la arquea quien vende, la general la maneja el
+  dueño. **El ciclo del efectivo cierra solo, con dos patas y sin elegir
+  nada**: abrir turno = general −fondo / diaria +fondo; cerrar = diaria
+  −declarado / general +declarado, misma `operacion_id`, suman cero. Las dos
+  patas hacen falta: solo con la del cierre, el fondo del día siguiente
+  saldría de la nada y la general contaría dos veces lo que volvió al cajón.
+  La pata de la general va SIN `turno_caja_id` (el vínculo está en
+  `origen_id`; "movimientos del turno" es lo que pasó en el cajón).
+  **No se backfillearon los ~300 cierres viejos, a propósito**: esa plata ya se
+  gastó por caminos que el sistema no vio y Evens quedaría con millones en una
+  caja que la dueña no tiene. El saldo real de la general se declara con
+  `registrar_saldo_inicial_cuenta`. La única excepción fueron los 4 turnos
+  abiertos al aplicar, a los que se les escribió la pata del fondo que les
+  faltaba para que su cierre no devolviera plata que nunca salió.
+  **Egreso sin cuenta: con turno va al cajón, sin turno a la general.** Antes
+  el trigger mandaba todo a CAJA_DIARIA, que desde `20260921130000` exige turno
+  — "sin cuenta y sin turno" era un error garantizado, y eso incluía anular en
+  efectivo una venta con la caja cerrada (`anular_venta` y
+  `registrar_devolucion` insertan el egreso con `turno_caja_id = p_turno_id`).
+  `registrarEgresoAction` ya acepta cuenta vacía; el modal todavía preselecciona
+  CAJA_DIARIA y es lo próximo a cambiar. Verificado en seco antes de aplicar
+  abriendo y cerrando un turno de prueba en una transacción revertida.
+  Deuda que apareció midiendo: la CAJA_DIARIA de Kiosco Demo está en −$99.000.
+- **Una devolución al cliente NO es un gasto: `egresos.tipo = 'DEVOLUCION'`**
+  (`20260921180000`). `anular_venta` y `registrar_devolucion` insertaban el
+  reintegro en efectivo sin tipo → default OPERATIVO → el único tipo que resta
+  de la ganancia. Pero la venta anulada YA salía de los ingresos (y la parcial
+  ya restaba `monto_devuelto`), así que la misma plata se descontaba **dos
+  veces**. Medido: **41 egresos, $1.977.999**; ClickTostado tres por
+  $1.175.000. Apareció midiendo los conceptos de los egresos OPERATIVO para
+  diseñar las categorías: 25 de 84 eran devoluciones.
+  Cuarto tipo, misma forma que RETIRO y COMPRA: sale del cajón (el arqueo lo
+  resta), no toca resultado. La marca la ESCRIBEN las dos RPCs — columna, no
+  heurística — y el parche se aplicó sobre el cuerpo VIVO con `replace()` +
+  `execute` (verificado antes que el insert aparece una sola vez en cada una)
+  en vez de reescribir 13.000 caracteres desde archivos viejos; guards de que
+  quedó el tipo y de que no se perdió nada. El backfill usó el patrón del
+  concepto porque es texto generado por esas funciones, no tipeado; el único
+  manual ("devolucion de cobro el tala") quedó OPERATIVO a propósito.
+  **La bitácora fecha las correcciones de egreso en el egreso, no en
+  `now()`**: si no, la corrección de un gasto de julio caía en septiembre y
+  julio seguía mal. `registrado_en` conserva cuándo se corrigió. 82 filas,
+  saldo de cuentas sin cambio, impacto neto cero. El espejo SQL de
+  `esGastoDelNegocio` es `egreso_impacto_resultado(tipo, monto)`.
+  OJO: `etiquetaMovimiento` sigue diciendo "Gasto" para todo origen EGRESO;
+  la tabla general tiene que exponer `datos->>'tipo'` para distinguirlo.
+- **Categorías de gastos** (`20260921190000`, `categorias_egreso` +
+  `egresos.categoria_id`). Eje DESCRIPTIVO debajo de `tipo = OPERATIVO`: no
+  decide nada de plata, y un CHECK impide categorizar retiros, compras o
+  devoluciones — el tipo ya lo dice todo. **Opcional y sin default**: obligarla
+  es la decisión que se guarda cuando nadie mira; los 59 gastos operativos
+  existentes quedaron en null, no en "Otros". Por negocio, con siembra de 10
+  genéricas (sacadas de los conceptos reales: agua, flete, bolsas, "pago
+  semanal Eva") y trigger para los negocios nuevos. Crear la puede quien
+  registra gastos (alta inline desde el selector, mismo patrón que la cuenta
+  destino); renombrar/desactivar es ADMIN; desactivar en vez de borrar.
+  **`egresos` tiene por primera vez una policy de UPDATE, y es una rendija**:
+  `egresos_update_descriptivo` + trigger `egresos_solo_descriptivo_editable`
+  dejan cambiar SOLO `categoria_id` y `concepto`; tocar monto, tipo, cuenta,
+  turno o remito falla con `EGRESO_SOLO_CATEGORIA_Y_CONCEPTO_EDITABLES` (plata
+  se anula y se vuelve a registrar). Recategorizar NO pasa por la bitácora: la
+  categoría se lee viva desde `egresos`, y mover un gasto de julio de columna
+  mueve julio, que es lo que se espera de una etiqueta. Actions en
+  `features/caja/actions/categorias-egreso.ts`; `registrarEgresoAction` ya
+  acepta `categoria_id` (y lo descarta si el tipo no es OPERATIVO).
+- **Transferencias reversibles** (`20260921200000` + `20260921220000`). Una
+  reversa es OTRA transferencia, destino → origen, mismo monto, con
+  `revierte_a` apuntando a la original: la tabla es inmutable y el ledger
+  append-only, así que nada se borra y las dos quedan a la vista. Una vez por
+  original (índice único parcial) y una reversa no se revierte (`ES_UNA_REVERSA`:
+  si te arrepentiste, es una transferencia nueva). Si toca la caja diaria, va
+  contra el turno ABIERTO de quien revierte, no contra el de ayer que ya se
+  firmó. Permiso `caja.anular_movimiento`. La lógica se movió a
+  `registrar_transferencia_financiera_impl` (un parámetro más) y las dos RPCs
+  públicas la llaman — patrón `aprobar_orden_compra`. **OJO con el revoke del
+  `_impl`: Supabase da EXECUTE a `anon` y `authenticated` por default
+  privileges, así que `revoke ... from public` solo NO alcanza; hay que
+  nombrarlos** (guard con `has_function_privilege`). Las funciones internas
+  anteriores (`cuenta_financiera_sistema`, `sembrar_*`) revocaron solo de
+  public y quedan como deuda. `estado_cuentas_financieras` expone
+  `revierte_a` / `revertida_por` por fila para que el botón sepa cuándo
+  ofrecerse.
+- **Anular un gasto BORRA la fila** (`20260921210000`, `anular_egreso`), y es
+  a propósito: `egresos` la suman directo, sin columna de estado, siete
+  consumidores (arqueo, historial, resumen gerencial, panel, exportaciones,
+  saldo de remitos). Un `estado = 'ANULADO'` obligaba a los siete a aprender a
+  filtrar, y el que se olvida sigue contando un gasto que no existe — la misma
+  forma de bug que `movimientos_stock` evitó con trigger. Borrar hace que
+  todos dejen de contarlo sin tocar ninguno, y no pierde nada: la bitácora ya
+  modelaba el DELETE (`ELIMINACION_REVERSA` con el snapshot en
+  `datos.anterior`), ahora con `motivo` y `anulado_en`, fechada en el EGRESO
+  (mismo criterio que las correcciones). El motivo viaja al trigger por
+  `comerz.motivo_anulacion` transaction-local, como `comerz.origen_movimiento`.
+  Frenos: turno ABIERTO si la cuenta es arqueada (uno cerrado ya se firmó; se
+  corrige con un ingreso en el turno abierto), y **nunca un `DEVOLUCION`**:
+  ese reintegro lo generó una anulación de venta y "no se le devolvió la
+  plata" es una corrección de la venta, no del gasto. Guard de que las 4
+  consultas filtran `negocio_id` (es DEFINER). Verificado en seco: abierto se
+  anula, cerrado frena con `TURNO_CERRADO`. En el ledger la fila dice "Gasto
+  anulado" (`etiquetaMovimiento`).
+- **La tabla general de movimientos** (`20260921230000`,
+  `movimientos_financieros_negocio`; action en
+  `features/caja/actions/movimientos-financieros.ts`). Una fila por
+  movimiento del ledger, todas las cuentas, con cuenta, categoría, método,
+  usuario, venta/comprobante, remito/proveedor y **saldo posterior**. Filtros:
+  período, cuenta, tipo (`origen_tipo[]`), categoría (o "sin categoría"),
+  método, usuario, texto. Gate `caja.ver_movimientos`.
+  Tres reglas que no se negocian: **el saldo posterior se calcula sobre el
+  ledger ENTERO de la cuenta ANTES de filtrar** (sobre la lista filtrada sería
+  "el saldo de lo que se ve", que no es ningún saldo); **el orden es por fecha
+  económica + id, nunca `registrado_en`** (una corrección de julio registrada
+  en septiembre va en julio y el saldo de agosto la incluye); **se pagina
+  ANTES de enriquecer** — los siete joins corren sobre la página, los filtros
+  que necesitan otra tabla van con EXISTS. Medido en Evens (2.595 filas):
+  731 ms enriqueciendo todo → 22 ms en caliente. Guard de que el orden
+  ventana → filtro → página → enriquecer se mantiene. La categoría se lee
+  VIVA de `egresos` (recategorizar mueve toda la historia); el método sale del
+  snapshot congelado; el comprobante va crudo y lo formatea
+  `formatearNumeroComprobante`. Una transferencia son DOS filas (una por
+  cuenta) con la misma `operacion_id`. Espejo TS de la ventana:
+  `features/caja/lib/saldo-posterior.ts` (con tests), solo válido sobre la
+  historia completa de la cuenta.
+- **El resumen del período de Dinero** (`20260921235000`,
+  `resumen_financiero_periodo`; action `get-resumen-financiero.ts`). Qué
+  PASÓ con la plata en el período, complemento de `posicion_dinero` (dónde
+  está ahora): cobros no anulados por medio —ventas y cobros de deuda
+  aparte—, reintegros por medio, egresos por tipo, gastos OPERATIVOS por
+  categoría con "Sin categoría" como fila propia, transferencias (se
+  informan, no suman), faltantes/sobrantes de arqueo desde el ledger, y
+  `neto_caja`. **`neto_caja` NO es la ganancia** (no tiene costo de
+  mercadería; la ganancia vive en el panel) y la pantalla tiene que decirlo
+  al lado del número. **El reintegro en efectivo existe dos veces** —fila de
+  `reintegros_al_cliente` y egreso `DEVOLUCION`—: el neto resta por la vista
+  (que además trae los digitales) y excluye el tipo DEVOLUCION de los
+  egresos; guard. Período resuelto en la base, misma forma que
+  `posicion_dinero`. Medido en Evens, septiembre: cobrado $13,4M al peso
+  contra la suma directa, y CERO gastos operativos registrados — Evens no
+  carga gastos, solo salen devoluciones.
 - Métodos de pago, dos porcentajes que NO son lo mismo: `comision` es lo que
   el comercio le paga al procesador (se resta, interno) y `recargo_porcentaje`
   es lo que le cobra al cliente (se suma, se muestra). El cálculo vive en
