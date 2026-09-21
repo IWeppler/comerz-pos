@@ -93,7 +93,7 @@ export function DashboardNavbar({
   const { title, description } = getPageInfo();
 
   return (
-    <header className="hidden md:flex h-16 shrink-0 items-center gap-2 border-b border-border bg-background px-6">
+    <header className="hidden md:flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-6">
       <div className="flex items-center gap-4 flex-1">
         <button
           onClick={toggleSidebar}
@@ -136,10 +136,7 @@ export function DashboardNavbar({
         </kbd>
       </button>
       {puedeOperarCaja && (
-        <CajaStatusButton
-          modoCaja={modoCaja}
-          userId={userId}
-        />
+        <CajaStatusButton modoCaja={modoCaja} userId={userId} />
       )}
     </header>
   );

@@ -209,6 +209,24 @@ export interface CuentaPosicion {
   ultima?: string;
 }
 
+/** Saldo de una cuenta del negocio, derivado del ledger. Es la ÚNICA fuente
+ * de saldos de la pestaña Dinero: la lista de cuentas y el total disponible
+ * salen de acá, no de `estado_cuentas_financieras`, que no calcula saldo. */
+export interface SaldoCuenta {
+  cuenta_id: string;
+  nombre: string;
+  tipo: string;
+  es_efectivo: boolean;
+  saldo: number;
+}
+
+export interface ReintegroPosicion {
+  metodo_nombre: string;
+  metodo_tipo: string;
+  cantidad: number;
+  monto: number;
+}
+
 export interface PosicionDinero {
   desde: string;
   hasta: string;
@@ -222,8 +240,14 @@ export interface PosicionDinero {
   };
   por_acreditar: CuentaPosicion[];
   acreditado: CuentaPosicion[];
+  /** Lo que se le devolvió al cliente por un medio que NO es efectivo, dentro
+   * del período. YA está restado de `acreditado`: viaja aparte para poder
+   * mostrarlo, porque un total que baja sin decir por qué es un número que
+   * nadie puede verificar. En efectivo no hace falta, ahí el egreso ya se ve
+   * en el arqueo del turno. */
+  reintegros?: ReintegroPosicion[];
   modelo?: "LEDGER";
-  cuentas?: { cuenta_id: string; nombre: string; tipo: string; es_efectivo: boolean; saldo: number }[];
+  cuentas?: SaldoCuenta[];
   por_acreditar_real?: { nombre: string; saldo: number; cantidad_movimientos: number };
   conciliacion?: { por_acreditar_ledger: number; por_acreditar_anterior: number };
 }

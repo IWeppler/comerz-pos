@@ -126,7 +126,7 @@ export function EgresoModal({
       {mostrarTrigger && (
         <DialogTrigger asChild>
           <Button variant={triggerVariant} className={triggerClassName}>
-            <TrendingDown className="w-4 h-4 mr-2" />
+            <TrendingDown className="h-4 w-4" />
             Anotar Gasto
           </Button>
         </DialogTrigger>

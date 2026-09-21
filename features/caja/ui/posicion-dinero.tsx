@@ -31,6 +31,7 @@ import { getPosicionDineroAction } from "../actions/get-posicion-dinero";
 import type {
   CuentaPosicion,
   PosicionDinero as PosicionDineroData,
+  ReintegroPosicion,
 } from "@/entities/caja/types";
 
 /**
@@ -100,7 +101,7 @@ export function PosicionDinero({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-           Dónde está el dinero
+            Lo que todavía no está en tus cuentas
           </h2>
           <p className="text-[11px] text-muted-foreground">
             El período gobierna solo lo acreditado. El efectivo y lo pendiente
@@ -118,7 +119,7 @@ export function PosicionDinero({
       <TooltipProvider>
         <div className="grid gap-3 sm:grid-cols-3">
           <Tarjeta
-            titulo="Efectivo en caja (ahora)"
+            titulo="Efectivo en los cajones abiertos"
             monto={Number(efectivo.total)}
             detalle={
               efectivo.turnos_abiertos === 0
@@ -222,10 +223,6 @@ export function PosicionDinero({
         mostrarFecha
       />
 
-      {posicion.cuentas && (
-        <ListaSaldos cuentas={posicion.cuentas} />
-      )}
-
       {posicion.conciliacion && (
         <p className="text-[11px] text-muted-foreground">
           Conciliación transitoria · por acreditar anterior {formatearMoneda(Number(posicion.conciliacion.por_acreditar_anterior))} · ledger {formatearMoneda(Number(posicion.conciliacion.por_acreditar_ledger))}.
@@ -237,6 +234,8 @@ export function PosicionDinero({
         cuentas={acreditado}
         vacio="No se acreditó nada en este período."
       />
+
+      <ListaReintegros reintegros={posicion.reintegros ?? []} />
 
       <p className="text-[11px] text-muted-foreground">
         Estos números salen de lo registrado en el sistema:{" "}
@@ -304,6 +303,59 @@ function ListaCuentas({
   );
 }
 
+/**
+ * Lo que se le devolvió al cliente por un medio que no es efectivo.
+ *
+ * Va DEBAJO de "ya acreditado" y no adentro porque ya está restado de ahí: el
+ * número de arriba es el neto, y este explica de dónde sale la diferencia. Sin
+ * esta lista, una devolución por transferencia hace bajar un total sin que
+ * nadie pueda reconstruir por qué, que es la forma más rápida de que la dueña
+ * deje de creerle a la pantalla.
+ *
+ * El efectivo no aparece acá: ese reintegro ya se ve como egreso en el arqueo
+ * del turno, y mostrarlo dos veces invita a restarlo dos veces.
+ */
+function ListaReintegros({
+  reintegros,
+}: Readonly<{ reintegros: ReintegroPosicion[] }>) {
+  if (reintegros.length === 0) return null;
+
+  const total = reintegros.reduce((acc, r) => acc + Number(r.monto), 0);
+
+  return (
+    <div className="space-y-2">
+      <h3 className={LABEL}>Devoluciones pagadas por estos medios</h3>
+      <ul className="rounded-xl border border-border bg-card">
+        {reintegros.map((r) => {
+          const Icono = medioIcono(r.metodo_tipo);
+          return (
+            <li
+              key={`${r.metodo_nombre}-${r.metodo_tipo}`}
+              className="flex flex-col gap-1 border-b border-border px-3 py-2.5 text-xs last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <Icono className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0">
+                  <div className="font-medium">{r.metodo_nombre}</div>
+                  <div className="text-muted-foreground">
+                    {r.cantidad} devolución(es)
+                  </div>
+                </div>
+              </div>
+              <div className="shrink-0 font-semibold tabular-nums text-danger">
+                −{formatearMoneda(Number(r.monto))}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <p className="text-[11px] text-muted-foreground">
+        Ya están restadas de lo acreditado ({formatearMoneda(total)} en total).
+      </p>
+    </div>
+  );
+}
+
 function Tarjeta({
   titulo,
   monto,
@@ -365,10 +417,6 @@ function Tarjeta({
 
 function sumarNeto(cuentas: CuentaPosicion[]): number {
   return cuentas.reduce((acc, c) => acc + Number(c.neto), 0);
-}
-
-function ListaSaldos({ cuentas }: Readonly<{ cuentas: NonNullable<PosicionDineroData["cuentas"]> }>) {
-  return <div className="space-y-2"><h3 className={LABEL}>Saldo registrado por cuenta</h3><ul className="rounded-xl border border-border bg-card">{cuentas.map((cuenta) => <li key={cuenta.cuenta_id} className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5 text-xs last:border-b-0"><span><span className="font-medium">{cuenta.nombre}</span><span className="ml-2 text-muted-foreground">{cuenta.tipo.replaceAll("_", " ")}</span></span><span className="font-semibold tabular-nums">{formatearMoneda(Number(cuenta.saldo))}</span></li>)}</ul></div>;
 }
 
 function formatearFecha(iso: string): string {

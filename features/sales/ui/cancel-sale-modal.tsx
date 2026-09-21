@@ -23,6 +23,14 @@ import {
   type MotivoAnulacion,
 } from "@/features/sales/lib/motivo-anulacion";
 import { RadioGroup, RadioGroupItem } from "@/shared/ui/radio-group";
+import {
+  getOpcionesReintegroAction,
+  type OpcionesReintegro,
+} from "../actions/opciones-reintegro";
+import {
+  SelectorMedioReintegro,
+  faltaElegirMedio,
+} from "./selector-medio-reintegro";
 import { AlertTriangle, PackagePlus, Loader2 } from "lucide-react";
 
 interface AnularVentaModalProps {
@@ -73,6 +81,8 @@ export function AnularVentaModal({
   // se guarda cuando nadie mira, y esa es justo la medición que se busca.
   const [motivoCodigo, setMotivoCodigo] = useState<MotivoAnulacion | null>(null);
   const [motivoDetalle, setMotivoDetalle] = useState("");
+  const [opciones, setOpciones] = useState<OpcionesReintegro | null>(null);
+  const [medioReintegro, setMedioReintegro] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen || restaurabilidad !== null) return;
@@ -80,6 +90,11 @@ export function AnularVentaModal({
     let vigente = true;
     getRestaurabilidadVentaAction(id).then((resultado) => {
       if (vigente) setRestaurabilidad(resultado);
+    });
+    // Mismo criterio que la restaurabilidad: se pide al ABRIR, no en cada una
+    // de las diez filas de la tabla.
+    getOpcionesReintegroAction(id).then((resultado) => {
+      if (vigente) setOpciones(resultado);
     });
 
     return () => {
@@ -94,6 +109,7 @@ export function AnularVentaModal({
         motivo,
         motivoCodigo,
         motivoDetalle,
+        medioReintegro,
       );
 
       if (result.success) {
@@ -288,6 +304,15 @@ export function AnularVentaModal({
             </div>
           )}
 
+          {/* Por donde vuelve la plata. Va al final, pegado al boton: es la
+              ultima decision antes de mover el cajon. */}
+          <SelectorMedioReintegro
+            opciones={opciones}
+            valor={medioReintegro}
+            onChange={setMedioReintegro}
+            monto={opciones?.montoCobrado ?? 0}
+          />
+
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button
               variant="outline"
@@ -299,7 +324,11 @@ export function AnularVentaModal({
             <Button
               variant="destructive"
               onClick={handleAnular}
-              disabled={isPending || !motivoCodigo}
+              disabled={
+                isPending ||
+                !motivoCodigo ||
+                faltaElegirMedio(opciones, medioReintegro)
+              }
             >
               {isPending ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />

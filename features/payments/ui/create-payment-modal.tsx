@@ -29,25 +29,46 @@ import {
 import { createPaymentAction } from "../actions/manage-payment";
 import { toast } from "sonner";
 import { TipoMetodo } from "@/entities/payments/types";
+import { SelectorCuentaDestino } from "./selector-cuenta-destino";
+import {
+  requiereCuentaDestino,
+  validarCuentaDestino,
+} from "../lib/cuenta-destino-metodo";
 
 export function CreatePaymentModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [tipo, setTipo] = useState<TipoMetodo>("BILLETERA_VIRTUAL");
+  const [cuentaDestinoId, setCuentaDestinoId] = useState("");
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
-    if (!open) setTipo("BILLETERA_VIRTUAL");
+    if (!open) {
+      setTipo("BILLETERA_VIRTUAL");
+      setCuentaDestinoId("");
+    }
   };
 
   const [, formAction, isPending] = useActionState(
     async (previousState: any, formData: FormData) => {
       formData.append("tipo", tipo);
+      formData.append("cuenta_destino_id", cuentaDestinoId);
+
+      // El mismo chequeo que corre la action. Acá para no ir al server a
+      // buscar un error que ya se sabe; allá porque un server action es un
+      // endpoint y el botón deshabilitado no es una validación.
+      const faltaCuenta = validarCuentaDestino(tipo, cuentaDestinoId);
+      if (faltaCuenta) {
+        toast.error(faltaCuenta);
+        return { error: faltaCuenta, success: false };
+      }
+
       const result = await createPaymentAction(previousState, formData);
 
       if (result.success) {
         toast.success("Método de pago creado correctamente.");
         setIsOpen(false);
         setTipo("BILLETERA_VIRTUAL");
+        setCuentaDestinoId("");
       } else if (result.error) {
         toast.error(result.error);
       }
@@ -87,7 +108,10 @@ export function CreatePaymentModal() {
             <Label>Tipo de Pago</Label>
             <Select
               value={tipo}
-              onValueChange={(val) => setTipo(val as TipoMetodo)}
+              onValueChange={(val) => {
+                setTipo(val as TipoMetodo);
+                setCuentaDestinoId("");
+              }}
             >
               <SelectTrigger className="rounded-lg shadow-none">
                 <SelectValue />
@@ -106,6 +130,14 @@ export function CreatePaymentModal() {
               </SelectContent>
             </Select>
           </div>
+
+          {/* Pegado al tipo, porque la cuenta depende de él: cambiar el tipo
+              limpia la elección. */}
+          <SelectorCuentaDestino
+            tipo={tipo}
+            valor={cuentaDestinoId}
+            onChange={setCuentaDestinoId}
+          />
 
           <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/50 dark:bg-amber-950/20">
             <Label className="flex items-center gap-1.5">
@@ -173,7 +205,9 @@ export function CreatePaymentModal() {
             <Button
               type="submit"
               className="cursor-pointer"
-              disabled={isPending}
+              disabled={
+                isPending || (requiereCuentaDestino(tipo) && !cuentaDestinoId)
+              }
             >
               {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Guardar Método

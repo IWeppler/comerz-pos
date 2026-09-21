@@ -128,6 +128,8 @@ tiene 11.
      cajón donde nunca estuvo, y el turno cerraba con faltante. No es raro —
      43% de los cobros de venta no son efectivo. Lo cobrado por otros medios
      vuelve como aviso: se devuelve por donde entró.
+     **Desde `20260920130000` eso es solo el DEFAULT: el medio del reintegro lo
+     elige el dueño.** Ver el bullet "El medio por el que se devuelve la plata".
   2. El crédito de cuenta corriente es `least(deuda de la venta, saldo actual)`,
      no `ventas.monto_pendiente`, que quedó CONGELADO en el momento de la venta
      — los pagos de CC bajan `clientes.saldo_pendiente` y nunca esa columna.
@@ -426,6 +428,306 @@ tiene 11.
   producto no tiene fila de variante, revertí todas"—: sobre un lote REMITO le
   pisaría a las variantes su precio especial, porque ahí la ausencia de fila
   significa "no la moví", no "no la registré". Queda apagado para REMITO.
+- **El medio por el que se devuelve la plata lo ELIGE el dueño, y de eso
+  depende el egreso de caja** (`20260920130000`). Hasta entonces se deducía del
+  COBRO: una venta con tarjeta "se devuelve por ese medio, no sale de la caja",
+  y una clienta que volvía con la prenda y quería los pesos en la mano no
+  entraba en ningún camino. Medido: 18 de las 51 ventas anuladas del SaaS
+  tenían porción no efectivo, $720.500 (el caso que lo reportó son $10.200 en
+  El Nono Cacho).
+  **Egreso si y solo si el reintegro es EFECTIVO, por el total cobrado** (no
+  por la porción efectivo). Al revés también: devolver por transferencia una
+  venta cobrada en efectivo NO genera egreso, porque el cajón se queda la
+  plata. El egreso mira el reintegro, no el cobro.
+  Con otro medio **no se registra ningún movimiento financiero**, y es a
+  propósito: ningún negocio tiene cuenta BANCO ni BILLETERA (solo `CAJA_DIARIA`
+  y `POR_ACREDITAR`), y de los 41 métodos de pago solo los 11 de tipo EFECTIVO
+  tienen `cuenta_destino_id`. Un egreso sin cuenta lo completa el trigger
+  `asignar_cuenta_financiera_actual` con CAJA_DIARIA, así que registrarlo "para
+  que quede" le bajaría el arqueo al cajón: el bug original al revés. Cuando
+  existan esas cuentas, ese es el lugar donde se materializa.
+  **Y el cobro original se marca ANULADO solo si el reintegro sale por el MISMO
+  medio.** Si difiere, el banco no reversa nada —esa plata sigue viniendo— así
+  que el pago queda CONFIRMADO y el reintegro se representa aparte. Deja una
+  venta ANULADA con un cobro CONFIRMADO, que hoy no pasa en ninguna de las 48
+  filas anuladas; `posicion_dinero` y `rentabilidad_por_metodo` no miran
+  `ventas.estado_operacion` —filtran solo por `estado_pago_operacion`— así que
+  lo siguen contando con su comisión, que es lo correcto: el posnet cobró igual.
+  Quién elige: permiso `ventas.elegir_medio_devolucion`, **solo ADMIN** en los
+  11 negocios. Sin el permiso no hay selector y sale por el medio del cobro, o
+  sea el comportamiento de siempre — importa porque `ventas.devolver` la tiene
+  VENDEDOR en 7 de 11, y elegir "efectivo" es sacar plata del cajón. Con el
+  selector visible, elegir es OBLIGATORIO: no hay default, porque un default
+  acá es la decisión que se guarda cuando nadie mira.
+  Se guarda en columnas NUEVAS (`reintegro_metodo_id` / `_tipo` / `_nombre`, en
+  `ventas` y en `devoluciones`), congeladas y sin FK. No se reusó
+  `devoluciones.metodo_tipo`: esa dice con qué se COBRÓ y pisarle el
+  significado volvía ilegibles sus 12 filas.
+  Efecto lateral buscado: con el medio declarado, la devolución PARCIAL ya no
+  necesita deducir de dónde sale la plata, así que `VENTA_CON_PAGO_MIXTO` y
+  `METODO_NO_DEVOLVIBLE` solo aplican cuando nadie eligió. Una venta con
+  tarjeta, o con dos métodos, ya se puede devolver parcialmente.
+  **Los dos bugs que destapó, arreglados en `20260920160000`.** Ver el bullet
+  siguiente: eran el mismo error de fondo y se arreglaron juntos.
+- **El FLUJO de dinero no mira si la venta se anuló; mira los movimientos**
+  (`20260920160000`). `venta_pagos.estado_pago_operacion = 'ANULADO'` contestaba
+  dos preguntas distintas y para una de las dos la respuesta era falsa:
+  *¿entró esta plata al cajón?* → decía que no, y había entrado; *¿cuenta como
+  venta?* → no, correcto. Como el arqueo usaba la primera **y además** restaba
+  el egreso de la devolución, el efectivo se descontaba **dos veces**.
+  Medido: **25 turnos, $1.246.499**, y de los 19 pares cobro+egreso del mismo
+  turno, **19 de 19 se anularon ANTES del cierre** — o sea que el
+  `efectivo_esperado` que la cajera vio y firmó ya estaba mal. Cuatro turnos
+  quedaron con esperado NEGATIVO, que es imposible: ClickTostado −$950.000
+  (declaró $950.000, "diferencia" +$1.900.000), Evens −$19.100 y −$4.000,
+  Librería Colores −$625. El sistema ya lo mostraba sin saber qué era: el badge
+  "⚠ Esperado negativo" de `caja-history-table.tsx` es anterior al arreglo.
+  El segundo bug era el mismo error por el otro lado: la devolución PARCIAL
+  nunca tocó `venta_pagos`, así que devolver por un medio que no es efectivo
+  dejaba el cobro contado entero como plata por acreditar (3 devoluciones,
+  $63.000, todas de Evens por TRANSFERENCIA MERCADO PAGO).
+  La regla que queda, y que hay que respetar en toda consulta nueva:
+  * **Efectivo del turno** = TODOS los cobros en efectivo, anulados incluidos,
+    menos los egresos. Vive en `flujo_caja_turno` (la que congela el cierre),
+    `efectivo_actual_turnos` (la del historial) y `posicion_dinero`: son el
+    MISMO número visto desde tres pantallas y tienen que cambiar juntas.
+  * **Digital** = cobros digitales, menos los revertidos por su propio medio,
+    menos los reintegros parciales.
+  * **Ingresos / ventas / rentabilidad** = solo los NO anulados. Sin cambio.
+  **La asimetría entre efectivo y digital no es un descuido**: en el cajón la
+  salida tiene un movimiento propio registrado (el egreso) y en el banco no hay
+  ninguno, así que "revertido por su propio medio" es la única forma de
+  representar que el banco dio marcha atrás. Y al revés: si la venta se anuló
+  pero se devolvió por OTRO medio, el banco no reversó nada y ese cobro **sigue
+  viniendo**, por eso se lo sigue contando.
+  Por eso mismo `anular_venta` volvió a marcar SIEMPRE `ANULADO` los cobros: la
+  excepción que había dejado `20260920130000` (dejarlos CONFIRMADO cuando el
+  medio difería) ya no hace falta, y sacarla devuelve a `ANULADO` un solo
+  significado. Importa porque `rentabilidad_por_metodo` filtra por
+  `estado_pago_operacion` y NO mira `ventas.estado_operacion`: con el cobro
+  confirmado, una venta anulada le entraba a la base.
+  `reintegros_al_cliente` es la fuente única de "qué le devolvimos al cliente y
+  por qué medio", con las dos formas —anular el ticket y devolver renglones
+  sueltos— en la misma forma. La cuenta corriente no entra: ahí no sale plata,
+  baja la deuda.
+  **Los 17 cierres firmados NO se tocaron.** `turnos_caja.efectivo_esperado` y
+  `diferencia` son el número que la cajera vio y firmó, y eso es un hecho
+  histórico. Lo que se corrige es `efectivo_esperado_actual`, que el historial
+  ya recalculaba y muestra con el badge AJUSTADO — que ahora dice el motivo y
+  los dos números. Dos turnos siguen con esperado negativo y está bien: ahí
+  salió más plata de la que entró (ClickTostado −$200.000, Evens −$10.100), que
+  es lo que ese aviso existe para mostrar.
+  `resumen_gerencial_caja` tiene ahora DOS CTE de cobros: `pagos` (ventas,
+  excluye anulados; alimenta total_cobrado, breakdown_medios y cuenta corriente)
+  y `pagos_caja` (el cajón, cuenta todo). Que el desglose por medio y el
+  esperado difieran en un día con una anulación es correcto.
+- **El ledger financiero (`movimientos_financieros`), y por qué la pestaña
+  Dinero mentía** (`20260920180000` + `20260920190000`). El subsistema entró el
+  19/9 en siete etapas; la 7 hizo que /caja → Dinero leyera el ledger, y al
+  aplicarla el 20/9 quedó a la vista que estaba incompleto: **Evens mostraba
+  $19.985.473 por acreditar contra $687.182 reales, y $15.343.079 en la caja
+  diaria contra $163.800**. Dos omisiones, las dos por lo mismo: faltaban las
+  SALIDAS.
+  * **`cuenta_actual_venta_pago` manda el cobro directo a su cuenta solo si
+    `acreditacion_dias = 0` Y el método tiene `cuenta_destino_id`.** De los 30
+    métodos no-efectivo del SaaS, NINGUNO tenía cuenta, así que todo caía al
+    puente `POR_ACREDITAR` y no salía nunca. $17.453.805 de los $19,9M de Evens
+    eran TRANSFERENCIA MERCADO PAGO a 0 días: plata que cae en el acto.
+  * **Abrir y cerrar un turno no emitía ningún movimiento.** La bitácora se
+    escribe con triggers sobre `venta_pagos` y `egresos`, así que la plata que
+    la cajera cuenta y entrega al cerrar no salía nunca del ledger.
+  Ahora **cada método digital tiene su cuenta, y se llama como el método**
+  ("TRANSFERENCIA MERCADO PAGO" es una BILLETERA con ese nombre). No se inventó
+  ningún nombre —lo puso el comercio al crear el método— y es editable desde el
+  panel de cuentas. El tipo sale del tipo del método: BILLETERA_VIRTUAL →
+  BILLETERA, TRANSFERENCIA y TARJETA → BANCO.
+  **El turno entra en tres movimientos**: `APERTURA_TURNO` (+monto_inicial),
+  `AJUSTE_ARQUEO` (±declarado − saldo del turno) y `CIERRE_TURNO` (−declarado).
+  Después de cerrar, el saldo del turno queda en CERO. El faltante o el
+  sobrante va como movimiento propio y con `impacto_resultado` en vez de
+  esconderse dentro del cierre: es plata que se perdió o apareció, y el ledger
+  tiene que poder decir cuánta. El saldo se calcula DESDE EL LEDGER, nunca desde
+  `turnos_caja.efectivo_esperado`, que es una foto congelada y que estuvo mal en
+  17 turnos hasta `20260920160000`.
+  **El invariante, que toda consulta nueva tiene que respetar y que las dos
+  migraciones verifican antes de commitear**: el saldo de `CAJA_DIARIA` es igual
+  a la suma del esperado de los turnos ABIERTOS, y el saldo de cada cuenta
+  digital es igual al neto de los cobros vivos que `cuenta_actual_venta_pago`
+  manda a esa cuenta. El segundo guard **llama a la función** en vez de repetir
+  su condición: una copia de esa regla es una segunda versión que se
+  desincroniza.
+  Verificado después de aplicar: Evens pasó a $163.800 de caja (exacto),
+  $17.453.804,75 en Mercado Pago y $2.531.668,75 por acreditar. Las 11 cajas
+  diarias del SaaS reconcilian.
+  **La bitácora tenía el MISMO bug que el arqueo**: al pasar el cobro a ANULADO
+  emitía una reversa de `-importe`, y el egreso de la devolución restaba otra
+  vez. Ahora la reversa no es ciega al medio — en efectivo es 0 porque el egreso
+  ya la representa; en digital revierte, salvo que el reintegro haya salido por
+  otro medio. Una CORRECCIÓN (cambiar el medio o el monto) sigue revirtiendo
+  siempre: ahí el cobro viejo deja de existir tal como estaba. Y si no se
+  revierte la plata tampoco se recupera la comisión: el banco se la quedó igual.
+  **Lo que SIGUE en el puente y es correcto que siga**: los cobros diferidos
+  (tarjetas a 20 días) hasta que alguien los concilie —el ledger no acredita por
+  fecha estimada, lo decidió la Etapa 2— y los **cobros sin `metodo_pago_id`**
+  (métodos borrados o anteriores a la tabla; 16 en Evens por $528.900). Ahí no
+  hay método del que sacar la cuenta: dejarlos en el puente es decir que el
+  sistema no sabe dónde cayó esa plata, y crearles una cuenta sería inventarla.
+  **LO QUE FALTA**: `registrar_acreditacion_financiera` existe desde
+  `20260919160000` y **no tiene una sola llamada en el código**. Hasta que
+  exista esa pantalla, "cobrado que todavía no cayó" sigue sobrestimado por las
+  tarjetas que ya vencieron ($1,8M en Evens) — mucho menos que los $19,9M de
+  antes, pero no cero.
+  **Y el aprendizaje que costó una migración**: el paso que sacaba los cobros
+  del puente hacía `update venta_pagos set cuenta_destino_id = null` esperando
+  que `trg_venta_pagos_asignar_cuenta` lo completara. Ese trigger es
+  `BEFORE INSERT OR UPDATE **OF metodo_pago_id, metodo_tipo**`, así que un
+  update que toca otra columna NO lo despierta: salió no-op, `v_cambio` en
+  false, cero movimientos, cero errores. **Un UPDATE que no falla no es un
+  UPDATE que hizo algo**, y un trigger con lista de columnas es justo donde eso
+  se esconde. Lo destapó el número, no el log. Corregido en `20260920190000`.
+- **Ningún método de pago puede quedar sin la cuenta donde cae su plata**
+  (`20260920200000`). Es la contracara del bullet anterior: la limpieza de
+  `20260920190000` arregló lo existente, pero el agujero seguía abierto para
+  cualquier método nuevo — y sobre todo para cada comercio que se da de alta,
+  porque `crear_negocio_con_owner` siembra 'Transferencia' y 'Mercado Pago' sin
+  cuenta. **El bug volvía solo, sin que nadie hiciera nada mal.**
+  Lo cierra el trigger `asignar_cuenta_financiera_actual`, que ya hacía
+  exactamente esto para EFECTIVO (si no viene cuenta, le pone CAJA_DIARIA): lo
+  que se agregó es la otra mitad de una regla que estaba escrita por la mitad.
+  Un método digital sin cuenta nace con una cuenta propia, **llamada como el
+  método** y con el tipo que le corresponde (BILLETERA_VIRTUAL → BILLETERA, el
+  resto → BANCO), mismo mapeo que `20260920180000`.
+  **Por qué trigger y no CHECK**: un CHECK obliga a reescribir las DOS
+  sobrecargas de `crear_negocio_con_owner` para que la siembra nazca en regla, y
+  deja que cualquier camino futuro reviente con un error de constraint crudo en
+  la cara de quien da de alta un comercio. El trigger ya existía y ya tenía esa
+  responsabilidad; es el mismo criterio que `egresos.cuenta_origen_id`.
+  En la UI la cuenta es obligatoria en el alta y en la edición
+  (`selector-cuenta-destino.tsx`), y **el selector trae adentro la creación de
+  la cuenta**: un comercio nuevo tiene CAJA_DIARIA y nada más, así que si solo
+  listara lo que existe, dar de alta "Mercado Pago" obligaría a salir a otra
+  pantalla — y el que no sale termina con el método sin cuenta, que es el
+  agujero. No va como `<form>` anidado (HTML inválido, y dispararía el submit de
+  afuera): se arma el FormData a mano contra la MISMA action que usa el panel de
+  cuentas de /caja. Con EFECTIVO no se muestra selector: esa plata va siempre a
+  la caja diaria y ofrecer la decisión sería inventar una que no existe.
+  El criterio compartido vive en `features/payments/lib/cuenta-destino-metodo.ts`
+  (con tests) y lo usan los dos modales y las dos actions. `validarCuentaDestino`
+  es **fail-closed sobre el tipo**: lo único que no necesita cuenta es el
+  efectivo, y eso se afirma; un tipo desconocido pide cuenta igual.
+  **Y de paso, un bug latente del mismo trigger**: al cambiar el TIPO de un
+  método hacía `cuenta_destino_id := null` SIEMPRE. El modal de edición manda
+  tipo y cuenta juntos, así que cambiar de Transferencia a Tarjeta y elegir la
+  cuenta en la misma pantalla descartaba la elección en silencio. Ahora el
+  reseteo pasa solo cuando quien edita NO mandó una cuenta nueva. El trigger
+  además dejó de escuchar solo `UPDATE OF tipo` y escucha también
+  `cuenta_destino_id`, que es el otro camino por el que un método se quedaba sin
+  destino (que alguien la borre).
+  Verificado en producción con las tres pruebas que importan: alta digital sin
+  cuenta la crea; cambiar el tipo MANDANDO cuenta la respeta; cambiar el tipo
+  SIN mandarla genera una nueva. 41 métodos, **cero sin cuenta**.
+- **Un cobro diferido se acredita solo cuando llega su fecha** (`20260921120000`).
+  La Etapa 2 del ledger se había negado a "inventar acreditaciones por fecha
+  estimada"; esta es la etapa posterior que ella misma anunciaba, y el motivo es
+  medible: desde que Dinero lee el ledger, "acreditado en el período" sale de
+  los movimientos `ACREDITACION_ENTRADA`, que los escribe una RPC manual **sin
+  una sola llamada en el código**. La tarjeta mostraba CERO en los 11 negocios.
+  La fecha esperada NO es una invención: `metodos_pago.acreditacion_dias` lo
+  configuró el comercio y es el mismo número con el que `posicion_dinero` viene
+  armando "por acreditar" desde agosto. Lo que sí sería inventar es afirmar que
+  la plata cayó un día distinto del pactado sin haber visto el extracto — por
+  eso la acreditación automática se marca `estimada` y la conciliación real
+  queda como CORRECCIÓN opcional, nunca como requisito. **Nadie va a tildar 593
+  cobros para que un número deje de mentir.**
+  **Sin cron**: `pg_cron` está disponible pero sin instalar, y no hace falta. Es
+  el mismo criterio que la mora de cuenta corriente —no se aplica sola al día
+  31, se materializa cuando importa—: acá se materializa cuando alguien abre la
+  pestaña Dinero de ese negocio, desde `getPosicionDineroAction`. Un comercio
+  que nadie mira no acumula nada que le importe a nadie.
+  **La idempotencia no se escribió: ya estaba.** Usa las MISMAS tablas que la
+  conciliación manual, y `acreditaciones_financieras_pagos` tiene
+  `unique (negocio_id, venta_pago_id)`, así que dos pestañas abiertas a la vez
+  no duplican nada y la conciliación posterior tampoco. El advisory lock por
+  negocio es para no hacer el trabajo dos veces, no para la unicidad.
+  **La fecha del movimiento es la ESPERADA, nunca `now()`**, y hay un guard que
+  lo verifica: si no, "acreditado este mes" cambiaría según cuándo se mira.
+  Verificado en Evens: 20 cobros, el puente pasó de $2.531.668 a $1.216.082 y
+  "acreditado" de $0 a $534.203. Segunda y tercera corrida: 0. El resto del
+  puente ($687.182 de tarjetas no vencidas + $528.900 de cobros sin
+  `metodo_pago_id`) reconcilia al peso con el invariante de `20260920190000`.
+- **Un egreso de una cuenta ARQUEADA exige turno abierto. Siempre, no casi**
+  (`20260921130000`). `registrarEgresoAction` ya lo frenaba, pero solo si el
+  negocio exige caja abierta: con `requiere_caja_abierta = false` el egreso
+  entraba con `turno_caja_id` null, el ledger igual le bajaba el saldo a
+  CAJA_DIARIA y **ningún arqueo lo veía** — o sea que rompía el invariante de
+  `20260920180000`. Hoy no pasa (los 11 negocios lo tienen en true, cero egresos
+  sin turno); se cerró porque Dinero ahora tiene su propio botón de egreso y ahí
+  casi nunca hay un turno propio abierto. Es la MISMA regla que
+  `registrar_transferencia_financiera` ya tenía: un egreso y una transferencia
+  sacan plata del mismo cajón. El trigger además exige que el turno sea de ESA
+  cuenta y que esté ABIERTO — un turno cerrado ya se contó y se firmó.
+- **Declarar el saldo que una cuenta YA tenía** (`20260921140000`,
+  `registrar_saldo_inicial_cuenta`). Lo motivó un caso real: "Caja Grande" de El
+  Nono Cacho en **−$750.000**, con 7 movimientos que son 7 egresos (sueldos del
+  19/9) y **ninguna entrada**. La cuenta nunca recibió plata en el sistema.
+  El negativo NO se esconde ni se corrige el pasado: se agrega un movimiento que
+  dice lo que había, con **`impacto_resultado = 0`** — declarar plata que ya
+  estaba no es plata que el negocio ganó, y si contara como resultado la
+  ganancia del mes saltaría por un dato de inventario. Es un asiento de una sola
+  pata, como `CIERRE_TURNO`: el modelo no tiene cuenta de patrimonio y agregarla
+  por un caso de arranque sería construir media contabilidad.
+  Tres restricciones con guard: **nunca para una cuenta con arqueo** (ahí el
+  saldo inicial es el fondo del turno y mezclarlos rompe lo único que alguien
+  firma), **una sola vez por cuenta** (después es transferencia o egreso, que sí
+  tienen contrapartida) y **solo ADMIN** — es la única forma de hacer aparecer
+  plata sin que venga de una venta.
+- **La pestaña Dinero: una sola lista de cuentas, tres preguntas separadas.**
+  Había DOS bloques diciendo lo mismo —"Fondos y cuentas" con la estructura sin
+  un peso, y "Saldo registrado por cuenta" repitiendo la lista con los números—
+  y no era descuido de diseño: venían de dos RPC distintas.
+  **`estado_cuentas_financieras` no devuelve saldo; `posicion_dinero.cuentas`
+  sí.** Ahora el saldo entra por prop desde `posicion_dinero`, que es la ÚNICA
+  fuente de saldos de la pantalla, y la lista es una sola.
+  Fusionarlos recién se pudo ahora: hasta `20260920180000`, "efectivo en caja"
+  salía del cálculo legacy y el saldo de la cuenta del ledger, y eran dos
+  números de dos modelos. Desde esa migración el saldo de CAJA_DIARIA ES la suma
+  del esperado de los turnos abiertos.
+  El orden de los bloques responde tres preguntas distintas y **no se suman en
+  un total**: *Disponible ahora* (suma de las cuentas, sin el puente),
+  *por acreditar* y *acreditado en el período*. El disclaimer de "no es el saldo
+  del banco" va PEGADO a la cifra fuerte y no al pie: es la diferencia entre un
+  número que se usa para decidir una compra y uno que se sabe que hay que
+  contrastar.
+  Las cuentas en CERO se muestran igual —una cuenta que desaparece es una que la
+  dueña cree que no existe, y la próxima vez crea una duplicada— y el orden es
+  fijo: efectivo primero, después por saldo. **El negativo entra al total**:
+  esconderlo lo dejaría inconsistente con la lista de abajo.
+  Acciones, en orden de frecuencia de uso: **Egreso · Transferir · Cuenta**.
+- **El detalle de una cuenta** (`20260921150000`, `movimientos_de_cuenta`).
+  La pestaña Dinero mostraba el saldo de cada cuenta y no había forma de
+  abrirlo: los cobros que alimentan una billetera y —sobre todo— los EGRESOS
+  que salen de una caja que no es la diaria no aparecían en ninguna parte de
+  esa pantalla. Con la "Caja Grande" de El Nono Cacho en −$750.000, la dueña no
+  tenía cómo ver que esos $750.000 son siete sueldos. Los datos y el índice
+  estaban desde `20260919130000`; faltaba la puerta.
+  RPC y no `select` directo porque `movimientos_financieros.registrado_por` NO
+  tiene FK a `perfiles`, así que PostgREST no puede embeber el nombre y harían
+  falta dos viajes. El tope (200) se recorta en la BASE además de tomarse por
+  parámetro: el número viaja desde el navegador.
+  **La etiqueta de cada fila sale de `origen_tipo` + el SIGNO, nunca del
+  `evento`**, y eso importa: de los 4.900 movimientos del SaaS, **2.018 son
+  `CORRECCION_REVERSA` / `CORRECCION_APLICADA`** de la migración del 20/9 que
+  sacó los cobros del puente — 544 seguidos en una sola cuenta de Evens. No son
+  ruido: cada una **es un cobro que entró a esa cuenta**, y desde el punto de
+  vista de la cuenta eso es lo que hay que decir. El evento es el cómo, no el
+  qué. El nombre técnico se sigue mostrando como dato secundario: la bitácora
+  es append-only y auditable, y esconderlo la haría menos auditable.
+  El criterio vive en `features/caja/lib/movimiento-financiero.ts` con tests, y
+  es fail-closed: un `origen_tipo` desconocido dice "Movimiento" en vez de
+  inventar una etiqueta que podría estar mintiendo.
+  Cada fila dice además si el movimiento **afecta la ganancia o solo mueve
+  plata**. Es la distinción que sostiene el módulo entero y la que más cuesta
+  explicar: un pase entre cuentas no es un gasto.
 - Métodos de pago, dos porcentajes que NO son lo mismo: `comision` es lo que
   el comercio le paga al procesador (se resta, interno) y `recargo_porcentaje`
   es lo que le cobra al cliente (se suma, se muestra). El cálculo vive en

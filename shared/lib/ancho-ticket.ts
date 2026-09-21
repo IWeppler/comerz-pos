@@ -96,6 +96,27 @@ export function cssImpresionTicket(ancho: AnchoTicket): string {
     font-size: ${CUERPO_PT[ancho]}pt;
   }
 
+  /* ───────────────────────────────────────────────────────────────────────
+     DOS COPIAS EN UNA SOLA IMPRESIÓN (recibo de pago de cuenta corriente)
+
+     Un papel posicionado ABSOLUTO no se pagina: el navegador ignora los
+     cortes de página que tenga adentro, así que las dos copias saldrían
+     pegadas en la misma hoja. Por eso el wrapper multicopia vuelve a ser
+     estático — puede hacerlo porque cuelga directo del
+     .ticket-sheet-print-scope, que arriba ya quedó sin margen ni ancho
+     propio. El ticket de venta sigue absoluto, sin cambio.
+     ─────────────────────────────────────────────────────────────────────── */
+  #ticket-print-wrapper.ticket-print-multicopia {
+    position: static !important;
+  }
+
+  /* El corte que separa una copia de la otra. Lo lleva solo la primera: en
+     la última sería una hoja en blanco (o papel de más en la térmica). */
+  #ticket-print-wrapper .recibo-copia-corte {
+    break-after: page;
+    page-break-after: always;
+  }
+
   /* El sheet deja de ser un panel flotante y pasa a ser papel. */
   .ticket-sheet-print-scope {
     position: static !important;

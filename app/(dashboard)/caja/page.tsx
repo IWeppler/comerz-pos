@@ -265,6 +265,11 @@ export default async function CajaPage() {
                 <CuentasFinancierasPanel
                   cuentas={estadoCuentas.data.cuentas}
                   transferencias={estadoCuentas.data.transferencias}
+                  // Los saldos salen de `posicion_dinero`, que es la única
+                  // fuente que los calcula: `estado_cuentas_financieras`
+                  // devuelve la estructura de cuentas y nada más. De tener dos
+                  // fuentes salía la lista duplicada que había acá abajo.
+                  saldos={posicion.data.cuentas ?? []}
                 />
               )}
               <PosicionDinero

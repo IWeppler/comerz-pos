@@ -78,6 +78,9 @@ export async function registrarDevolucionAction(
   lineas: LineaDevolucion[],
   motivoCodigo?: string | null,
   motivoDetalle?: string | null,
+  /** Por qué medio se le devuelve la plata. null = por el del cobro, que es
+   * lo único que puede quien no tiene `ventas.elegir_medio_devolucion`. */
+  reintegroMetodoId?: string | null,
 ): Promise<{ data: ResultadoDevolucion | null; error: string | null }> {
   try {
     const cookieStore = await cookies();
@@ -113,6 +116,7 @@ export async function registrarDevolucionAction(
       p_motivo_codigo: normalizarMotivoAnulacion(motivoCodigo),
       p_motivo_detalle: motivoDetalle?.trim() || null,
       p_turno_id: turnoId,
+      p_reintegro_metodo_id: reintegroMetodoId || null,
     });
 
     if (error || !data) {
@@ -139,6 +143,10 @@ export async function registrarDevolucionAction(
       excedente_a_devolver: number;
       metodo_tipo: string;
       metodo_nombre: string | null;
+      /** El medio ELEGIDO. Distinto de `metodo_tipo`, que dice con qué se
+       * había cobrado. null cuando nadie eligió. */
+      reintegro_metodo_tipo: string | null;
+      reintegro_metodo_nombre: string | null;
       sale_de_caja: boolean;
       venta_totalmente_devuelta: boolean;
     };
@@ -165,10 +173,15 @@ export async function registrarDevolucionAction(
         );
       }
     } else if (!resultado.sale_de_caja && resultado.monto_devuelto > 0) {
+      // Con medio elegido es una constancia de lo decidido; sin elegir, es lo
+      // que el sistema dedujo del cobro. Dos frases, y la primera no tiene que
+      // sonar a problema pendiente.
       avisos.push(
-        `Se cobró por ${resultado.metodo_nombre ?? "transferencia"}: devolvé ${pesos(
-          resultado.monto_devuelto,
-        )} por ese medio, no salen de la caja.`,
+        resultado.reintegro_metodo_nombre
+          ? `Devolvé ${pesos(resultado.monto_devuelto)} por ${resultado.reintegro_metodo_nombre}. No salen de la caja.`
+          : `Se cobró por ${resultado.metodo_nombre ?? "transferencia"}: devolvé ${pesos(
+              resultado.monto_devuelto,
+            )} por ese medio, no salen de la caja.`,
       );
     }
 

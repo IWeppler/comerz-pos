@@ -3,6 +3,7 @@
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { validarCuentaDestino } from "../lib/cuenta-destino-metodo";
 
 /**
  * El recargo va al cliente y se cobra de verdad, así que el rango se valida
@@ -29,6 +30,15 @@ export async function createPaymentAction(prevState: any, formData: FormData) {
     }
     if (recargo_porcentaje === null) {
       return { error: "El recargo debe estar entre 0 y 100%.", success: false };
+    }
+
+    // Un metodo digital sin cuenta manda sus cobros al puente POR_ACREDITAR
+    // y no salen: es lo que hizo que Dinero mostrara $19,9M contra $687k
+    // reales. El formulario ya lo frena; aca tambien, porque un server
+    // action es un endpoint. Ver `cuenta-destino-metodo.ts`.
+    const faltaCuenta = validarCuentaDestino(tipo, cuentaDestinoId);
+    if (faltaCuenta) {
+      return { error: faltaCuenta, success: false };
     }
 
     const cookieStore = await cookies();
@@ -78,6 +88,15 @@ export async function editPaymentAction(prevState: any, formData: FormData) {
     }
     if (recargo_porcentaje === null) {
       return { error: "El recargo debe estar entre 0 y 100%.", success: false };
+    }
+
+    // Un metodo digital sin cuenta manda sus cobros al puente POR_ACREDITAR
+    // y no salen: es lo que hizo que Dinero mostrara $19,9M contra $687k
+    // reales. El formulario ya lo frena; aca tambien, porque un server
+    // action es un endpoint. Ver `cuenta-destino-metodo.ts`.
+    const faltaCuenta = validarCuentaDestino(tipo, cuentaDestinoId);
+    if (faltaCuenta) {
+      return { error: faltaCuenta, success: false };
     }
 
     const cookieStore = await cookies();

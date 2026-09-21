@@ -25,6 +25,11 @@ export async function anularVentaAction(
   motivoCodigo?: string | null,
   /** Una línea de detalle, sobre todo para OTRO. */
   motivoDetalle?: string | null,
+  /** Por qué medio se le devuelve la plata al cliente. null = por el del
+   * cobro, que es lo que pasó siempre y lo único que puede quien no tiene
+   * `ventas.elegir_medio_devolucion`. La RPC vuelve a pedir el permiso: acá
+   * no se decide nada, solo se pasa. */
+  reintegroMetodoId?: string | null,
 ) {
   try {
     const cookieStore = await cookies();
@@ -186,6 +191,7 @@ export async function anularVentaAction(
       // anulaciones son en realidad una venta mal cargada.
       p_motivo_codigo: normalizarMotivoAnulacion(motivoCodigo),
       p_motivo_detalle: motivoDetalle?.trim() || null,
+      p_reintegro_metodo_id: reintegroMetodoId || null,
     };
 
     const { data: resultadoAnulacion, error: anulacionError } =
@@ -252,6 +258,9 @@ export async function anularVentaAction(
       recargo_no_devuelto: number;
       credito_aplicado: number;
       excedente_ya_pagado: number;
+      /** El medio elegido, o null si nadie eligió y salió por el del cobro. */
+      reintegro_metodo_tipo: string | null;
+      reintegro_metodo_nombre: string | null;
     };
 
     // 5. Manejo del Stock para TODOS los items del carrito de compras
@@ -387,8 +396,15 @@ export async function anularVentaAction(
     const avisos: string[] = [];
 
     if (anulacion.no_efectivo_a_devolver > 0) {
+      // Con medio elegido el aviso es una CONSTANCIA de lo que se decidió;
+      // sin elegir, sigue siendo lo que el sistema dedujo del cobro. Son dos
+      // frases distintas a propósito: la primera no es un problema a resolver
+      // y no tiene que leerse como si lo fuera.
+      const monto = `$${Math.round(anulacion.no_efectivo_a_devolver).toLocaleString("es-AR")}`;
       avisos.push(
-        `$${Math.round(anulacion.no_efectivo_a_devolver).toLocaleString("es-AR")} se cobraron por tarjeta o transferencia: devolvelos por ese medio, no salen de la caja.`,
+        anulacion.reintegro_metodo_nombre
+          ? `Devolvé ${monto} por ${anulacion.reintegro_metodo_nombre}. No salen de la caja.`
+          : `${monto} se cobraron por tarjeta o transferencia: devolvelos por ese medio, no salen de la caja.`,
       );
     }
     // Desde 20260903210000 la anulación devuelve la BASE de cada cobro, no el

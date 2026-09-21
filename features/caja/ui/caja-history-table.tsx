@@ -426,7 +426,17 @@ function TurnoFila({
             ) : (
               <div className="flex items-center gap-1">
                 <Badge variant="outline">CERRADO</Badge>
-                {fueAjustado && <Badge variant="info">AJUSTADO</Badge>}
+                {/* El badge existía sin decir por qué. Un número del historial
+                    que cambió respecto del que se firmó necesita explicar el
+                    motivo, o se lee como que el sistema se contradice. */}
+                {fueAjustado && (
+                  <Badge
+                    variant="info"
+                    title={`Al cerrar se firmó ${formatearMoneda(Number(h.efectivo_esperado))}. Recalculado con los movimientos actuales del turno (una venta anulada, un egreso cargado después o un medio de pago corregido) da ${formatearMoneda(Number(h.efectivo_esperado_actual))}. La diferencia se calcula con el número recalculado.`}
+                  >
+                    AJUSTADO
+                  </Badge>
+                )}
               </div>
             )}
           </div>

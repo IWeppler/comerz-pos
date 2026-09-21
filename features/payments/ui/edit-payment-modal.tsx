@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -20,10 +20,12 @@ import {
 import { CreditCard, Percent, Clock, Loader2, TrendingUp } from "lucide-react";
 import { editPaymentAction } from "../actions/manage-payment";
 import { toast } from "sonner";
-import { MetodoPago } from "@/entities/payments/types";
-import { getCuentasFinancierasAction, type CuentaFinanciera } from "@/features/caja/actions/cuentas-financieras";
-
-const SIN_CUENTA = "sin-cuenta";
+import { MetodoPago, TipoMetodo } from "@/entities/payments/types";
+import { SelectorCuentaDestino } from "./selector-cuenta-destino";
+import {
+  requiereCuentaDestino,
+  validarCuentaDestino,
+} from "../lib/cuenta-destino-metodo";
 
 export function EditPaymentModal({
   pago,
@@ -34,19 +36,32 @@ export function EditPaymentModal({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([]);
-  const [cuentaDestinoId, setCuentaDestinoId] = useState(pago.cuenta_destino_id ?? SIN_CUENTA);
-  useEffect(() => {
-    if (!open) return;
-    setCuentaDestinoId(pago.cuenta_destino_id ?? SIN_CUENTA);
-    getCuentasFinancierasAction().then((data) => setCuentas(data.filter((c) => c.codigo !== "POR_ACREDITAR")));
-  }, [open, pago.cuenta_destino_id]);
+  const [cuentaDestinoId, setCuentaDestinoId] = useState(
+    pago.cuenta_destino_id ?? "",
+  );
+  // El tipo pasa a ser estado porque de él depende si hace falta la cuenta y
+  // qué tipo de cuenta se sugiere al crear una.
+  const [tipo, setTipo] = useState<TipoMetodo>(pago.tipo);
+
+  // Sin `useEffect` de sincronización a propósito: `payments-panel.tsx` monta
+  // este modal con `{editingPayment && <EditPaymentModal …/>}`, así que se
+  // desmonta al cerrar y los `useState` de arriba ya arrancan con el método
+  // correcto en cada apertura. El efecto que había antes existía solo para
+  // cargar las cuentas, y eso ahora vive adentro de `SelectorCuentaDestino`.
+
   const [, formAction, isPending] = useActionState(
     async (
       previousState: { error: string | null; success: boolean },
       formData: FormData,
     ) => {
       formData.append("id", pago.id);
+
+      const faltaCuenta = validarCuentaDestino(tipo, cuentaDestinoId);
+      if (faltaCuenta) {
+        toast.error(faltaCuenta);
+        return { error: faltaCuenta, success: false };
+      }
+
       const result = await editPaymentAction(previousState, formData);
 
       if (result.success) {
@@ -70,7 +85,7 @@ export function EditPaymentModal({
           </DialogTitle>
         </DialogHeader>
         <form action={formAction} className="space-y-5 pt-4">
-          <input type="hidden" name="cuenta_destino_id" value={cuentaDestinoId === SIN_CUENTA ? "" : cuentaDestinoId} />
+          <input type="hidden" name="cuenta_destino_id" value={cuentaDestinoId} />
           <div className="space-y-2">
             <Label htmlFor="nombre">Nombre a mostrar en caja</Label>
             <Input
@@ -84,7 +99,17 @@ export function EditPaymentModal({
 
           <div className="space-y-2">
             <Label>Tipo de Pago</Label>
-            <Select name="tipo" defaultValue={pago.tipo}>
+            <Select
+              name="tipo"
+              value={tipo}
+              onValueChange={(val) => {
+                setTipo(val as TipoMetodo);
+                // Cambiar el tipo invalida la cuenta: la de un banco no es la
+                // misma decision que la de una billetera. La base hace lo
+                // mismo en asignar_cuenta_financiera_actual.
+                setCuentaDestinoId("");
+              }}
+            >
               <SelectTrigger className="rounded-lg shadow-none">
                 <SelectValue />
               </SelectTrigger>
@@ -160,17 +185,14 @@ export function EditPaymentModal({
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label>Cuenta donde acredita</Label>
-            <Select value={cuentaDestinoId} onValueChange={setCuentaDestinoId}>
-              <SelectTrigger className="rounded-lg shadow-none"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value={SIN_CUENTA}>Sin configurar todavía</SelectItem>
-                {cuentas.map((cuenta) => <SelectItem key={cuenta.id} value={cuenta.id}>{cuenta.nombre}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <p className="text-[10px] text-muted-foreground">Los cobros diferidos quedan primero en Por acreditar y se liquidan después a esta cuenta.</p>
-          </div>
+          {/* Ya no existe "sin configurar": un metodo digital sin cuenta
+              manda sus cobros al puente y no salen. Ver
+              `cuenta-destino-metodo.ts`. */}
+          <SelectorCuentaDestino
+            tipo={tipo}
+            valor={cuentaDestinoId}
+            onChange={setCuentaDestinoId}
+          />
 
           <div className="flex justify-end gap-2 pt-2 border-t border-border">
             <Button
@@ -184,7 +206,9 @@ export function EditPaymentModal({
             <Button
               type="submit"
               className="cursor-pointer"
-              disabled={isPending}
+              disabled={
+                isPending || (requiereCuentaDestino(tipo) && !cuentaDestinoId)
+              }
             >
               {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Actualizar

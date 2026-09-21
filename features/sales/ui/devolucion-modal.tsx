@@ -25,6 +25,14 @@ import {
   registrarDevolucionAction,
   type LineaDevolucion,
 } from "../actions/registrar-devolucion";
+import {
+  getOpcionesReintegroAction,
+  type OpcionesReintegro,
+} from "../actions/opciones-reintegro";
+import {
+  SelectorMedioReintegro,
+  faltaElegirMedio,
+} from "./selector-medio-reintegro";
 
 const pesos = (monto: number) => `$${Math.round(monto).toLocaleString("es-AR")}`;
 
@@ -69,6 +77,8 @@ export function DevolucionModal({
   const [elegidos, setElegidos] = useState<Record<string, Eleccion>>({});
   const [motivoCodigo, setMotivoCodigo] = useState<MotivoAnulacion | null>(null);
   const [motivoDetalle, setMotivoDetalle] = useState("");
+  const [opciones, setOpciones] = useState<OpcionesReintegro | null>(null);
+  const [medioReintegro, setMedioReintegro] = useState<string | null>(null);
   const [enviando, iniciar] = useTransition();
 
   useEffect(() => {
@@ -79,6 +89,12 @@ export function DevolucionModal({
       if (!vigente) return;
       if (error) toast.error(error);
       setRenglones(data);
+    });
+    // Las opciones de reintegro se piden al ABRIR, junto con los renglones:
+    // son dos consultas de la misma pantalla y ninguna tiene sentido en las
+    // diez filas de la tabla. Mismo criterio que la restaurabilidad al anular.
+    getOpcionesReintegroAction(ventaId).then((resultado) => {
+      if (vigente) setOpciones(resultado);
     });
 
     return () => {
@@ -144,6 +160,7 @@ export function DevolucionModal({
         lineas,
         motivoCodigo,
         motivoDetalle,
+        medioReintegro,
       );
 
       if (error || !data) {
@@ -156,6 +173,8 @@ export function DevolucionModal({
       setRenglones(null);
       setMotivoCodigo(null);
       setMotivoDetalle("");
+      setOpciones(null);
+      setMedioReintegro(null);
 
       toast.success(`Devolución registrada por ${pesos(data.montoDevuelto)}.`, {
         description: data.esCuentaCorriente
@@ -328,6 +347,14 @@ export function DevolucionModal({
         </div>
 
         <div className="border-t border-border pt-3">
+          <div className="mb-3">
+            <SelectorMedioReintegro
+              opciones={opciones}
+              valor={medioReintegro}
+              onChange={setMedioReintegro}
+              monto={base}
+            />
+          </div>
           <div className="mb-3 flex items-baseline justify-between">
             <span className="text-sm font-semibold text-muted-foreground">
               A devolver
@@ -348,7 +375,12 @@ export function DevolucionModal({
           <Button
             type="button"
             onClick={confirmar}
-            disabled={!hayAlgo || !motivoCodigo || enviando}
+            disabled={
+              !hayAlgo ||
+              !motivoCodigo ||
+              faltaElegirMedio(opciones, medioReintegro) ||
+              enviando
+            }
             className="h-11 w-full"
           >
             {enviando ? (
