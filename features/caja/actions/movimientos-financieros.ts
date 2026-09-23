@@ -6,6 +6,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { formatearNumeroComprobante } from "@/shared/lib/facturacion";
 import { etiquetaMovimiento } from "../lib/movimiento-financiero";
+import { esMovimientoDeCuentas } from "../lib/movimiento-de-cuentas";
 
 /**
  * La tabla general de movimientos (`movimientos_financieros_negocio`,
@@ -76,7 +77,21 @@ export type MovimientoFinancieroFila = {
   proveedor: string | null;
   /** Si el movimiento es la reversa de una transferencia, la original. */
   revierte_a: string | null;
+  /** Cuántos movimientos reales hay detrás de la fila: 1 en todo lo que no se
+   * consolidó, N en una fila "Cobros del día". La pantalla lo usa para decir
+   * "9 cobros" en vez de inventar una descripción. Puede faltar mientras la
+   * migración de `p_vista` no esté aplicada. */
+  cantidad?: number;
 };
+
+/**
+ * Qué tabla se está pidiendo. `COMPLETA` es una fila por movimiento del
+ * ledger; `CUENTAS` es la vista de Dinero — los cobros de venta entran
+ * consolidados por cuenta y por día, y el detalle del cajón queda afuera
+ * porque ya se ve en el turno. El corte lo hace la BASE: consolidar desde acá
+ * dejaría el `total` de la paginación contando filas que no se muestran.
+ */
+export type VistaMovimientos = "COMPLETA" | "CUENTAS";
 
 export type FiltrosMovimientos = {
   /** ISO. `hasta` es exclusivo. */
@@ -92,6 +107,7 @@ export type FiltrosMovimientos = {
   busqueda?: string | null;
   limite?: number;
   offset?: number;
+  vista?: VistaMovimientos;
 };
 
 export type PaginaMovimientos = {
@@ -103,7 +119,7 @@ export async function getMovimientosFinancierosAction(
   filtros: FiltrosMovimientos = {},
 ): Promise<{ data: PaginaMovimientos | null; error: string | null }> {
   const supabase = createClient(await cookies());
-  const { data, error } = await supabase.rpc("movimientos_financieros_negocio", {
+  const argumentos = {
     p_desde: filtros.desde ?? null,
     p_hasta: filtros.hasta ?? null,
     p_cuenta_id: filtros.cuentaId ?? null,
@@ -115,7 +131,29 @@ export async function getMovimientosFinancierosAction(
     p_busqueda: filtros.busqueda ?? null,
     p_limite: filtros.limite ?? 100,
     p_offset: filtros.offset ?? 0,
+  };
+
+  let { data, error } = await supabase.rpc("movimientos_financieros_negocio", {
+    ...argumentos,
+    p_vista: filtros.vista ?? "COMPLETA",
   });
+
+  // Compatibilidad de despliegue: la app puede salir antes que la migración
+  // que agrega `p_vista`. Sin esto, la pantalla entera devuelve PGRST202 (la
+  // firma no existe) en vez de degradar. Mismo patrón que
+  // `getPosicionDineroAction` con `posicion_dinero_ledger`.
+  //
+  // Lo que se pierde mientras tanto es la consolidación, no la exactitud: se
+  // ven los cobros uno por uno, que es lo que se ve hoy.
+  if (error?.code === "PGRST202") {
+    console.warn(
+      "movimientos_financieros_negocio todavía no acepta p_vista; se pide la vista completa.",
+    );
+    ({ data, error } = await supabase.rpc(
+      "movimientos_financieros_negocio",
+      argumentos,
+    ));
+  }
 
   if (error) {
     console.error("Error cargando movimientos financieros:", error);
@@ -219,28 +257,23 @@ export async function exportarMovimientosAction(
 
   const filas: MovimientoFinancieroFila[] = [];
   let total = Infinity;
+  // Pagina por la MISMA action que usa la tabla, y no por una llamada propia
+  // a la RPC: así hereda los filtros, la vista y el fallback de `p_vista` sin
+  // que haya dos lugares donde acordarse de agregar un parámetro. Es lo que
+  // garantiza que el Excel diga exactamente lo que se ve en pantalla.
   for (let pagina = 0; pagina < TOPE_PAGINAS_EXPORT && filas.length < total; pagina++) {
-    const { data, error } = await supabase.rpc("movimientos_financieros_negocio", {
-      p_desde: filtros.desde ?? null,
-      p_hasta: filtros.hasta ?? null,
-      p_cuenta_id: filtros.cuentaId ?? null,
-      p_origen_tipos: filtros.origenTipos?.length ? filtros.origenTipos : null,
-      p_categoria_id: filtros.categoriaId ?? null,
-      p_sin_categoria: Boolean(filtros.sinCategoria),
-      p_metodo_pago_id: filtros.metodoPagoId ?? null,
-      p_usuario_id: filtros.usuarioId ?? null,
-      p_busqueda: filtros.busqueda ?? null,
-      p_limite: TOPE_PAGINA_EXPORT,
-      p_offset: pagina * TOPE_PAGINA_EXPORT,
+    const { data, error } = await getMovimientosFinancierosAction({
+      ...filtros,
+      limite: TOPE_PAGINA_EXPORT,
+      offset: pagina * TOPE_PAGINA_EXPORT,
     });
-    if (error) {
+    if (error || !data) {
       console.error("Error exportando movimientos financieros:", error);
       return { error: "No se pudo armar la exportación." };
     }
-    const p = (data ?? { total: 0, filas: [] }) as PaginaMovimientos;
-    total = p.total;
-    filas.push(...p.filas);
-    if (p.filas.length < TOPE_PAGINA_EXPORT) break;
+    total = data.total;
+    filas.push(...data.filas);
+    if (data.filas.length < TOPE_PAGINA_EXPORT) break;
   }
 
   if (filas.length === 0) {
@@ -254,6 +287,10 @@ export async function exportarMovimientosAction(
     Categoria: f.categoria_nombre ?? "",
     Cuenta: f.cuenta_nombre,
     Metodo: f.metodo_nombre ?? "",
+    // Cuántos movimientos hay detrás de la fila: 1 salvo en los cobros
+    // consolidados por día. Sin esta columna, un contador que suma el Excel
+    // no tiene cómo saber que una línea son nueve cobros.
+    Movimientos: f.cantidad ?? 1,
     Importe: Number(f.importe),
     "Saldo posterior": Number(f.saldo_posterior),
     Usuario: f.usuario_nombre ?? "",
@@ -276,5 +313,45 @@ export async function exportarMovimientosAction(
     nombreArchivo: `movimientos_${hoy}.xlsx`,
     filas: filas.length,
     truncado: filas.length < total,
+  };
+}
+
+export type FiltrosActividadCuentas = {
+  busqueda?: string | null;
+  origenTipo?: Extract<OrigenMovimiento, "INGRESO" | "EGRESO" | "TRANSFERENCIA"> | null;
+  cuentaId?: string | null;
+  limite?: number;
+  offset?: number;
+};
+
+/**
+ * La tabla "Actividad de cuentas" de la pestaña Dinero. Usa la MISMA vista
+ * consolidada que la tabla completa, pero ofrece solo los filtros cotidianos
+ * de este contexto: texto y clase de operación.
+ *
+ * `esMovimientoDeCuentas` sigue como espejo defensivo para el intervalo de
+ * despliegue en que el código puede salir antes que la RPC con `p_vista`.
+ */
+export async function getActividadDeCuentasAction(
+  filtros: FiltrosActividadCuentas = {},
+): Promise<{ data: PaginaMovimientos | null; error: string | null }> {
+  const limite = filtros.limite ?? 10;
+  const { data, error } = await getMovimientosFinancierosAction({
+    vista: "CUENTAS",
+    busqueda: filtros.busqueda,
+    origenTipos: filtros.origenTipo ? [filtros.origenTipo] : null,
+    cuentaId: filtros.cuentaId,
+    limite,
+    offset: filtros.offset ?? 0,
+  });
+
+  if (error || !data) return { data: null, error: error ?? "" };
+
+  const filas = data.filas.filter((f) =>
+    esMovimientoDeCuentas(f.origen_tipo, f.cuenta_tipo),
+  );
+  return {
+    data: { total: data.total, filas },
+    error: null,
   };
 }

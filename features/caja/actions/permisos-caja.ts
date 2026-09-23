@@ -59,3 +59,29 @@ export async function puedeRegistrarIngresoAction(): Promise<boolean> {
 
   return tienePermiso(supabase, PERMISOS.CAJA_REGISTRAR_INGRESO);
 }
+
+/**
+ * ¿Puede registrar un gasto? Sale de adentro de `caja.operar`
+ * (`20260921160000`): quien atiende el mostrador paga el flete y las bolsas.
+ * `registrarEgresoAction` vuelve a chequearlo, así que esto solo decide si el
+ * botón se dibuja — mostrárselo a quien no lo tiene invita un click que solo
+ * puede terminar en SIN_PERMISO.
+ */
+export async function puedeRegistrarEgresoAction(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  return tienePermiso(supabase, PERMISOS.CAJA_REGISTRAR_EGRESO);
+}
+
+/**
+ * ¿Puede mover plata entre cuentas propias? Es más angosto que registrar un
+ * gasto: no cambia el resultado del negocio, pero sí de qué cajón sale.
+ * `registrarTransferenciaFinancieraAction` lo vuelve a chequear.
+ */
+export async function puedeTransferirAction(): Promise<boolean> {
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  return tienePermiso(supabase, PERMISOS.CAJA_TRANSFERIR);
+}

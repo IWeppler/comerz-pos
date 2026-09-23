@@ -170,6 +170,11 @@ export function MovimientosFinancierosTable({
 
   const filtrosApi: FiltrosMovimientos = useMemo(
     () => ({
+      // Esta es la tabla de la pestaña Dinero, no la del turno: los cobros de
+      // venta entran consolidados por cuenta y por día, y el detalle del
+      // cajón queda afuera porque ya se ve —renglón por renglón— en Hoy. El
+      // corte lo hace la base; ver `movimiento-de-cuentas.ts`.
+      vista: "CUENTAS" as const,
       desde: filtros.desde ? inicioDeDiaISO(filtros.desde) : null,
       hasta: filtros.hasta ? finDeDiaISO(filtros.hasta) : null,
       cuentaId: filtros.cuentaId || null,

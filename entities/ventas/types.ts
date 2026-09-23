@@ -61,6 +61,8 @@ export interface VentaDescuento {
 export interface VentaPago {
   id?: string;
   venta_id?: string;
+  /** Turno de caja en el que entró el cobro. */
+  turno_caja_id?: string | null;
   cliente_id?: string | null;
   metodo_pago_id?: string | null;
   metodo_nombre: string;

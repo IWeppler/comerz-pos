@@ -2,16 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  AlertTriangle,
-  ArrowRight,
-  Banknote,
-  Landmark,
-  Loader2,
-  Plus,
-  Repeat2,
-  Wallet,
-} from "lucide-react";
+import { ArrowRight, Loader2, Repeat2, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import {
@@ -35,17 +26,38 @@ import { formatearMoneda } from "@/shared/utils/formatters";
 import { EgresoModal } from "./egreso-modal";
 import { IngresoModal } from "./ingreso-modal";
 import { DetalleCuentaSheet } from "./detalle-cuenta-sheet";
+import { CabeceraDisponible } from "./cabecera-disponible";
+import { TiraCuentas } from "./tira-cuentas";
+import { GestionarCuentasSheet } from "./gestionar-cuentas-sheet";
+import { EgresosProgramadosSheet } from "./egresos-programados-sheet";
 import {
-  crearCuentaFinancieraAction,
+  totalProgramado,
+} from "../lib/egreso-programado";
+import type { EgresoProgramado } from "../actions/egresos-programados";
+import {
   registrarSaldoInicialCuentaAction,
   registrarTransferenciaFinancieraAction,
-  revertirTransferenciaFinancieraAction,
   type CuentaFinanciera,
-  type TransferenciaFinanciera,
 } from "../actions/cuentas-financieras";
 import type { SaldoCuenta } from "@/entities/caja/types";
 
 type Estado = { error: string | null; success: boolean };
+
+const CLASE_ACCION =
+  "h-12 w-12 p-0 md:h-9 md:w-auto md:px-4 " +
+  "[&>span]:hidden md:[&>span]:inline " +
+  "[&>svg]:h-6 [&>svg]:w-6 md:[&>svg]:h-4 md:[&>svg]:w-4";
+
+const CLASE_CONTENEDOR_ACCION =
+  "flex min-w-0 flex-1 flex-col items-center gap-1.5 md:block md:flex-none";
+
+function EtiquetaAccionMobile({ children }: Readonly<{ children: string }>) {
+  return (
+    <span className="text-center text-[11px] font-medium leading-tight text-muted-foreground md:hidden">
+      {children}
+    </span>
+  );
+}
 
 /**
  * "¿Cuánta plata tengo y dónde está?"
@@ -73,42 +85,53 @@ type Estado = { error: string | null; success: boolean };
  */
 export function CuentasFinancierasPanel({
   cuentas,
-  transferencias,
   saldos,
-  puedeAnular,
+  turnosAbiertos,
+  ingresosPorAcreditar,
+  cantidadPorAcreditar,
+  programados,
+  esAdmin = false,
   puedeRegistrarIngreso = false,
+  puedeRegistrarEgreso = false,
+  puedeTransferir = false,
 }: Readonly<{
   cuentas: CuentaFinanciera[];
-  transferencias: TransferenciaFinanciera[];
+  /** Cuántos turnos están abiertos ahora. Es el subtítulo de la tarjeta
+   * "Cajas abiertas": el saldo solo dice cuánto, no entre cuántas manos. */
+  turnosAbiertos: number;
+  ingresosPorAcreditar: number;
+  cantidadPorAcreditar: number;
+  /** La agenda de gastos fijos. No es plata que salió: vive en "Próximos
+   * movimientos" y no toca ningún saldo. */
+  programados: EgresoProgramado[];
+  /** Cargar y editar la agenda es de ADMIN: define lo que la dueña ve como
+   * comprometido, y una cifra inflada le dice que no compre mercadería que sí
+   * podía comprar. */
+  esAdmin?: boolean;
   /** Saldo por cuenta, del ledger. Llega por prop porque lo calcula
    * `posicion_dinero`, que es la única fuente de saldos de esta pantalla. */
   saldos: SaldoCuenta[];
-  /** `caja.anular_movimiento`: habilita "Revertir" en cada transferencia
-   * que todavía no tiene reversa. Ocultar el botón no es el control de
-   * acceso — la RPC vuelve a chequear el permiso — pero mostrarlo a quien
-   * no lo tiene invita un click que solo va a devolver SIN_PERMISO. */
-  puedeAnular: boolean;
   /** `caja.registrar_ingreso` (solo ADMIN por defecto): muestra "Anotar
    * Ingreso". Misma lógica que arriba: la RPC es el freno. */
   puedeRegistrarIngreso?: boolean;
+  /** `caja.registrar_egreso`: muestra "Gasto". */
+  puedeRegistrarEgreso?: boolean;
+  /** `caja.transferir`: muestra "Transferir". */
+  puedeTransferir?: boolean;
 }>) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [transferirAbierto, setTransferirAbierto] = useState(
     searchParams.get("accion") === "transferir",
   );
-  const [crearAbierto, setCrearAbierto] = useState(false);
+  const [gestionAbierta, setGestionAbierta] = useState(false);
+  const [programadosAbierto, setProgramadosAbierto] = useState(false);
   const [saldoInicialCuenta, setSaldoInicialCuenta] =
     useState<SaldoCuenta | null>(null);
   const [detalleCuenta, setDetalleCuenta] = useState<SaldoCuenta | null>(null);
   const [origen, setOrigen] = useState(cuentas[0]?.id ?? "");
   const [destino, setDestino] = useState(cuentas[1]?.id ?? "");
-  const [tipo, setTipo] = useState("CAJA_GENERAL");
-  const [aRevertir, setARevertir] = useState<TransferenciaFinanciera | null>(
-    null,
-  );
-  const [motivoReversa, setMotivoReversa] = useState("");
-  const [revirtiendo, setRevirtiendo] = useState(false);
+  const [monto, setMonto] = useState("");
 
   const [, transferir, transfiriendo] = useActionState(
     async (prev: Estado, data: FormData) => {
@@ -116,19 +139,10 @@ export function CuentasFinancierasPanel({
       if (res.success) {
         toast.success("Dinero movido entre cuentas");
         setTransferirAbierto(false);
-        router.refresh();
-      } else toast.error(res.error);
-      return res;
-    },
-    { error: null, success: false },
-  );
-
-  const [, crear, creando] = useActionState(
-    async (prev: Estado, data: FormData) => {
-      const res = await crearCuentaFinancieraAction(prev, data);
-      if (res.success) {
-        toast.success("Cuenta creada");
-        setCrearAbierto(false);
+        // El monto se limpia al cerrar: si no, reabrir el modal para mover
+        // otra cosa arranca con el número de la transferencia anterior ya
+        // puesto, y un Enter de más lo manda dos veces.
+        setMonto("");
         router.refresh();
       } else toast.error(res.error);
       return res;
@@ -149,29 +163,12 @@ export function CuentasFinancierasPanel({
     { error: null, success: false },
   );
 
-  const revertir = async () => {
-    if (!aRevertir || !motivoReversa.trim()) return;
-    setRevirtiendo(true);
-    const res = await revertirTransferenciaFinancieraAction(
-      aRevertir.id,
-      motivoReversa,
-    );
-    setRevirtiendo(false);
-    if (res.error) {
-      toast.error(res.error);
-      return;
-    }
-    toast.success("Transferencia revertida");
-    setARevertir(null);
-    setMotivoReversa("");
-    router.refresh();
-  };
-
   // Caja chica y caja grande son la MISMA lista partida en dos, no dos
   // fuentes: las divide quién la cuenta, no cuánta plata tiene.
   //
-  //  - Caja diaria: la arquea quien vende, turno por turno (el desglose por
-  //    turno ya vive más abajo, en "Efectivo caja por caja").
+  //  - Caja diaria: la arquea quien vende, turno por turno. Va PRIMERA en la
+  //    tira y agrupada en una sola tarjeta ("Cajas abiertas"); el desglose
+  //    por persona vive en Hoy, que es donde alguien la va a cerrar.
   //  - Caja grande: el resto — la caja consolidada (CAJA_GENERAL) y las
   //    cuentas digitales (banco, billetera). Es donde cae el cierre de cada
   //    turno y de donde sale un egreso sin cajón que arquear.
@@ -189,246 +186,245 @@ export function CuentasFinancierasPanel({
     .sort(porSaldo);
   const lista = [...cajaDiaria, ...cajaGrande];
 
+  // Los VENCIDOS entran en el total: si quedaran afuera, el número bajaría
+  // justo cuando alguien se atrasa. La ventana de 30 días es la misma que usa
+  // el texto de abajo ("N pagos en 30 días").
+  const totalProgramados = totalProgramado(
+    programados,
+    new Date().toISOString().slice(0, 10),
+  );
+
   const disponible = lista.reduce((acc, c) => acc + Number(c.saldo), 0);
-  const negativas = lista.filter((c) => Number(c.saldo) < 0);
 
-  return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">
-            Controlá dónde está el dinero de tu negocio
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Mové dinero entre caja, banco y billeteras sin alterar tus ingresos
-            ni gastos.
-          </p>
-        </div>
-        {/* El orden es el de la frecuencia de uso: un egreso se carga todos los
-            días, un ingreso libre y una transferencia cada tanto, una cuenta
-            tres veces en la vida del comercio. */}
-        <div className="flex flex-wrap gap-2">
-          <EgresoModal triggerVariant="secondary" />
-          {puedeRegistrarIngreso && <IngresoModal triggerVariant="outline" />}
+  // Cuánto hay registrado en la cuenta desde la que se va a transferir. Sale
+  // de `lista` (o sea de `posicion_dinero`), que es la única fuente de saldos
+  // de esta pantalla: pedirlo aparte sería una segunda verdad.
+  const saldoOrigen = origen
+    ? (lista.find((c) => c.cuenta_id === origen)?.saldo ?? null)
+    : null;
+  const montoNumero = Number(monto);
+  const excedeSaldo =
+    Number.isFinite(montoNumero) &&
+    montoNumero > 0 &&
+    saldoOrigen !== null &&
+    montoNumero > Number(saldoOrigen);
 
-          <Dialog open={transferirAbierto} onOpenChange={setTransferirAbierto}>
-            <DialogTrigger asChild>
-              <Button variant="outline" disabled={cuentas.length < 2}>
-                <Repeat2 className="h-4 w-4" />
-                Transferir
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Mover dinero</DialogTitle>
-                <DialogDescription>
-                  Esto no se registra como ingreso ni como gasto: solo cambia
-                  dónde está la plata.
-                </DialogDescription>
-              </DialogHeader>
-              <form action={transferir} className="space-y-4">
-                <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-                  <div className="space-y-2">
-                    <Label>De</Label>
-                    <input type="hidden" name="cuenta_origen_id" value={origen} />
-                    <Select value={origen} onValueChange={setOrigen}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cuentas
-                          .filter((c) => c.id !== destino)
-                          .map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.nombre}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <ArrowRight className="mb-2.5 h-4 w-4 text-muted-foreground" />
-                  <div className="space-y-2">
-                    <Label>A</Label>
-                    <input
-                      type="hidden"
-                      name="cuenta_destino_id"
-                      value={destino}
-                    />
-                    <Select value={destino} onValueChange={setDestino}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {cuentas
-                          .filter((c) => c.id !== origen)
-                          .map((c) => (
-                            <SelectItem key={c.id} value={c.id}>
-                              {c.nombre}
-                            </SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="transferencia-monto">Monto</Label>
-                  <Input
-                    id="transferencia-monto"
-                    name="monto"
-                    type="number"
-                    min="0.01"
-                    step="any"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="transferencia-concepto">Concepto</Label>
-                  <Input
-                    id="transferencia-concepto"
-                    name="concepto"
-                    placeholder="Ej: Retiro al cierre"
-                    required
-                  />
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={
-                    transfiriendo || !origen || !destino || origen === destino
-                  }
-                >
-                  {transfiriendo && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  )}
-                  Mover el dinero
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <Dialog open={crearAbierto} onOpenChange={setCrearAbierto}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Plus className="h-4 w-4" />
-                Cuenta
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-sm">
-              <DialogHeader>
-                <DialogTitle>Nueva cuenta</DialogTitle>
-                <DialogDescription>
-                  Creá una caja general, banco o billetera del negocio.
-                </DialogDescription>
-              </DialogHeader>
-              <form action={crear} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="cuenta-nombre">Nombre</Label>
-                  <Input
-                    id="cuenta-nombre"
-                    name="nombre"
-                    placeholder="Ej: Banco Nación"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tipo</Label>
-                  <input type="hidden" name="tipo" value={tipo} />
-                  <Select value={tipo} onValueChange={setTipo}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="CAJA_GENERAL">Caja general</SelectItem>
-                      <SelectItem value="BANCO">Cuenta bancaria</SelectItem>
-                      <SelectItem value="BILLETERA">Billetera virtual</SelectItem>
-                      <SelectItem value="OTRA">Otra</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button className="w-full" disabled={creando}>
-                  {creando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Crear cuenta
-                </Button>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card">
-        <div className="px-4 py-4 sm:px-5">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            Disponible ahora
-          </p>
-          <p
-            className={`mt-0.5 text-3xl font-mono font-medium tabular-nums ${
-              disponible < 0 ? "text-danger" : "text-foreground"
-            }`}
-          >
-            {formatearMoneda(disponible)}
-          </p>
-          {/* El aviso va pegado a la cifra y no al pie de la pantalla: es la
-              diferencia entre un número que se usa para decidir una compra y
-              uno que se sabe que hay que contrastar con el homebanking. */}
-          <p className="mt-1 text-xs text-muted-foreground">
-            Sale de lo registrado en Comerz: <strong>no es el saldo del
-            banco</strong>. No incluye lo que todavía está por acreditar.
-          </p>
-        </div>
-      </div>
-
-      {lista.length === 0 ? (
-        <p className="rounded-2xl border border-border bg-card px-4 py-4 text-xs text-muted-foreground sm:px-5">
-          Todavía no hay cuentas con movimientos.
-        </p>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <GrupoCuentas
-            titulo="Caja diaria"
-            ayuda="La arquea quien vende, turno por turno. Se llena al abrir el turno y se vacía al cerrarlo: la plata pasa a Caja grande."
-            cuentas={cajaDiaria}
-            vacio="Sin caja diaria activa."
-            onAbrir={setDetalleCuenta}
-          />
-          <GrupoCuentas
-            titulo="Caja grande"
-            ayuda="La caja consolidada y las cuentas digitales (banco, billetera). Ahí cae el cierre de cada turno, y de ahí sale un gasto que no tiene un cajón que arquear."
-            cuentas={cajaGrande}
-            vacio="Sin cuentas de caja grande todavía."
-            onAbrir={setDetalleCuenta}
-          />
-        </div>
-      )}
-
-      {/* Un saldo negativo no se esconde: es un hecho del registro. Lo que se
-          agrega es POR QUÉ puede pasar y qué hacer, que es lo que lo separa de
-          "Comerz dice que debo plata". */}
-      {negativas.map((cuenta) => (
-        <div
-          key={cuenta.cuenta_id}
-          className="flex flex-wrap items-start gap-2.5 rounded-lg border border-info/20 bg-info/10 px-3 py-2.5 text-xs"
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" />
-          <div className="min-w-0 flex-1">
-            <p className="font-medium text-info">
-              {cuenta.nombre} tiene un saldo registrado de{" "}
-              {formatearMoneda(Number(cuenta.saldo))}.
-            </p>
-            <p className="mt-0.5 text-info/90">
-              Puede faltar declarar la plata que ya había en esa cuenta, o una
-              transferencia que la alimentó.
-            </p>
+  // Los dos formularios que viven detrás de un botón de la cabecera. Salen
+  // como constantes y no como componentes sueltos porque cierran sobre el
+  // estado y las actions de acá: extraerlos de verdad pediría pasar seis
+  // props para no ganar nada.
+  const contenidoTransferir = (
+    <DialogContent className="sm:max-w-md">
+      <DialogHeader>
+        <DialogTitle>Mover dinero</DialogTitle>
+        <DialogDescription>Movimiento entre cuentas propias.</DialogDescription>
+      </DialogHeader>
+      <form action={transferir} className="space-y-4">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+          <div className="space-y-2">
+            <Label>De</Label>
+            <input type="hidden" name="cuenta_origen_id" value={origen} />
+            <Select value={origen} onValueChange={setOrigen}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {cuentas
+                  .filter((c) => c.id !== destino)
+                  .map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
           </div>
-          {!cuenta.es_efectivo && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setSaldoInicialCuenta(cuenta)}
-            >
-              Declarar saldo inicial
-            </Button>
+          <ArrowRight className="mb-2.5 h-4 w-4 text-muted-foreground" />
+          <div className="space-y-2">
+            <Label>A</Label>
+            <input type="hidden" name="cuenta_destino_id" value={destino} />
+            <Select value={destino} onValueChange={setDestino}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {cuentas
+                  .filter((c) => c.id !== origen)
+                  .map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <Label htmlFor="transferencia-monto">Monto</Label>
+            {saldoOrigen !== null && saldoOrigen > 0 && (
+              <button
+                type="button"
+                onClick={() => setMonto(String(saldoOrigen))}
+                className="cursor-pointer text-xs font-medium text-primary hover:underline"
+              >
+                Usar todo ({formatearMoneda(saldoOrigen)})
+              </button>
+            )}
+          </div>
+          <Input
+            id="transferencia-monto"
+            name="monto"
+            type="number"
+            min="0.01"
+            step="any"
+            required
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+            // El tope sale del saldo REGISTRADO de la cuenta origen. Es lo
+            // que atrapa el error de tipeo, que es el caso común: hoy el
+            // input aceptaba cualquier número y la RPC tampoco mira el
+            // saldo, así que se podía dejar una cuenta en negativo sin que
+            // nada avisara.
+            max={
+              saldoOrigen !== null && saldoOrigen > 0 ? saldoOrigen : undefined
+            }
+          />
+          {/* NO es un bloqueo duro, y eso importa: el saldo registrado puede
+                ser MENOR que la plata real cuando nunca se declaró el saldo
+                inicial de la cuenta. Con un tope duro, la "Caja Grande" de un
+                comercio en esa situación quedaría trabada en cero y no podría
+                transferir nunca. Así que se avisa, se explica y se ofrece el
+                arreglo de verdad. */}
+          {excedeSaldo && (
+            <p className="text-[11px] text-amber-700 dark:text-amber-400">
+              {saldoOrigen !== null && saldoOrigen <= 0
+                ? "Esta cuenta tiene saldo registrado en cero o negativo. Si de verdad tiene plata, declarale el saldo inicial desde la tarjeta de la cuenta."
+                : `Estás moviendo más de los ${formatearMoneda(saldoOrigen ?? 0)} registrados en esa cuenta. Va a quedar en negativo.`}
+            </p>
           )}
         </div>
-      ))}
+        <div className="space-y-2">
+          <Label htmlFor="transferencia-concepto">Concepto</Label>
+          <Input
+            id="transferencia-concepto"
+            name="concepto"
+            placeholder="Ej: Retiro al cierre"
+            required
+          />
+        </div>
+        <Button
+          className="w-full"
+          disabled={transfiriendo || !origen || !destino || origen === destino}
+        >
+          {transfiriendo && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Mover el dinero
+        </Button>
+      </form>
+    </DialogContent>
+  );
+
+  return (
+    <section className="space-y-6">
+      {/* La cifra primero y las acciones pegadas abajo: es lo que se viene a
+          ver y lo que se viene a hacer. El resto de la pestaña explica de
+          dónde sale ese número. */}
+      <CabeceraDisponible
+        disponible={disponible}
+        ingresosPorAcreditar={ingresosPorAcreditar}
+        cantidadPorAcreditar={cantidadPorAcreditar}
+        egresosProgramados={totalProgramados.monto}
+        cantidadProgramados={totalProgramados.cantidad}
+        vencidosProgramados={totalProgramados.vencidos}
+        onAbrirProgramados={() => setProgramadosAbierto(true)}
+        acciones={
+          <>
+            {/* El orden es el de la frecuencia de uso: un gasto se carga todos
+                los días, un ingreso libre y una transferencia cada tanto. */}
+            {puedeRegistrarEgreso && (
+              <div className={CLASE_CONTENEDOR_ACCION}>
+                <EgresoModal
+                  triggerVariant="outline"
+                  triggerClassName={CLASE_ACCION}
+                />
+                <EtiquetaAccionMobile>Anotar gasto</EtiquetaAccionMobile>
+              </div>
+            )}
+            {puedeRegistrarIngreso && (
+              <div className={CLASE_CONTENEDOR_ACCION}>
+                <IngresoModal
+                  triggerVariant="outline"
+                  triggerClassName={CLASE_ACCION}
+                />
+                <EtiquetaAccionMobile>Anotar ingreso</EtiquetaAccionMobile>
+              </div>
+            )}
+
+            {puedeTransferir && (
+              <div className={CLASE_CONTENEDOR_ACCION}>
+                <Dialog
+                  open={transferirAbierto}
+                  onOpenChange={setTransferirAbierto}
+                >
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={CLASE_ACCION}
+                      disabled={cuentas.length < 2}
+                      aria-label="Transferir entre cuentas"
+                    >
+                      <Repeat2 className="h-4 w-4" />
+                      <span>Transferir</span>
+                    </Button>
+                  </DialogTrigger>
+                  {contenidoTransferir}
+                </Dialog>
+                <EtiquetaAccionMobile>Transferir</EtiquetaAccionMobile>
+              </div>
+            )}
+
+            {/* "Gestionar cuentas" reemplaza a "+ Nueva cuenta": crear era lo
+                único que se podía hacer, así que ante un nombre mal escrito o
+                una cuenta de más el único camino era crear otra — que es cómo
+                se fabrica el catálogo duplicado que esta pantalla ahora
+                permite limpiar. */}
+            <div className={CLASE_CONTENEDOR_ACCION}>
+              <Button
+                variant="outline"
+                className={CLASE_ACCION}
+                onClick={() => setGestionAbierta(true)}
+                aria-label="Gestionar cuentas"
+              >
+                <Settings2 className="h-4 w-4" />
+                <span>Gestionar cuentas</span>
+              </Button>
+              <EtiquetaAccionMobile>Gestionar</EtiquetaAccionMobile>
+            </div>
+          </>
+        }
+      />
+
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">Tus cuentas</h2>
+        </div>
+      </div>
+
+      <TiraCuentas
+        saldos={lista}
+        turnosAbiertos={turnosAbiertos}
+        onAbrirCuenta={setDetalleCuenta}
+        onDeclararSaldoInicial={(cuenta) => {
+          const ficha = cuentas.find((c) => c.id === cuenta.cuenta_id);
+          if (ficha && !ficha.requiere_arqueo) {
+            setSaldoInicialCuenta(cuenta);
+          }
+        }}
+        puedeDeclararSaldoInicial={(cuenta) => {
+          const ficha = cuentas.find((c) => c.id === cuenta.cuenta_id);
+          return ficha ? !ficha.requiere_arqueo : false;
+        }}
+      />
 
       <Dialog
         open={saldoInicialCuenta !== null}
@@ -436,7 +432,9 @@ export function CuentasFinancierasPanel({
       >
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Saldo inicial de {saldoInicialCuenta?.nombre}</DialogTitle>
+            <DialogTitle>
+              Saldo inicial de {saldoInicialCuenta?.nombre}
+            </DialogTitle>
             <DialogDescription>
               ¿Cuánta plata había en esta cuenta cuando empezaste a usarla en
               Comerz? No se cuenta como ingreso: no es plata que ganaste ahora,
@@ -481,213 +479,24 @@ export function CuentasFinancierasPanel({
         </DialogContent>
       </Dialog>
 
+      <EgresosProgramadosSheet
+        abierto={programadosAbierto}
+        onOpenChange={setProgramadosAbierto}
+        puedeAdministrar={esAdmin}
+        puedeConfirmar={puedeRegistrarEgreso}
+      />
+
+      <GestionarCuentasSheet
+        abierto={gestionAbierta}
+        onOpenChange={setGestionAbierta}
+        cuentas={cuentas}
+        saldos={lista}
+      />
+
       <DetalleCuentaSheet
         cuenta={detalleCuenta}
         onOpenChange={(abierto) => !abierto && setDetalleCuenta(null)}
       />
-
-      {transferencias.length > 0 && (
-        <div className="rounded-xl border border-border bg-card">
-          <div className="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Últimos movimientos entre cuentas
-          </div>
-          <div className="divide-y divide-border">
-            {transferencias.map((t) => (
-              <div
-                key={t.id}
-                className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium">
-                    {t.origen_nombre} → {t.destino_nombre}
-                    {t.revierte_a && (
-                      <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Reversa
-                      </span>
-                    )}
-                    {t.revertida_por && (
-                      <span className="ml-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                        Revertida
-                      </span>
-                    )}
-                  </p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {t.concepto} ·{" "}
-                    {new Date(t.fecha).toLocaleString("es-AR", {
-                      dateStyle: "short",
-                      timeStyle: "short",
-                    })}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span className="font-mono font-semibold">
-                    {formatearMoneda(Number(t.monto))}
-                  </span>
-                  {/* Ni una reversa ni una ya revertida ofrecen el botón:
-                      la RPC rechaza las dos (ES_UNA_REVERSA /
-                      TRANSFERENCIA_YA_REVERTIDA) y mostrarlo igual sería
-                      prometer un click que siempre falla. */}
-                  {puedeAnular && !t.revierte_a && !t.revertida_por && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-xs text-muted-foreground hover:text-danger"
-                      onClick={() => setARevertir(t)}
-                    >
-                      Revertir
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <Dialog
-        open={aRevertir !== null}
-        onOpenChange={(abierto) => {
-          if (!abierto) {
-            setARevertir(null);
-            setMotivoReversa("");
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Revertir transferencia</DialogTitle>
-            <DialogDescription>
-              Se registra una transferencia nueva en sentido contrario, de{" "}
-              {aRevertir?.destino_nombre} a {aRevertir?.origen_nombre} por{" "}
-              {aRevertir ? formatearMoneda(Number(aRevertir.monto)) : ""}. La
-              original queda como está: nada se borra.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="motivo-reversa">Motivo</Label>
-              <Input
-                id="motivo-reversa"
-                value={motivoReversa}
-                onChange={(e) => setMotivoReversa(e.target.value)}
-                placeholder="Ej: Se cargó por error"
-                autoFocus
-              />
-            </div>
-            <Button
-              className="w-full"
-              variant="destructive"
-              onClick={revertir}
-              disabled={revirtiendo || !motivoReversa.trim()}
-            >
-              {revirtiendo && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Revertir
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </section>
-  );
-}
-
-function etiquetaTipo(tipo: string) {
-  return (
-    (
-      {
-        CAJA_DIARIA: "Caja diaria",
-        CAJA_GENERAL: "Caja general",
-        BANCO: "Banco",
-        BILLETERA: "Billetera",
-        OTRA: "Otra",
-      } as Record<string, string>
-    )[tipo] ?? tipo
-  );
-}
-
-/**
- * Un bloque de cuentas con su propio subtotal: caja diaria o caja grande.
- *
- * Es la MISMA lista de siempre (`estado_cuentas_financieras` + saldo de
- * `posicion_dinero`), partida en dos por `tipo === "CAJA_DIARIA"` — no hay
- * una fuente nueva, solo dos vistas de la misma. El subtotal de cada bloque
- * es la suma de SUS cuentas, y los dos subtotales suman "Disponible ahora"
- * de arriba.
- */
-function GrupoCuentas({
-  titulo,
-  ayuda,
-  cuentas,
-  vacio,
-  onAbrir,
-}: Readonly<{
-  titulo: string;
-  ayuda: string;
-  cuentas: SaldoCuenta[];
-  vacio: string;
-  onAbrir: (cuenta: SaldoCuenta) => void;
-}>) {
-  const subtotal = cuentas.reduce((acc, c) => acc + Number(c.saldo), 0);
-
-  return (
-    <div className="rounded-2xl border border-border bg-card">
-      <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3 sm:px-5">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold">{titulo}</p>
-          <p className="text-[11px] text-muted-foreground">{ayuda}</p>
-        </div>
-        <span
-          className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${
-            subtotal < 0 ? "text-danger" : ""
-          }`}
-        >
-          {formatearMoneda(subtotal)}
-        </span>
-      </div>
-
-      {cuentas.length === 0 ? (
-        <p className="px-4 py-4 text-xs text-muted-foreground sm:px-5">
-          {vacio}
-        </p>
-      ) : (
-        <ul className="divide-y divide-border">
-          {cuentas.map((cuenta) => {
-            const saldo = Number(cuenta.saldo);
-            const Icono = cuenta.es_efectivo
-              ? Banknote
-              : cuenta.tipo === "BILLETERA"
-                ? Wallet
-                : Landmark;
-            return (
-              <li key={cuenta.cuenta_id}>
-                <button
-                  type="button"
-                  onClick={() => onAbrir(cuenta)}
-                  className="flex w-full cursor-pointer items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 sm:px-5"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Icono className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        {cuenta.nombre}
-                      </p>
-                      <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                        {etiquetaTipo(cuenta.tipo)}
-                      </p>
-                    </div>
-                  </div>
-                  <span
-                    className={`shrink-0 font-mono text-sm font-semibold tabular-nums ${
-                      saldo < 0 ? "text-danger" : ""
-                    }`}
-                  >
-                    {formatearMoneda(saldo)}
-                  </span>
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </div>
   );
 }

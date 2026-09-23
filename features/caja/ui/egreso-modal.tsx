@@ -145,9 +145,13 @@ export function EgresoModal({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {mostrarTrigger && (
         <DialogTrigger asChild>
-          <Button variant={triggerVariant} className={triggerClassName}>
+          <Button
+            variant={triggerVariant}
+            className={triggerClassName}
+            aria-label="Anotar gasto"
+          >
             <TrendingDown className="h-4 w-4" />
-            Anotar Gasto
+            <span>Anotar Gasto</span>
           </Button>
         </DialogTrigger>
       )}

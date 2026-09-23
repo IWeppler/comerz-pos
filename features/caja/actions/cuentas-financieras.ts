@@ -287,3 +287,188 @@ export async function revertirTransferenciaFinancieraAction(
   revalidatePath("/", "layout");
   return { error: null, reversaId: (data as string) ?? null };
 }
+
+/**
+ * Renombrar una cuenta.
+ *
+ * Es lo único editable: el TIPO, el código y `es_sistema` deciden cómo se
+ * comporta la cuenta (si se arquea, si recibe el cierre del turno, si es el
+ * puente), y cambiarlos desde una pantalla sería reescribir el modelo por
+ * accidente. El nombre, en cambio, es lo que la dueña lee, y hoy no había
+ * forma de corregir un typo salvo creando una cuenta nueva — que es
+ * exactamente cómo se fabrican cuentas duplicadas.
+ *
+ * `.select("id")` y chequeo de filas: sin eso, un UPDATE que la RLS filtra
+ * vuelve con 0 filas y `error: null`, o sea "guardado" en la pantalla y nada
+ * en la base. Costó 35 fotos el 5/9.
+ */
+export async function renombrarCuentaFinancieraAction(
+  cuentaId: string,
+  nombre: string,
+): Promise<{ error: string | null }> {
+  const limpio = nombre.trim();
+  if (!cuentaId || limpio === "") return { error: "Ingresá un nombre." };
+  if (limpio.length > 60) return { error: "El nombre es demasiado largo." };
+
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase
+    .from("cuentas_financieras")
+    .update({ nombre: limpio })
+    .eq("id", cuentaId)
+    .select("id");
+
+  if (error) {
+    console.error("Error renombrando la cuenta:", error);
+    return { error: "No se pudo renombrar la cuenta." };
+  }
+  if (!data || data.length === 0) {
+    return { error: "Solo una administradora puede renombrar cuentas." };
+  }
+
+  revalidatePath("/caja");
+  return { error: null };
+}
+
+/**
+ * Dar de baja una cuenta que ya no se usa.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * SE DESACTIVA, NO SE BORRA — Y NUNCA CON PLATA ADENTRO
+ *
+ * Desactivar conserva la historia: `movimientos_financieros` es append-only y
+ * sus filas siguen explicando de dónde salió cada saldo. Borrar la fila
+ * dejaría movimientos colgando de una cuenta que no existe.
+ *
+ * El freno que importa es el SALDO. `registrar_transferencia_financiera`
+ * exige que las dos cuentas estén `activa`, así que desactivar una cuenta con
+ * plata deja esa plata INALCANZABLE: no se puede mover a ningún lado nunca
+ * más. Por eso primero se transfiere el saldo y después se desactiva, y el
+ * mensaje lo dice con el número puesto.
+ *
+ * Es justo el caso de El Nono Cacho: "Mercado Pago Posnet" quedó sin ningún
+ * método apuntándole pero con $110.112 de cobros viejos adentro.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+export async function desactivarCuentaFinancieraAction(
+  cuentaId: string,
+): Promise<{ error: string | null }> {
+  if (!cuentaId) return { error: "Elegí una cuenta." };
+
+  const supabase = createClient(await cookies());
+
+  const { data: cuenta, error: errorCuenta } = await supabase
+    .from("cuentas_financieras")
+    .select("id, nombre, es_sistema, activa")
+    .eq("id", cuentaId)
+    .single();
+
+  if (errorCuenta || !cuenta) return { error: "Esa cuenta no existe." };
+  if (!cuenta.activa) return { error: "Esa cuenta ya está dada de baja." };
+
+  // Las de sistema (caja diaria, caja general, el puente) las crea y las usa
+  // el propio modelo: sin ellas no se puede abrir un turno ni cobrar.
+  if (cuenta.es_sistema) {
+    return {
+      error: "Las cajas del sistema no se dan de baja: el turno y los cobros las necesitan.",
+    };
+  }
+
+  // El saldo se calcula acá y no se recibe del navegador: es el dato que
+  // decide si se puede perder plata.
+  const { data: movimientos, error: errorSaldo } = await supabase
+    .from("movimientos_financieros")
+    .select("importe")
+    .eq("cuenta_financiera_id", cuentaId);
+
+  if (errorSaldo) {
+    console.error("Error calculando el saldo de la cuenta:", errorSaldo);
+    return { error: "No se pudo verificar el saldo de la cuenta." };
+  }
+
+  const saldo = (movimientos ?? []).reduce(
+    (acc, m) => acc + Number(m.importe ?? 0),
+    0,
+  );
+  if (Math.abs(saldo) >= 0.01) {
+    return {
+      error: `${cuenta.nombre} todavía tiene ${formatearPesos(saldo)}. Transferí ese saldo a otra cuenta antes de darla de baja, o esa plata queda sin forma de moverse.`,
+    };
+  }
+
+  // Un método apuntando a una cuenta inactiva deja los cobros sin destino, que
+  // es el agujero que cerró `20260920200000`.
+  const { data: metodos, error: errorMetodos } = await supabase
+    .from("metodos_pago")
+    .select("nombre")
+    .eq("cuenta_destino_id", cuentaId);
+
+  if (errorMetodos) {
+    console.error("Error verificando los métodos de la cuenta:", errorMetodos);
+    return { error: "No se pudo verificar qué métodos usan la cuenta." };
+  }
+  if (metodos && metodos.length > 0) {
+    const nombres = metodos.map((m) => m.nombre).join(", ");
+    return {
+      error: `Todavía cobrás con ${nombres} en esta cuenta. Cambiales la cuenta de destino antes de darla de baja.`,
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("cuentas_financieras")
+    .update({ activa: false })
+    .eq("id", cuentaId)
+    .select("id");
+
+  if (error) {
+    console.error("Error dando de baja la cuenta:", error);
+    return { error: "No se pudo dar de baja la cuenta." };
+  }
+  if (!data || data.length === 0) {
+    return { error: "Solo una administradora puede dar de baja una cuenta." };
+  }
+
+  revalidatePath("/caja");
+  return { error: null };
+}
+
+/** Formato mínimo para un mensaje de error del server (no hay Intl del
+ * cliente acá y el mensaje viaja como texto). */
+function formatearPesos(monto: number): string {
+  return new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 2,
+  }).format(monto);
+}
+
+export type MetodoDeCuenta = { cuentaId: string; nombre: string; tipo: string };
+
+/**
+ * Qué métodos de pago caen en cada cuenta.
+ *
+ * Es el dato que faltaba para poder limpiar cuentas duplicadas sin adivinar.
+ * En El Nono Cacho se ve de un vistazo que "Mercado Pago" y "Mercado Pago
+ * Posnet" —dos métodos con comisiones distintas, 0% y 7%— ya caen los dos en
+ * la MISMA cuenta, que es lo correcto: la comisión y los días de acreditación
+ * viven en el método, no en la cuenta. Una cuenta puede tener varios flujos
+ * de ingreso.
+ */
+export async function getMetodosPorCuentaAction(): Promise<MetodoDeCuenta[]> {
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase
+    .from("metodos_pago")
+    .select("nombre, tipo, cuenta_destino_id")
+    .not("cuenta_destino_id", "is", null)
+    .order("nombre");
+
+  if (error) {
+    console.error("Error cargando los métodos por cuenta:", error);
+    return [];
+  }
+
+  return (data ?? []).map((m) => ({
+    cuentaId: m.cuenta_destino_id as string,
+    nombre: m.nombre as string,
+    tipo: m.tipo as string,
+  }));
+}

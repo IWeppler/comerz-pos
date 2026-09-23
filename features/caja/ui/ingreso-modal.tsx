@@ -118,9 +118,13 @@ export function IngresoModal({
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {mostrarTrigger && (
         <DialogTrigger asChild>
-          <Button variant={triggerVariant} className={triggerClassName}>
+          <Button
+            variant={triggerVariant}
+            className={triggerClassName}
+            aria-label="Anotar ingreso"
+          >
             <TrendingUp className="h-4 w-4" />
-            Anotar Ingreso
+            <span>Anotar Ingreso</span>
           </Button>
         </DialogTrigger>
       )}

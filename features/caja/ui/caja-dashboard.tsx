@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
-import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -15,21 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
-import {
-  Banknote,
-  CreditCard,
-  Lock,
-  Loader2,
-  ShoppingBag,
-  BookUser,
-  TrendingDown,
-  TrendingUp,
-  Repeat2,
-  Ban,
-} from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 import { etiquetaTipoEgreso } from "../lib/tipo-egreso";
 import { calcularTotalesTurno } from "../lib/totales-turno";
 import { anularEgresoAction } from "../actions/caja-action";
+import {
+  MovimientosTurno,
+  type MovimientoExtendido,
+} from "./movimientos-turno";
+import { OtrasCajasAbiertas } from "./otras-cajas-abiertas";
+import { TarjetaDigital, TarjetaTurno } from "./turno-tarjeta";
 import {
   TurnoCajaHistorial,
   EgresoCaja,
@@ -55,28 +49,6 @@ export interface CajaDashboardProps {
    * `TURNO_CERRADO` desde esta pantalla. */
   puedeAnular?: boolean;
 }
-
-type MovimientoExtendido = {
-  id: string;
-  tipo: "INGRESO" | "EGRESO";
-  origen: "VENTA" | "COBRO_DEUDA" | "EGRESO" | "TRANSFERENCIA" | "INGRESO";
-  concepto: string;
-  metodo: string;
-  metodo_tipo: string;
-  monto: number;
-  comision: number;
-  neto: number;
-  fecha: string;
-  usuario: string;
-  /** La venta se anuló. Sigue siendo un movimiento real del turno —la plata
-   * entró— pero no es facturación. Ver `totales` más abajo. */
-  anulada?: boolean;
-  afecta_facturacion?: boolean;
-  /** Solo en origen EGRESO: OPERATIVO | RETIRO_SOCIO | COMPRA_MERCADERIA |
-   * DEVOLUCION. Decide si se ofrece "Anular" — un DEVOLUCION lo generó una
-   * venta y se corrige desde ahí, no desde acá. */
-  egresoTipo?: string | null;
-};
 
 export function CajaDashboard({
   turnosAbiertos,
@@ -127,22 +99,6 @@ export function CajaDashboard({
   const hayCajaAjenaAbierta = !turno && turnosAbiertos.length > 0;
 
   const { movimientos, totales } = useMemo(() => {
-    if (!turno) {
-      return {
-        movimientos: [] as MovimientoExtendido[],
-        totales: {
-          fondoInicial: 0,
-          ingresosEfectivo: 0,
-          ingresosDigitalesBruto: 0,
-          comisionesRetenidas: 0,
-          ingresosDigitalesNeto: 0,
-          totalEgresos: 0,
-          efectivoEsperado: 0,
-          totalFacturado: 0,
-        },
-      };
-    }
-
     const ventasMapeadas: MovimientoExtendido[] = ventas.flatMap((v) => {
       const pagos = v.venta_pagos || [];
       const primerItem = v.ventas_items?.[0];
@@ -160,6 +116,7 @@ export function CajaDashboard({
       if (pagos.length > 0) {
         return pagos.map((pago) => ({
           id: `${v.id}-${pago.id || Math.random()}`,
+          turnoId: v.turno_caja_id ?? null,
           tipo: "INGRESO" as const,
           origen: "VENTA" as const,
           concepto: conceptoVenta,
@@ -178,6 +135,7 @@ export function CajaDashboard({
       return [
         {
           id: v.id,
+          turnoId: v.turno_caja_id ?? null,
           tipo: "INGRESO" as const,
           origen: "VENTA" as const,
           concepto: conceptoVenta,
@@ -199,6 +157,7 @@ export function CajaDashboard({
 
         return {
           id: p.id ?? `${p.metodo_nombre}-${p.creado_en}`,
+          turnoId: p.turno_caja_id ?? null,
           tipo: "INGRESO",
           origen: "COBRO_DEUDA",
           concepto: `Cobro a Deudor: ${cliente?.nombre || "Cliente"}`,
@@ -215,6 +174,7 @@ export function CajaDashboard({
 
     const egresosMapeados: MovimientoExtendido[] = egresos.map((e) => ({
       id: e.id,
+      turnoId: e.turno_caja_id ?? null,
       tipo: "EGRESO",
       origen: "EGRESO",
       concepto: `${etiquetaTipoEgreso(e.tipo)}: ${e.concepto}`,
@@ -231,6 +191,7 @@ export function CajaDashboard({
     const transferenciasMapeadas: MovimientoExtendido[] = transferenciasCaja.map(
       (movimiento) => ({
         id: `transferencia-${movimiento.movimiento_id}`,
+        turnoId: movimiento.turno_caja_id ?? null,
         tipo: Number(movimiento.importe) >= 0 ? "INGRESO" : "EGRESO",
         origen: movimiento.origen_tipo === "INGRESO" ? "INGRESO" : "TRANSFERENCIA",
         concepto: movimiento.descripcion,
@@ -253,258 +214,115 @@ export function CajaDashboard({
       ...transferenciasMapeadas,
     ].sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
 
+    // ─────────────────────────────────────────────────────────────────────
+    // LA TABLA ES ANCHA, EL ARQUEO ES ANGOSTO
+    //
+    // `todos` puede traer los movimientos de varias cajas abiertas: es lo que
+    // la dueña necesita ver. Los TOTALES, en cambio, se calculan solo con los
+    // del turno propio, porque son el número que alguien va a contra-contar
+    // con billetes en la mano.
+    //
+    // Mezclarlos ya costó un incidente (30/7: los $22.650 de Brisa del 20/7
+    // aparecían como sobrante en la caja de Evelyn). El filtro por `turnoId`
+    // es lo único que lo evita, así que no se saca ni se "simplifica".
+    //
     // La cuenta vive en `lib/totales-turno.ts`, con tests: es la que decide si
     // a una vendedora le falta plata en el cajón.
+    // ─────────────────────────────────────────────────────────────────────
+    const propios = turno ? todos.filter((m) => m.turnoId === turno.id) : [];
+
     return {
       movimientos: todos,
-      totales: calcularTotalesTurno(todos, Number(turno.monto_inicial)),
+      totales: calcularTotalesTurno(propios, Number(turno?.monto_inicial ?? 0)),
     };
   }, [ventas, pagosSueltos, egresos, transferenciasCaja, turno]);
+  const otrasCajas = turnosAbiertos.filter((t) => t.id !== turno?.id);
 
   return (
     <div className="space-y-6 animate-in fade-in-50">
-      {!turno ? (
-        /* Acá vivía el formulario de apertura. Se abre SOLO desde el botón de
-           caja de la barra (CajaQuickModal): un solo lugar para abrir turno,
-           el mismo desde cualquier pantalla. Esto solo dice por qué no hay
-           nada que mostrar. */
-        <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground">
-            <Lock className="h-4 w-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">
-              {hayCajaAjenaAbierta
-                ? "No tenés un turno propio abierto"
-                : "La caja está cerrada"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Abrí el turno desde el botón de caja de la barra.
-            </p>
-          </div>
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <h2 className="text-lg font-semibold">
+            {turno ? "Tu turno en curso" : "Turnos en curso"}
+          </h2>
+          <p className="text-[11px] text-muted-foreground">
+            La plata que está manejando cada persona ahora.
+          </p>
         </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Cierre Z y gasto viven en el botón de caja de la barra, igual
-              que la apertura: acá queda lo que se mira, no lo que se opera.
-              En celular las dos tarjetas se deslizan de costado: apiladas
-              empujaban los movimientos —que es a lo que se entra— abajo del
-              pliegue. */}
-          <div className="-mx-2 flex snap-x snap-mandatory gap-4 overflow-x-auto px-2 pb-1 [&::-webkit-scrollbar]:hidden [scrollbar-width:none] md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0 md:pb-0">
-            <div className="flex w-[85%] shrink-0 snap-start flex-col justify-between rounded-2xl border border-border bg-muted p-4 md:w-auto md:shrink">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
-                  <Banknote className="w-4 h-4 text-success" />
-                  Efectivo en Cajon
-                </h3>
-                <div
-                  className={`text-3xl font-mono font-semibold mb-2 ${
-                    totales.efectivoEsperado < 0
-                      ? "text-danger"
-                      : "text-foreground"
-                  }`}
-                >
-                  {formatearMoneda(totales.efectivoEsperado)}
-                </div>
-                {totales.efectivoEsperado < 0 ? (
-                  <p className="text-sm text-danger">
-                    Revisar: efectivo esperado negativo
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground font-medium">
-                    Efectivo total esperado al cierre
-                  </p>
-                )}
-              </div>
-              <div className="mt-8 space-y-3">
-                <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-muted-foreground">Fondo inicial</span>
-                  <span className="font-mono font-medium">
-                    {formatearMoneda(totales.fondoInicial)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-muted-foreground">
-                    Cobros en efectivo
-                  </span>
-                  <span className="font-mono font-medium text-success">
-                    +{formatearMoneda(totales.ingresosEfectivo)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-muted-foreground">Salidas de efectivo</span>
-                  <span className="font-mono font-medium text-danger">
-                    -{formatearMoneda(totales.totalEgresos)}
-                  </span>
-                </div>
-              </div>
-            </div>
+        <span className="text-xs font-medium capitalize text-muted-foreground">
+          {fechaLarga()}
+        </span>
+      </div>
 
-            <div className="flex w-[85%] shrink-0 snap-start flex-col justify-between rounded-2xl border border-border bg-muted p-4 md:w-auto md:shrink">
-              <div>
-                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2 mb-4">
-                  <CreditCard className="w-4 h-4 text-chart-1" />
-                  Cobros Digitales
-                </h3>
-                <div className="text-3xl font-mono font-semibold text-foreground mb-2">
-                  {formatearMoneda(totales.ingresosDigitalesNeto)}
-                </div>
-                <p className="text-sm text-muted-foreground font-medium">
-                  Acreditacion neta estimada (Transf. y Tarjetas)
+      {/* ─────────────────────────────────────────────────────────────────
+          DOS LECTURAS DE LA MISMA PANTALLA
+
+          Con turno propio (la vendedora): el arqueo grande a la izquierda,
+          que es lo que va a contar con billetes en la mano.
+
+          Sin turno propio (la dueña): NO se queda sin nada. Ve las cajas
+          abiertas del local y todos sus movimientos, filtrables por empleada.
+          Su pregunta no es "cuánto hay en mi cajón" sino "qué está pasando
+          en el local ahora".
+
+          En los dos casos la tabla es la misma y muestra lo que esa persona
+          puede ver; lo único angosto es el arqueo.
+          ───────────────────────────────────────────────────────────────── */}
+      <div className="space-y-6">
+        <div
+          className={
+            turno
+              ? "grid gap-4 lg:grid-cols-[1.15fr_1fr]"
+              : "grid gap-4 md:grid-cols-2"
+          }
+        >
+          {turno ? (
+            <TarjetaTurno
+              vendedor={turno.perfiles?.nombre || "Tu caja"}
+              desde={turno.fecha_apertura}
+              totales={totales}
+            />
+          ) : (
+            /* El formulario de apertura vive SOLO en el botón de caja de la
+               barra: un solo lugar para abrir turno desde cualquier pantalla.
+               Esto solo dice por qué no hay arqueo propio que mostrar. */
+            <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-muted text-muted-foreground">
+                <Lock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  {hayCajaAjenaAbierta
+                    ? "No tenés un turno propio abierto"
+                    : "La caja está cerrada"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Abrí el turno desde el botón de caja de la barra.
                 </p>
               </div>
-              <div className="mt-8 space-y-2">
-                <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-muted-foreground">Cobros brutos</span>
-                  <span className="font-mono font-medium">
-                    {formatearMoneda(totales.ingresosDigitalesBruto)}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center text-sm font-medium">
-                  <span className="text-muted-foreground">
-                    Comisiones retenidas
-                  </span>
-                  <span className="font-mono font-medium text-danger">
-                    -{formatearMoneda(totales.comisionesRetenidas)}
-                  </span>
-                </div>
-              </div>
             </div>
-          </div>
+          )}
 
-          <div>
-            <div className="px-1 sm:px-4 mb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <h3 className="text-lg font-bold text-foreground">
-                Movimientos del Turno
-              </h3>
-              <div className="text-sm font-medium text-muted-foreground">
-                Total Facturado Bruto:{" "}
-                <span className="text-foreground font-mono font-medium">
-                  {formatearMoneda(totales.totalFacturado)}
-                </span>
-              </div>
-            </div>
-
-            <div className="rounded-2xl bg-card border border-border overflow-x-auto">
-              <table className="w-full text-sm text-left whitespace-nowrap">
-                <thead className="bg-card text-muted-foreground text-[10px] uppercase font-bold tracking-widest">
-                  <tr>
-                    <th className="px-3 py-3 sm:px-6 sm:py-4">Hora</th>
-                    <th className="px-3 py-3 sm:px-6 sm:py-4">Concepto</th>
-                    <th className="px-3 py-3 sm:px-6 sm:py-4">Metodo</th>
-                    <th className="px-3 py-3 sm:px-6 sm:py-4 text-right">Monto</th>
-                    <th className="px-3 py-3 sm:px-6 sm:py-4 hidden sm:table-cell">Usuario</th>
-                    {puedeAnular && (
-                      <th className="px-3 py-3 sm:px-6 sm:py-4 w-10" aria-hidden />
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {movimientos.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={puedeAnular ? 6 : 5}
-                        className="px-6 py-12 text-center text-muted-foreground bg-transparent"
-                      >
-                        Aun no hay movimientos registrados en este turno.
-                      </td>
-                    </tr>
-                  ) : (
-                    movimientos.map((mov) => (
-                      <tr
-                        key={`${mov.tipo}-${mov.id}`}
-                        className="hover:bg-muted/30 transition-colors"
-                      >
-                        <td className="px-3 py-3 sm:px-6 sm:py-4 text-muted-foreground text-xs font-medium">
-                          {new Date(mov.fecha).toLocaleTimeString("es-AR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            hour12: false,
-                          })}
-                        </td>
-                        <td className="px-3 py-3 sm:px-6 sm:py-4 font-medium text-foreground">
-                          <div className="flex items-center gap-3">
-                            {mov.origen === "VENTA" && (
-                              <div className="p-1.5 bg-success/10 text-success rounded-md shrink-0 border">
-                                <ShoppingBag className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-                            {mov.origen === "COBRO_DEUDA" && (
-                              <div className="p-1.5 bg-info/10 text-info rounded-md shrink-0 border">
-                                <BookUser className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-                            {mov.origen === "EGRESO" && (
-                              <div className="p-1.5 bg-danger/10 text-danger rounded-md shrink-0 border">
-                                <TrendingDown className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-                            {mov.origen === "TRANSFERENCIA" && (
-                              <div className="p-1.5 bg-info/10 text-info rounded-md shrink-0 border">
-                                <Repeat2 className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-                            {mov.origen === "INGRESO" && (
-                              <div className="p-1.5 bg-success/10 text-success rounded-md shrink-0 border">
-                                <TrendingUp className="w-3.5 h-3.5" />
-                              </div>
-                            )}
-                            <span className="truncate max-w-[110px] sm:max-w-xs text-xs sm:text-sm">
-                              {mov.concepto}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 sm:px-6 sm:py-4">
-                          <Badge
-                            variant="secondary"
-                            className="text-[10px] uppercase shadow-none bg-muted"
-                          >
-                            {mov.metodo}
-                          </Badge>
-                        </td>
-                        <td className="px-3 py-3 sm:px-6 sm:py-4 text-right font-mono font-medium">
-                          <div
-                            className={
-                              mov.tipo === "INGRESO"
-                                ? "text-success"
-                                : "text-danger"
-                            }
-                          >
-                            {mov.tipo === "INGRESO" ? "+" : "-"}
-                            {formatearMoneda(mov.monto)}
-                          </div>
-                        </td>
-                        <td className="px-3 py-3 sm:px-6 sm:py-4 text-muted-foreground hidden sm:table-cell text-sm">
-                          {mov.usuario}
-                        </td>
-                        {puedeAnular && (
-                          <td className="px-3 py-3 sm:px-6 sm:py-4">
-                            {/* Solo un gasto propio (no venta, no cobro, no
-                                transferencia) y que no sea un reintegro de
-                                venta: ese se corrige desde la venta. */}
-                            {mov.origen === "EGRESO" &&
-                              mov.egresoTipo !== "DEVOLUCION" && (
-                                <button
-                                  type="button"
-                                  aria-label="Anular gasto"
-                                  title="Anular gasto"
-                                  onClick={() => setAAnular(mov)}
-                                  className="cursor-pointer rounded-md p-1.5 text-muted-foreground hover:bg-danger/10 hover:text-danger"
-                                >
-                                  <Ban className="h-3.5 w-3.5" />
-                                </button>
-                              )}
-                          </td>
-                        )}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+          {/* Cobros digitales: al lado del cajón y nunca sumado con él. Esa
+              plata no está en ninguna caja que se pueda contar, y mezclarla
+              con el efectivo esperado es cómo un arqueo termina con una
+              diferencia que nadie puede explicar. Solo con turno propio: es
+              del turno, no del local. */}
+          <div className="space-y-4">
+            <OtrasCajasAbiertas turnos={otrasCajas} />
+            {turno && <TarjetaDigital totales={totales} />}
           </div>
         </div>
-      )}
+
+        {(turno || movimientos.length > 0) && (
+          <MovimientosTurno
+            movimientos={movimientos}
+            puedeAnular={puedeAnular}
+            onAnular={setAAnular}
+            variasCajas={turnosAbiertos.length > 1 || !turno}
+          />
+        )}
+      </div>
 
       {/* El historial se renderiza afuera (page.tsx): tiene que verse también
           cuando la dueña está en "Vista general" y este componente no se
@@ -554,4 +372,15 @@ export function CajaDashboard({
       </Dialog>
     </div>
   );
+}
+
+/** "lunes 22 de septiembre". Se arma en el cliente, así que puede parpadear
+ * un instante contra el render del server si el turno cruza la medianoche; es
+ * un rótulo de contexto, no un dato que alguien firme. */
+function fechaLarga(): string {
+  return new Intl.DateTimeFormat("es-AR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date());
 }

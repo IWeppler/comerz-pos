@@ -15,12 +15,18 @@ import { getAdvisorInsights } from "@/features/reports/actions/get-advisor-insig
 import { AdvisorBanner } from "@/features/reports/ui/advisor-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { ExportacionesTab } from "@/features/exportaciones/ui/exportaciones-tab";
+import { puedeVerVistaGerencialAction } from "@/features/caja/actions/permisos-caja";
+import { getResumenFinancieroAction } from "@/features/caja/actions/get-resumen-financiero";
+import { ResumenFinancieroPeriodo } from "@/features/caja/ui/resumen-financiero-periodo";
+import { getVentasFacturadasAction } from "@/features/caja/actions/get-ventas-facturadas";
+import { VentasFacturadas } from "@/features/caja/ui/ventas-facturadas";
 import { ScrollArea, ScrollBar } from "@/shared/ui/scroll-area";
 import {
   Activity,
   DollarSign,
   DropletOff,
   Package,
+  PiggyBank,
   ShoppingCart,
   TrendingUp,
   FileSpreadsheet,
@@ -44,6 +50,11 @@ import {
 } from "@/features/planes/lib/tiene-feature-server";
 
 export const dynamic = "force-dynamic";
+
+/** Con qué período abre la pestaña Finanzas. El mes es la unidad en la que la
+ * dueña piensa los gastos fijos, y es el mismo valor con el que abría en
+ * /caja: mover la pantalla no puede cambiarle el número a nadie. */
+const PERIODO_INICIAL_FINANZAS = "mes" as const;
 
 interface PageProps {
   searchParams: Promise<{ periodo?: string; desde?: string; hasta?: string }>;
@@ -104,7 +115,7 @@ export default async function ReportesPage({
     supabase.from("clientes").select("*").order("nombre", { ascending: true }),
     supabase
       .from("configuracion_pos")
-      .select("cc_plazo_mora, crm_dias_inactivo")
+      .select("cc_plazo_mora, crm_dias_inactivo, modo_facturacion")
       .single(),
     getPagosCuentaCorrienteAction(),
   ]);
@@ -126,6 +137,37 @@ export default async function ReportesPage({
   const config: Partial<ConfiguracionPOS> = configResponse.data || {};
   const plazoMora = config.cc_plazo_mora ?? 30;
   const diasInactivo = config.crm_dias_inactivo ?? 60;
+
+  // ───────────────────────────────────────────────────────────────────────
+  // FINANZAS: qué PASÓ con la plata en el período.
+  //
+  // Vivía en /caja → Dinero y se mudó acá el 22/9/2026. Dinero contesta
+  // "dónde está la plata AHORA" y es una pantalla de operación: se abre entre
+  // dos clientas para ver si alcanza el efectivo. Esto otro es un reporte —
+  // cobros por medio, gastos por categoría, arqueos del mes— y se mira una
+  // vez por semana con tiempo. Tenerlos juntos hacía que la pregunta urgente
+  // quedara arriba de tres bloques que nadie estaba leyendo en ese momento.
+  //
+  // Tiene su propio selector de período, igual que Exportaciones y por el
+  // mismo motivo: `ReportesFilterbar` gobierna las métricas de venta y estos
+  // dos hablan de flujo de dinero, que el comercio mira por mes calendario.
+  // Dos controles en la misma pantalla es un riesgo conocido; el alternativo
+  // —hacerlos seguir al filtro de arriba— cambiaría el significado de un
+  // número que ya se lee de una forma.
+  // ───────────────────────────────────────────────────────────────────────
+  const puedeVerFinanzas = await puedeVerVistaGerencialAction();
+  const facturaConArca = config.modo_facturacion === "ARCA";
+
+  const [resumenFinanciero, facturadas] = puedeVerFinanzas
+    ? await Promise.all([
+        getResumenFinancieroAction(PERIODO_INICIAL_FINANZAS),
+        // Facturado / sin facturar tiene sentido SOLO para quien factura con
+        // ARCA: en un comercio de ticket interno "0% facturado" es ruido.
+        facturaConArca
+          ? getVentasFacturadasAction(PERIODO_INICIAL_FINANZAS)
+          : Promise.resolve(null),
+      ])
+    : [null, null];
 
   const metrics = getDashboardMetrics(
     ventasOperativas,
@@ -264,6 +306,14 @@ export default async function ReportesPage({
                   <TrendingUp className="w-4 h-4 mr-2" /> Vendedores
                 </TabsTrigger>
               )}
+              {puedeVerFinanzas && (
+                <TabsTrigger
+                  value="finanzas"
+                  className="rounded-sm px-2 data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:text-foreground  cursor-pointer transition-colors"
+                >
+                  <PiggyBank className="w-4 h-4 mr-2" /> Finanzas
+                </TabsTrigger>
+              )}
               <TabsTrigger
                 value="exportaciones"
                 className="rounded-sm px-2 data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:text-foreground  cursor-pointer transition-colors"
@@ -310,6 +360,24 @@ export default async function ReportesPage({
           desde={desdeVendedores}
           hasta={hastaVendedores}
         />
+
+        {/* Los dos traen su propio selector de período y se refrescan solos;
+            por eso no reciben el filtro de arriba. Ver el comentario largo en
+            el fetch. */}
+        {resumenFinanciero?.data && (
+          <TabsContent value="finanzas" className="mt-0 space-y-10">
+            <ResumenFinancieroPeriodo
+              resumenInicial={resumenFinanciero.data}
+              periodoInicial={PERIODO_INICIAL_FINANZAS}
+            />
+            {facturadas?.data && (
+              <VentasFacturadas
+                inicial={facturadas.data}
+                periodoInicial={PERIODO_INICIAL_FINANZAS}
+              />
+            )}
+          </TabsContent>
+        )}
 
         {/* Tiene su propio selector de período: el contador cierra por mes,
             no por el filtro con el que se miran los reportes del día. */}

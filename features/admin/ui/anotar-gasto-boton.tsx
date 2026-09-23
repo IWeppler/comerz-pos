@@ -51,7 +51,7 @@ export function AnotarGastoBoton() {
       <Button
         size="sm"
         variant="outline"
-        className="h-9 gap-1.5 border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
+        className="h-10 gap-1.5 border-white/15 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white"
         onClick={() => setAbierto(true)}
       >
         <Plus className="size-3.5" />

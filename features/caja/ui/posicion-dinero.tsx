@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   AlertTriangle,
   Banknote,
-  ChevronDown,
   Clock,
   CreditCard,
   Landmark,
@@ -70,7 +69,6 @@ export function PosicionDinero({
   posicionInicial: PosicionDineroData;
   periodoInicial: PeriodoCalendario;
 }>) {
-  const [verCajas, setVerCajas] = useState(false);
   const [periodo, setPeriodo] = useState<PeriodoCalendario>(periodoInicial);
   const [posicion, setPosicion] = useState(posicionInicial);
   const [cargando, setCargando] = useState(false);
@@ -104,8 +102,7 @@ export function PosicionDinero({
             Lo que todavía no está en tus cuentas
           </h2>
           <p className="text-[11px] text-muted-foreground">
-            El período gobierna solo lo acreditado. El efectivo y lo pendiente
-            son de ahora.
+            El período gobierna solo lo acreditado. Lo pendiente es de ahora.
           </p>
         </div>
         <PeriodoSelector
@@ -117,19 +114,14 @@ export function PosicionDinero({
       </div>
 
       <TooltipProvider>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Tarjeta
-            titulo="Efectivo en los cajones abiertos"
-            monto={Number(efectivo.total)}
-            detalle={
-              efectivo.turnos_abiertos === 0
-                ? "Ninguna caja abierta"
-                : `${efectivo.turnos_abiertos} caja(s) abierta(s)`
-            }
-            Icono={Banknote}
-            alerta={hayCajaNegativa}
-            ayuda="Plata física en los cajones abiertos AHORA. Se calcula igual que el cierre: fondo inicial + cobros en efectivo − todo lo que salió del cajón (gastos, retiros y compras). Los turnos ya cerrados no cuentan: esa plata se contó y se retiró."
-          />
+        {/* El efectivo de los cajones abiertos NO está acá: es una cuenta como
+            cualquier otra y vive arriba, en la tira ("Cajas abiertas"). Desde
+            `20260920180000` el saldo de CAJA_DIARIA ES la suma del esperado de
+            los turnos abiertos, así que mostrarlo también en esta fila sería
+            el mismo número dos veces — que es el bloque duplicado que esta
+            pantalla ya tuvo una vez. Lo que queda acá es lo que NO está en
+            ninguna cuenta todavía. */}
+        <div className="grid gap-3 sm:grid-cols-2">
           <Tarjeta
             titulo="Por acreditar (ahora)"
             monto={totalPorAcreditar}
@@ -159,52 +151,9 @@ export function PosicionDinero({
         </p>
       )}
 
-      {efectivo.cajas.length > 0 && (
-        <div className="rounded-xl border border-border bg-card">
-          <button
-            type="button"
-            onClick={() => setVerCajas((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 px-3 py-3 text-xs font-semibold"
-          >
-            <span>Efectivo caja por caja</span>
-            <ChevronDown
-              className={`h-4 w-4 shrink-0 transition-transform ${verCajas ? "rotate-180" : ""}`}
-            />
-          </button>
-
-          {verCajas && (
-            <ul className="border-t border-border ">
-              {efectivo.cajas.map((caja) => {
-                const esperado = Number(caja.esperado);
-                return (
-                  <li
-                    key={caja.turno_id}
-                    className="bg-card flex flex-col gap-1 border-b border-border px-3 py-2.5 text-xs last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="min-w-0">
-                      <div className="font-medium">{caja.vendedor}</div>
-                      <div className="text-muted-foreground">
-                        Abrió {formatearFechaHora(caja.desde)} · inicial{" "}
-                        {formatearMoneda(Number(caja.inicial))} · cobró{" "}
-                        {formatearMoneda(Number(caja.ingresos))} · salidas{" "}
-                        {formatearMoneda(Number(caja.salidas))}
-                        {Number(caja.transferencias_netas ?? 0) !== 0 && (
-                          <> · pases internos {Number(caja.transferencias_netas) > 0 ? "+" : ""}{formatearMoneda(Number(caja.transferencias_netas))}</>
-                        )}
-                      </div>
-                    </div>
-                    <div
-                      className={`shrink-0 font-semibold tabular-nums ${esperado < 0 ? "text-danger" : ""}`}
-                    >
-                      {formatearMoneda(esperado)}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-      )}
+      {/* El desglose caja por caja se fue a Hoy, que es donde alguien va a
+          cerrar un turno. Acá alcanzaba con el total, y el total ya está en la
+          tira de cuentas. */}
 
       {hayCajaNegativa && (
         <p className="flex items-start gap-2 rounded-lg border border-danger/20 bg-danger/10 px-3 py-2 text-xs text-danger">
@@ -423,14 +372,5 @@ function formatearFecha(iso: string): string {
   return new Intl.DateTimeFormat("es-AR", {
     day: "2-digit",
     month: "2-digit",
-  }).format(new Date(iso));
-}
-
-function formatearFechaHora(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
   }).format(new Date(iso));
 }

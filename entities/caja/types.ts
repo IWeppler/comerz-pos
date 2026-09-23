@@ -37,6 +37,9 @@ export interface TurnoCajaHistorial {
 export interface VentaCaja {
   id: string;
   total: number | string;
+  /** El turno en el que se cobró. Con varias cajas abiertas a la vista es lo
+   * que separa el arqueo propio del de la caja de al lado. */
+  turno_caja_id?: string | null;
   metodo_pago?: string | null;
   fecha_venta: string;
   cliente_id?: string | null;
@@ -181,6 +184,11 @@ export interface TransferenciaCaja {
   importe: number | string;
   descripcion: string;
   fecha_movimiento: string;
+  /** A qué turno pertenece. La RPC no lo devuelve (se la llama POR turno), así
+   * que lo agrega quien la consulta: con varios turnos abiertos a la vista,
+   * sin esto no se puede saber cuál de esas transferencias entra al arqueo
+   * propio y cuál es de la caja de al lado. */
+  turno_caja_id?: string | null;
 }
 
 /**

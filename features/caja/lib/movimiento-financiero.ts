@@ -50,6 +50,11 @@ export function etiquetaMovimiento(
 ): string {
   switch (origenTipo) {
     case "VENTA_PAGO":
+      // En la vista de cuentas los cobros de un día entran sumados en una
+      // sola fila (`p_vista => 'CUENTAS'`). El nombre tiene que decir que es
+      // un conjunto: "Cobro de una venta" sobre nueve cobros es falso, y el
+      // importe al lado no cuadraría con ninguna venta.
+      if (evento === "CONSOLIDADO_DIA") return "Cobros del día";
       if (importe > 0) return "Cobro de una venta";
       if (importe < 0) return "Cobro revertido";
       return "Cobro sin efecto en la cuenta";

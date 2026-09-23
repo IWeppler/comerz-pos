@@ -3,7 +3,6 @@ import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { CajaDashboard } from "@/features/caja/ui/caja-dashboard";
-import { VistaGerencial } from "@/features/caja/ui/vista-gerencial";
 import { CajaVistas } from "@/features/caja/ui/caja-vistas";
 import { CajaHistoryTable } from "@/features/caja/ui/caja-history-table";
 import {
@@ -11,29 +10,26 @@ import {
   puedeVerMovimientosAction,
   puedeAnularMovimientoAction,
   puedeRegistrarIngresoAction,
+  puedeRegistrarEgresoAction,
+  puedeTransferirAction,
 } from "@/features/caja/actions/permisos-caja";
 import { MovimientosFinancierosTable } from "@/features/caja/ui/movimientos-financieros-table";
+import { getActividadDeCuentasAction } from "@/features/caja/actions/movimientos-financieros";
+import { ActividadCuentas } from "@/features/caja/ui/actividad-cuentas";
 import { puedeOperarCaja } from "@/features/caja/lib/puede-operar-caja";
-import {
-  getDetalleMediosPagoAction,
-  getResumenGerencialAction,
-  getTotalesPorTurnoAction,
-} from "@/features/caja/actions/get-resumen-gerencial";
+import { getTotalesPorTurnoAction } from "@/features/caja/actions/get-resumen-gerencial";
 import { getPosicionDineroAction } from "@/features/caja/actions/get-posicion-dinero";
-import { PosicionDinero } from "@/features/caja/ui/posicion-dinero";
-import { getResumenFinancieroAction } from "@/features/caja/actions/get-resumen-financiero";
-import { ResumenFinancieroPeriodo } from "@/features/caja/ui/resumen-financiero-periodo";
-import { getVentasFacturadasAction } from "@/features/caja/actions/get-ventas-facturadas";
-import { VentasFacturadas } from "@/features/caja/ui/ventas-facturadas";
 import {
   TurnoCajaHistorial,
   VentaCaja,
   EgresoCaja,
+  TransferenciaCaja,
 } from "@/entities/caja/types";
 import { VentaPago } from "@/entities/ventas/types";
 import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 import { getRolActual } from "@/shared/config/supabase/contexto-actual";
 import { getEstadoCuentasFinancierasAction } from "@/features/caja/actions/cuentas-financieras";
+import { getEgresosProgramadosAction } from "@/features/caja/actions/egresos-programados";
 import { CuentasFinancierasPanel } from "@/features/caja/ui/cuentas-financieras-panel";
 
 export const dynamic = "force-dynamic";
@@ -55,14 +51,23 @@ export default async function CajaPage() {
   // acá: es la vendedora de "varios puestos, una caja", o cualquiera a quien
   // le sacaron "Operar la caja" desde Empleados y Permisos. El link del
   // sidebar ya no se muestra; esto es lo que impide entrar tipeando /caja.
-  const [operaCaja, veGerencial, veMovimientosGate, puedeAnular, puedeRegistrarIngreso] =
-    await Promise.all([
-      puedeOperarCaja(),
-      puedeVerVistaGerencialAction(),
-      puedeVerMovimientosAction(),
-      puedeAnularMovimientoAction(),
-      puedeRegistrarIngresoAction(),
-    ]);
+  const [
+    operaCaja,
+    veGerencial,
+    veMovimientosGate,
+    puedeAnular,
+    puedeRegistrarIngreso,
+    puedeRegistrarEgreso,
+    puedeTransferir,
+  ] = await Promise.all([
+    puedeOperarCaja(),
+    puedeVerVistaGerencialAction(),
+    puedeVerMovimientosAction(),
+    puedeAnularMovimientoAction(),
+    puedeRegistrarIngresoAction(),
+    puedeRegistrarEgresoAction(),
+    puedeTransferirAction(),
+  ]);
   if (!operaCaja && !veGerencial && !veMovimientosGate) redirect("/pos");
 
   // El rol es por negocio (usuarios_negocios).
@@ -79,13 +84,9 @@ export default async function CajaPage() {
     .from("configuracion_pos")
     // posName y ancho_ticket_mm son la cabecera del cierre Z impreso.
     .select(
-      "modo_caja, requiere_caja_abierta, modo_facturacion, posName, ancho_ticket_mm",
+      "modo_caja, requiere_caja_abierta, posName, ancho_ticket_mm",
     )
     .single();
-
-  // Facturado / sin facturar tiene sentido SOLO para quien factura con
-  // ARCA: en un comercio de ticket interno "0% facturado" es ruido.
-  const facturaConArca = config?.modo_facturacion === "ARCA";
 
   const modoCaja = config?.modo_caja || "UNICA";
 
@@ -145,31 +146,53 @@ export default async function CajaPage() {
   // en POR_USUARIO cada quien tiene el suyo; en UNICA la caja es una sola
   // compartida por todo el local.
   //
-  // Los movimientos se traen SOLO de este turno. Antes se traían de todos los
-  // turnos abiertos visibles, y como un admin ve los ajenos, el efectivo de
-  // otra cajera se sumaba a su "Efectivo en Cajón". Con un turno de otro día
-  // que quedó abierto, eso aparecía como un sobrante fantasma en un turno
-  // recién abierto (incidente 30/7: los 22.650 de Brisa del 20/7 aparecían en
-  // la caja de Evelyn).
   const turnoPropio =
     turnosAbiertos.find((t) =>
       t.modo === "POR_USUARIO" ? t.vendedor_id === user.id : true,
     ) ?? null;
 
+  // ───────────────────────────────────────────────────────────────────────
+  // QUÉ MOVIMIENTOS SE TRAEN, Y LA LÍNEA QUE NO SE PUEDE CRUZAR
+  //
+  // Se traen los de TODOS los turnos abiertos que esta persona puede ver. Para
+  // una vendedora eso es uno solo —el suyo—, porque el historial ya viene
+  // filtrado por `cerrar_ajena` + modo POR_USUARIO. Para la dueña son todos:
+  // ella no opera una caja, mira el negocio, y su pregunta es "qué está
+  // pasando en el local ahora", no "qué pasó en mi cajón".
+  //
+  // LO QUE NO SE PUEDE HACER es dejar que esos movimientos ajenos entren en el
+  // ARQUEO. Ya pasó: cuando el fetch era ancho, el efectivo de otra cajera se
+  // sumaba al "Efectivo en Cajón" de quien miraba, y un turno viejo que quedó
+  // abierto aparecía como sobrante fantasma en uno recién abierto (incidente
+  // 30/7: los $22.650 de Brisa del 20/7 en la caja de Evelyn).
+  //
+  // Por eso cada movimiento viaja con su `turno_caja_id` y el componente
+  // calcula los totales SOLO con los del turno propio. La tabla es ancha; el
+  // arqueo es angosto. Si alguien vuelve a tocar esto, esa es la regla.
+  // ───────────────────────────────────────────────────────────────────────
+  const turnosVisibles = turnosAbiertos.map((t) => t.id);
+  const cuentasDeTurno = [
+    ...new Set(
+      turnosAbiertos
+        .map((t) => t.cuenta_financiera_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
   let ventas: VentaCaja[] = [];
   let pagosSueltos: VentaPago[] = [];
   let egresos: EgresoCaja[] = [];
-  let transferenciasCaja = [];
+  let transferenciasCaja: TransferenciaCaja[] = [];
 
-  // 5. Traemos los movimientos SOLAMENTE del turno propio abierto
-  if (turnoPropio) {
+  // 5. Movimientos de todos los turnos abiertos visibles (ver arriba).
+  if (turnosVisibles.length > 0) {
     const [ventasRes, pagosSueltosRes, egresosRes, transferenciasRes] = await Promise.all([
       supabase
         .from("ventas")
         .select(
           "id, total, metodo_pago, fecha_venta, turno_caja_id, cliente_id, clientes(nombre), monto_cobrado, monto_pendiente, estado_pago, estado_operacion, perfiles(nombre), ventas_items(variante, es_venta_libre, producto:productos(nombre)), venta_pagos(metodo_nombre, metodo_tipo, monto_bruto, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento)",
         )
-        .eq("turno_caja_id", turnoPropio.id)
+        .in("turno_caja_id", turnosVisibles)
         // Las ANULADAS entran: su efectivo lo saca el egreso de devolución, no
         // hay que sacarlo de nuevo acá. Ver `calcularTotalesTurno` y el
         // comentario largo en `getDetallesTurnoAction`. Este es el fetch que
@@ -181,7 +204,7 @@ export default async function CajaPage() {
           "id, turno_caja_id, metodo_nombre, metodo_tipo, monto_bruto, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento, creado_en, clientes(nombre)",
         )
         .is("venta_id", null)
-        .eq("turno_caja_id", turnoPropio.id)
+        .in("turno_caja_id", turnosVisibles)
         .neq("estado_pago_operacion", "ANULADO")
         .order("creado_en", { ascending: false }),
       supabase
@@ -189,20 +212,38 @@ export default async function CajaPage() {
         .select(
           "id, concepto, monto, fecha, tipo, orden_compra_id, creado_por, turno_caja_id, cuenta_origen_id, perfiles(nombre)",
         )
-        .eq("turno_caja_id", turnoPropio.id)
-        .eq("cuenta_origen_id", turnoPropio.cuenta_financiera_id!)
+        .in("turno_caja_id", turnosVisibles)
+        // El par turno + cuenta se mantiene: un egreso cargado contra OTRA
+        // cuenta (la caja general, el banco) no salió de ningún cajón y no
+        // tiene nada que hacer en el arqueo de un turno.
+        .in("cuenta_origen_id", cuentasDeTurno)
         .order("fecha", { ascending: false }),
-      supabase.rpc("transferencias_caja_turno", {
-        p_turno_id: turnoPropio.id,
-      }),
+      // La RPC es por turno, así que se llama una vez por cada uno. Son dos o
+      // tres en el peor caso real (los turnos ABIERTOS de un local).
+      Promise.all(
+        turnosVisibles.map((id) =>
+          supabase.rpc("transferencias_caja_turno", { p_turno_id: id }),
+        ),
+      ),
     ]);
 
     ventas = (ventasRes.data || []) as unknown as VentaCaja[];
     pagosSueltos = (pagosSueltosRes.data || []) as unknown as VentaPago[];
     egresos = (egresosRes.data || []) as unknown as EgresoCaja[];
-    transferenciasCaja = transferenciasRes.data || [];
+    // El turno se pega acá porque la RPC no lo devuelve: se la llamó por
+    // turno, así que el índice lo sabe. Sin esto, con dos cajas abiertas no
+    // habría forma de decir cuál de estas transferencias entra al arqueo
+    // propio.
+    transferenciasCaja = transferenciasRes.flatMap((r, i) =>
+      ((r.data || []) as TransferenciaCaja[]).map((t) => ({
+        ...t,
+        turno_caja_id: turnosVisibles[i],
+      })),
+    );
 
-    // Si es vendedor, no le mostramos los egresos que registraron otros usuarios
+    // Si es vendedor, no le mostramos los egresos que registraron otros
+    // usuarios. Con el fetch ancho esto importa más que antes: sin el filtro,
+    // una vendedora en modo UNICA vería los gastos de sus compañeras.
     if (userRole !== "ADMIN") {
       egresos = egresos.filter((e) => e.creado_por === user.id);
     }
@@ -217,46 +258,68 @@ export default async function CajaPage() {
   // esto es lo que decide si se renderiza, no lo que protege el dato.
   const puedeVerGerencial = await puedeVerVistaGerencialAction();
 
-  const [
-    resumenGerencial,
-    detalleMedios,
-    posicion,
-    resumenFinanciero,
-    facturadas,
-    estadoCuentas,
-  ] =
+  // `getResumenGerencialAction` y `getDetalleMediosPagoAction` salieron de
+  // acá con la card "Hoy" (ver el comentario largo más abajo). Son dos RPC
+  // menos por cada carga de /caja.
+  const [posicion, estadoCuentas, actividad, programados] =
     puedeVerGerencial
       ? await Promise.all([
-          getResumenGerencialAction(),
-          getDetalleMediosPagoAction(),
           getPosicionDineroAction(PERIODO_INICIAL_DINERO),
-          getResumenFinancieroAction(PERIODO_INICIAL_DINERO),
-          facturaConArca
-            ? getVentasFacturadasAction(PERIODO_INICIAL_DINERO)
-            : Promise.resolve(null),
           getEstadoCuentasFinancierasAction(),
+          // La preview de "Actividad de cuentas" tiene su propio permiso
+          // (`caja.ver_movimientos`). Sin él la RPC devuelve SIN_PERMISO, así
+          // que ni se pide: el bloque simplemente no aparece.
+          veMovimientosGate
+            ? getActividadDeCuentasAction()
+            : Promise.resolve(null),
+          // La agenda de gastos fijos. No mueve plata: alimenta "Próximos
+          // movimientos" y nada más. Cualquiera del negocio la puede LEER;
+          // cargarla y editarla es de ADMIN (lo decide la RLS).
+          getEgresosProgramadosAction(),
         ])
-      : [null, null, null, null, null, null];
+      : [null, null, null, []];
 
   // 8. ¿Esta persona opera caja, o solo mira números? No hay un flag para
   // esto: se deduce de si tiene un turno propio abierto o abrió alguno en el
-  // historial. Una dueña que nunca abrió caja cae en "no cajera" y ve la Vista
-  // Gerencial directamente; si algún día tiene que atender, abre su turno
-  // desde el botón de caja del navbar y a partir de ahí le aparece el toggle.
+  // historial. Una dueña que nunca abrió caja cae en "no cajera", y eso ya no
+  // la deja sin nada: Hoy le muestra las cajas abiertas del local y todos sus
+  // movimientos. Si algún día tiene que atender, abre su turno desde el botón
+  // de caja del navbar.
   //
   // Límite conocido: el historial trae 30 turnos, así que alguien que abrió
   // caja hace mucho y no volvió a hacerlo también cae en "no cajera".
-  const tieneTurnoPropioAbierto = turnosAbiertos.some((t) =>
-    t.modo === "POR_USUARIO" ? t.vendedor_id === user.id : true,
-  );
+  //
+  // La pregunta "¿tiene turno propio?" se contesta con `turnoPropio`, que es
+  // la MISMA búsqueda que ya se hizo arriba. Tenerla dos veces era dos
+  // lugares donde cambiar la regla de POR_USUARIO vs ÚNICA.
   const esCajera =
-    tieneTurnoPropioAbierto || turnos.some((t) => t.vendedor_id === user.id);
+    turnoPropio !== null || turnos.some((t) => t.vendedor_id === user.id);
 
+  // ───────────────────────────────────────────────────────────────────────
+  // LA CARD "HOY" SALIÓ DE ESTA PESTAÑA (22/9/2026)
+  //
+  // Mostraba cobrado del día, turnos cerrados y el arqueo de TODOS los
+  // turnos, arriba de un bloque que es del TURNO PROPIO. Dos alcances con un
+  // "esperado" cada uno en la misma pantalla. El propio componente lo admitía
+  // en un comentario que trataba de desambiguar tres números con el mismo
+  // nombre — una nota al pie tapando un problema de estructura.
+  //
+  // Dónde quedó cada cosa:
+  //  - El arqueo del día → Cierres. Su primera fila ES hoy, con vendido,
+  //    esperado y diferencia, y además con el detalle por turno.
+  //  - El desglose por medio de pago → adentro de la tabla de movimientos,
+  //    calculado sobre lo que la tabla muestra, así sigue a los filtros.
+  //
+  // `VistaGerencial` y sus dos actions quedan en el repo sin consumidor: el
+  // desglose por medio del DÍA sigue siendo la única vista que cruza turnos
+  // cerrados con abiertos, y borrarlo antes de saber si hace falta en
+  // /reportes sería tirar una consulta ya probada.
+  // ───────────────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6 mx-auto pb-12 p-2 sm:p-4">
+    <div className="space-y-6 mx-auto pb-12 p-4">
       <CajaVistas
         esCajera={esCajera}
-        vistaInicial={tieneTurnoPropioAbierto ? "hoy" : "dinero"}
+        vistaInicial={turnoPropio ? "hoy" : "dinero"}
         miTurno={
           <CajaDashboard
             turnosAbiertos={turnosAbiertos}
@@ -271,46 +334,56 @@ export default async function CajaPage() {
             puedeAnular={puedeAnular}
           />
         }
-        resumenHoy={
-          resumenGerencial?.data ? (
-            <VistaGerencial
-              resumen={resumenGerencial.data}
-              detalle={detalleMedios?.data ?? []}
-            />
-          ) : undefined
-        }
         dinero={
           posicion?.data ? (
+            // El orden responde preguntas cada vez menos urgentes: cuánto
+            // tengo y dónde (la tira de cuentas), qué está por caer, qué pasó
+            // último, y recién al final cómo cerró el período.
             <div className="space-y-10">
               {estadoCuentas?.data && (
                 <CuentasFinancierasPanel
                   cuentas={estadoCuentas.data.cuentas}
-                  transferencias={estadoCuentas.data.transferencias}
                   // Los saldos salen de `posicion_dinero`, que es la única
                   // fuente que los calcula: `estado_cuentas_financieras`
                   // devuelve la estructura de cuentas y nada más. De tener dos
                   // fuentes salía la lista duplicada que había acá abajo.
                   saldos={posicion.data.cuentas ?? []}
-                  puedeAnular={puedeAnular}
+                  turnosAbiertos={posicion.data.efectivo.turnos_abiertos}
+                  programados={programados}
+                  esAdmin={userRole === "ADMIN"}
+                  ingresosPorAcreditar={Number(
+                    posicion.data.por_acreditar_real?.saldo ??
+                      posicion.data.por_acreditar.reduce(
+                        (total, cuenta) => total + Number(cuenta.neto),
+                        0,
+                      ),
+                  )}
+                  cantidadPorAcreditar={Number(
+                    posicion.data.por_acreditar_real?.cantidad_movimientos ??
+                      posicion.data.por_acreditar.reduce(
+                        (total, cuenta) => total + Number(cuenta.cantidad),
+                        0,
+                      ),
+                  )}
                   puedeRegistrarIngreso={puedeRegistrarIngreso}
+                  puedeRegistrarEgreso={puedeRegistrarEgreso}
+                  puedeTransferir={puedeTransferir}
                 />
               )}
-              <PosicionDinero
-                posicionInicial={posicion.data}
-                periodoInicial={PERIODO_INICIAL_DINERO}
-              />
-              {resumenFinanciero?.data && (
-                <ResumenFinancieroPeriodo
-                  resumenInicial={resumenFinanciero.data}
-                  periodoInicial={PERIODO_INICIAL_DINERO}
+              {/* `actividad` es null solo cuando no se pidió (sin permiso de
+                  movimientos). Si se pidió y falló, `data` viene null y el
+                  bloque lo dice: un error que se muestra como lista vacía es
+                  un error que nadie reporta. */}
+              {actividad && (
+                <ActividadCuentas
+                  paginaInicial={actividad.data}
+                  error={actividad.error}
                 />
               )}
-              {facturadas?.data && (
-                <VentasFacturadas
-                  inicial={facturadas.data}
-                  periodoInicial={PERIODO_INICIAL_DINERO}
-                />
-              )}
+              {/* El resumen del período y "facturado vs sin facturar" se
+                  mudaron a /reportes → Finanzas (22/9/2026). Dinero contesta
+                  "dónde está la plata AHORA" y se abre entre dos clientas;
+                  aquello es un reporte que se mira con tiempo. */}
             </div>
           ) : undefined
         }
