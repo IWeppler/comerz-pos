@@ -1,7 +1,10 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
-import { COOKIE_NEGOCIO_ACTIVO } from "@/shared/lib/negocio-activo";
+import {
+  COOKIE_IMPERSONATE,
+  COOKIE_NEGOCIO_ACTIVO,
+} from "@/shared/lib/negocio-activo";
 import type { ConfiguracionPOS } from "@/entities/config/types";
 
 export interface ConfigPosDeLaRequest {
@@ -83,7 +86,32 @@ export const leerConfigPos = cache(
     // requests: el login, el onboarding, la landing y todo el catálogo público
     // pasan por el layout raíz. Antes cada una de esas pagaba una consulta que
     // la RLS iba a responder vacía de todos modos.
-    if (!cookieStore.get(COOKIE_NEGOCIO_ACTIVO)?.value) return null;
+    //
+    // ─────────────────────────────────────────────────────────────────────
+    // EL MODO DIOS NO USA ESA COOKIE, Y ESTE GUARD LO DEJABA SIN CONFIG
+    //
+    // `iniciarImpersonationAction` setea SOLO `impersonate_negocio_id`, y
+    // hace bien: `negocio_activo_id` se valida contra `usuarios_negocios` y
+    // el super admin no tiene membresías. Pero mirando una sola de las dos
+    // cookies, toda sesión impersonada devolvía null acá.
+    //
+    // La consecuencia no era cosmética, y es la que este mismo archivo
+    // advierte más abajo: `modo_caja` caía al fallback "UNICA". En un negocio
+    // POR_USUARIO —Evens— el sidebar entonces buscaba un turno con
+    // `modo = 'UNICA'`, no encontraba ninguno, y el botón de caja mostraba
+    // "cerrada" con el turno abierto. Desde ahí el modal ofrecía ABRIR y no
+    // había forma de cerrar el turno propio. Reportado el 23/9/2026.
+    //
+    // Leer la config con la cookie de impersonación no afloja nada: sigue
+    // yendo con el cliente del usuario y por RLS, y
+    // `security.current_negocio_id()` solo honra esa cookie si
+    // `is_super_admin()`. En cualquier otra cuenta la consulta vuelve vacía,
+    // que es lo que este guard quería evitar pagar.
+    // ─────────────────────────────────────────────────────────────────────
+    const hayNegocio =
+      cookieStore.get(COOKIE_NEGOCIO_ACTIVO)?.value ||
+      cookieStore.get(COOKIE_IMPERSONATE)?.value;
+    if (!hayNegocio) return null;
 
     // Tener negocio elegido no implica estar logueado: la cookie dura 30 días
     // y sobrevive a que la sesión expire o a que el refresh falle, y este
