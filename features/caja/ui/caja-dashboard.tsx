@@ -28,6 +28,7 @@ import {
   TurnoCajaHistorial,
   EgresoCaja,
   TransferenciaCaja,
+  MovimientoDigitalTurno,
   VentaCaja,
 } from "@/entities/caja/types";
 import { VentaPago, getSupabaseRelation } from "@/entities/ventas/types";
@@ -39,6 +40,10 @@ export interface CajaDashboardProps {
   pagosSueltos: VentaPago[];
   egresos: EgresoCaja[];
   transferenciasCaja?: TransferenciaCaja[];
+  /** Lo que se movió en cuentas que NO son el cajón mientras el turno propio
+   * estuvo abierto. Va a la tarjeta digital y no entra en ningún total del
+   * arqueo: esa plata no se cuenta con billetes en la mano. */
+  movimientosDigitales?: MovimientoDigitalTurno[];
   historial: TurnoCajaHistorial[];
   modoCaja?: string;
   userRole?: string;
@@ -56,6 +61,7 @@ export function CajaDashboard({
   pagosSueltos,
   egresos,
   transferenciasCaja = [],
+  movimientosDigitales = [],
   historial: _historial,
   modoCaja: _modoCaja,
   userRole: _userRole,
@@ -303,14 +309,19 @@ export function CajaDashboard({
             </div>
           )}
 
-          {/* Cobros digitales: al lado del cajón y nunca sumado con él. Esa
+          {/* Movimientos digitales: al lado del cajón y nunca sumado con él. Esa
               plata no está en ninguna caja que se pueda contar, y mezclarla
               con el efectivo esperado es cómo un arqueo termina con una
               diferencia que nadie puede explicar. Solo con turno propio: es
               del turno, no del local. */}
           <div className="space-y-4">
             <OtrasCajasAbiertas turnos={otrasCajas} />
-            {turno && <TarjetaDigital totales={totales} />}
+            {turno && (
+              <TarjetaDigital
+                totales={totales}
+                movimientos={movimientosDigitales}
+              />
+            )}
           </div>
         </div>
 

@@ -167,14 +167,22 @@ export function ActividadCuentas({
       />
 
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <table className="w-full text-left text-sm max-md:block md:min-w-full">
+        {/* `md:table-fixed` no es cosmético: la celda de Concepto usa
+            `truncate`, o sea `white-space: nowrap`, y con el ancho automático
+            de una tabla eso le pide a la columna el ancho del texto ENTERO.
+            Una descripción larga —"Transferencia a Mercado Pago: Cambio de
+            efectivo por transferencia"— estiraba esa columna y aplastaba las
+            otras cuatro contra los bordes, que es el "espacio gigante en
+            blanco y después todo apretado" que se veía. Con anchos fijos el
+            truncate recorta, que es lo que se le pidió. */}
+        <table className="w-full text-left text-sm max-md:block md:min-w-full md:table-fixed">
           <thead className="border-b border-border bg-muted/50 text-xs font-semibold uppercase tracking-wide text-foreground/80 max-md:hidden">
             <tr>
-              <th className="px-4 py-2.5">Fecha</th>
+              <th className="w-36 px-4 py-2.5">Fecha</th>
               <th className="px-4 py-2.5">Concepto</th>
-              <th className="px-4 py-2.5">Tipo</th>
-              <th className="px-4 py-2.5">Cuenta</th>
-              <th className="px-4 py-2.5 text-right">Importe</th>
+              <th className="w-44 px-4 py-2.5">Tipo</th>
+              <th className="w-56 px-4 py-2.5">Cuenta</th>
+              <th className="w-36 px-4 py-2.5 text-right">Importe</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border max-md:block">
@@ -253,8 +261,16 @@ function FilaActividad({
   movimiento,
 }: Readonly<{ movimiento: MovimientoFinancieroFila }>) {
   const importe = Number(movimiento.importe);
-  const transferencia = movimiento.origen_tipo === "TRANSFERENCIA";
-  const { Icono, tono } = presentacion(movimiento.origen_tipo, importe);
+  // Un movimiento con contraparte es plata que cambió de bolsillo dentro del
+  // mismo negocio: ni ingreso ni gasto. La base ya manda UNA fila por
+  // operación (`20260923160000`), y acá se termina de leer como una sola
+  // cosa — sin signo y sin color, porque el resultado no se movió.
+  const entreCuentas = Boolean(movimiento.cuenta_contraparte_nombre);
+  const { Icono, tono } = presentacion(
+    movimiento.origen_tipo,
+    importe,
+    entreCuentas,
+  );
   const etiqueta = etiquetaMovimiento(
     movimiento.origen_tipo,
     movimiento.evento,
@@ -263,7 +279,10 @@ function FilaActividad({
 
   return (
     <tr className="max-md:block max-md:border-b max-md:border-border max-md:py-2 max-md:last:border-b-0">
-      <td data-label="Fecha" className={CELDA_APILADA + " px-4 py-3"}>
+      <td
+        data-label="Fecha"
+        className={CELDA_APILADA + " px-4 py-3 md:whitespace-nowrap"}
+      >
         {fechaHora(movimiento.fecha)}
       </td>
       <td data-label="Concepto" className={CELDA_APILADA + " px-4 py-3"}>
@@ -286,12 +305,16 @@ function FilaActividad({
         </div>
       </td>
       <td data-label="Tipo" className={CELDA_APILADA + " px-4 py-3"}>
-        <p>{tipoMovimiento(movimiento.origen_tipo)}</p>
+        <p>
+          {entreCuentas
+            ? "Movimiento entre cuentas"
+            : tipoMovimiento(movimiento.origen_tipo)}
+        </p>
         <p className="text-[11px] text-muted-foreground">
           {tipoCuenta(movimiento.cuenta_tipo)}
         </p>
       </td>
-      <td data-label="Cuenta" className={CELDA_APILADA + " px-4 py-3"}>
+      <td data-label="Cuenta" className={CELDA_APILADA + " truncate px-4 py-3"}>
         {movimiento.cuenta_nombre}
         {movimiento.cuenta_contraparte_nombre && (
           <span className="text-muted-foreground">
@@ -305,7 +328,7 @@ function FilaActividad({
         className={
           CELDA_APILADA +
           ` px-4 py-3 text-right font-mono font-semibold tabular-nums max-md:text-right ${
-            transferencia
+            entreCuentas
               ? "text-muted-foreground"
               : importe < 0
                 ? "text-danger"
@@ -315,8 +338,8 @@ function FilaActividad({
           }`
         }
       >
-        {!transferencia && importe > 0 && "+"}
-        {formatearMoneda(importe)}
+        {!entreCuentas && importe > 0 && "+"}
+        {formatearMoneda(entreCuentas ? Math.abs(importe) : importe)}
       </td>
     </tr>
   );
@@ -356,8 +379,12 @@ function tipoCuenta(cuentaTipo: string): string {
 function presentacion(
   origenTipo: string,
   importe: number,
+  entreCuentas = false,
 ): { Icono: LucideIcon; tono: string } {
-  if (origenTipo === "TRANSFERENCIA") {
+  // El ícono de pase va por la CONTRAPARTE, no por el origen: el fondo de
+  // apertura y el retiro del cierre son `TURNO_CAJA` y son exactamente lo
+  // mismo, plata que pasó de una cuenta propia a otra.
+  if (entreCuentas || origenTipo === "TRANSFERENCIA") {
     return { Icono: Repeat2, tono: "bg-muted text-muted-foreground" };
   }
   return importe < 0

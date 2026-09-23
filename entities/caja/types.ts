@@ -192,6 +192,29 @@ export interface TransferenciaCaja {
 }
 
 /**
+ * Lo que se registró en cuentas que NO son el cajón mientras el turno estuvo
+ * abierto (RPC `movimientos_digitales_turno`, `20260923150000`).
+ *
+ * Son los movimientos que la vendedora sabe que existieron —ella los hizo—
+ * pero que no tocan el efectivo: un cambio de efectivo por transferencia, un
+ * ingreso a la billetera. NO entran en el arqueo ni en `efectivo_esperado`:
+ * esa plata no se cuenta con billetes en la mano.
+ *
+ * Los cobros de venta quedan afuera a propósito: ya son el total de la
+ * tarjeta, y listarlos acá además sería mostrarlos dos veces.
+ */
+export interface MovimientoDigitalTurno {
+  movimiento_id: number;
+  origen_tipo: string;
+  evento: string;
+  /** Positivo si entró a la cuenta, negativo si salió. */
+  importe: number | string;
+  descripcion: string | null;
+  cuenta_nombre: string;
+  fecha_movimiento: string;
+}
+
+/**
  * Posición de dinero: dónde está la plata AHORA, según lo registrado.
  *
  * Es derivada, no es un saldo bancario: la base no sabe de transferencias

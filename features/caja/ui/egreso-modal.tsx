@@ -159,9 +159,7 @@ export function EgresoModal({
         <DialogHeader>
           <DialogTitle>Registrar Egreso</DialogTitle>
           <DialogDescription>
-            Indicá para qué salió el dinero. Elegir la cuenta es opcional: sin
-            turno abierto sale de Caja general, con turno abierto sale de Caja
-            diaria y afecta el arqueo.
+            Indicá para qué salió el dinero. 
           </DialogDescription>
         </DialogHeader>
 

@@ -132,10 +132,7 @@ export function IngresoModal({
         <DialogHeader>
           <DialogTitle>Registrar Ingreso</DialogTitle>
           <DialogDescription>
-            Plata que entra y NO es una venta ni un cobro de deuda: un aporte,
-            un préstamo, otro ingreso. Elegir la cuenta es opcional: con turno
-            abierto entra a Caja diaria y suma al arqueo; sin turno, a Caja
-            general.
+            Plata que entra y no es una venta ni un cobro de deuda.
           </DialogDescription>
         </DialogHeader>
 

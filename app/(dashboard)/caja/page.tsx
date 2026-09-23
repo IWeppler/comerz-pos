@@ -24,6 +24,7 @@ import {
   VentaCaja,
   EgresoCaja,
   TransferenciaCaja,
+  MovimientoDigitalTurno,
 } from "@/entities/caja/types";
 import { VentaPago } from "@/entities/ventas/types";
 import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
@@ -183,6 +184,7 @@ export default async function CajaPage() {
   let pagosSueltos: VentaPago[] = [];
   let egresos: EgresoCaja[] = [];
   let transferenciasCaja: TransferenciaCaja[] = [];
+  let movimientosDigitales: MovimientoDigitalTurno[] = [];
 
   // 5. Movimientos de todos los turnos abiertos visibles (ver arriba).
   if (turnosVisibles.length > 0) {
@@ -246,6 +248,26 @@ export default async function CajaPage() {
     // una vendedora en modo UNICA vería los gastos de sus compañeras.
     if (userRole !== "ADMIN") {
       egresos = egresos.filter((e) => e.creado_por === user.id);
+    }
+  }
+
+  // 5.b. Lo que pasó fuera del cajón mientras este turno estuvo abierto.
+  //
+  // Va SOLO para el turno propio: es la tarjeta de "mis movimientos
+  // digitales", no un panorama del local (para eso está Dinero). La ventana
+  // es de tiempo y no `turno_caja_id`, porque un movimiento a una cuenta
+  // digital nunca lleva turno — ver el comentario de la RPC.
+  if (turnoPropio) {
+    const { data: digitalesData, error: digitalesError } = await supabase.rpc(
+      "movimientos_digitales_turno",
+      { p_turno_id: turnoPropio.id },
+    );
+    if (digitalesError) {
+      // No corta la página: el arqueo no depende de esto. Sin la lista, la
+      // tarjeta muestra los cobros como siempre.
+      console.error("Error cargando movimientos digitales:", digitalesError);
+    } else {
+      movimientosDigitales = (digitalesData || []) as MovimientoDigitalTurno[];
     }
   }
 
@@ -327,6 +349,7 @@ export default async function CajaPage() {
             pagosSueltos={pagosSueltos}
             egresos={egresos}
             transferenciasCaja={transferenciasCaja}
+            movimientosDigitales={movimientosDigitales}
             historial={turnos}
             modoCaja={modoCaja}
             userRole={userRole}
