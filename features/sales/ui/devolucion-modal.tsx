@@ -14,6 +14,13 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
+import {
   MOTIVOS_ANULACION,
   type MotivoAnulacion,
 } from "@/features/sales/lib/motivo-anulacion";
@@ -144,6 +151,17 @@ export function DevolucionModal({
   }, 0);
 
   const hayAlgo = Object.keys(elegidos).length > 0;
+  const cargandoOpciones = renglones === null || opciones === null;
+  const medioPendiente = faltaElegirMedio(opciones, medioReintegro);
+  const pasoPendiente = cargandoOpciones
+    ? "Cargando datos de la devolución…"
+    : !hayAlgo
+      ? "Elegí al menos un producto."
+      : !motivoCodigo
+        ? "Elegí un motivo."
+        : medioPendiente
+          ? "Elegí por dónde devolver la plata."
+          : null;
 
   const confirmar = () => {
     const lineas: LineaDevolucion[] = Object.entries(elegidos).map(
@@ -198,15 +216,15 @@ export function DevolucionModal({
 
   return (
     <Dialog open={abierto} onOpenChange={setAbierto}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="flex h-dvh max-h-dvh max-w-none flex-col gap-0 overflow-hidden rounded-none p-0 sm:h-auto sm:max-h-[90dvh] sm:max-w-lg sm:rounded-xl">
+        <DialogHeader className="shrink-0 border-b border-border px-4 py-4 pr-12">
           <DialogTitle>Devolver del ticket #{numeroTicket}</DialogTitle>
           <DialogDescription>
             Elegí qué vuelve y cuánto. Lo que no elijas queda vendido.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[60vh] space-y-4 overflow-y-auto pt-2">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
           {renglones === null ? (
             <div className="flex h-24 items-center justify-center text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -229,9 +247,9 @@ export function DevolucionModal({
                       cantidad > 0 ? "border-primary bg-primary/5" : "border-border"
                     } ${agotado ? "opacity-50" : ""}`}
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-foreground">
+                        <p className="break-words text-sm font-medium text-foreground">
                           {renglon.producto}
                         </p>
                         <p className="text-xs text-muted-foreground">
@@ -245,12 +263,12 @@ export function DevolucionModal({
                         )}
                       </div>
 
-                      <div className="flex shrink-0 items-center gap-1">
+                      <div className="flex shrink-0 items-center justify-between gap-1 sm:justify-start">
                         <Button
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8"
+                          className="h-11 w-11"
                           disabled={cantidad === 0}
                           onClick={() => cambiarCantidad(renglon, -1)}
                           aria-label="Devolver una unidad menos"
@@ -264,7 +282,7 @@ export function DevolucionModal({
                           type="button"
                           variant="outline"
                           size="icon"
-                          className="h-8 w-8"
+                          className="h-11 w-11"
                           disabled={cantidad >= renglon.disponible}
                           onClick={() => cambiarCantidad(renglon, 1)}
                           aria-label="Devolver una unidad más"
@@ -282,7 +300,7 @@ export function DevolucionModal({
                           onClick={() =>
                             cambiarDestino(renglon.ventaItemId, "STOCK")
                           }
-                          className={`h-9 cursor-pointer rounded-md text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                          className={`min-h-11 cursor-pointer rounded-md px-1 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                             eleccion?.destino === "STOCK"
                               ? "bg-primary text-primary-foreground"
                               : "text-muted-foreground hover:bg-muted"
@@ -297,7 +315,7 @@ export function DevolucionModal({
                           onClick={() =>
                             cambiarDestino(renglon.ventaItemId, "BAJA")
                           }
-                          className={`h-9 cursor-pointer rounded-md text-xs font-semibold transition-colors ${
+                          className={`min-h-11 cursor-pointer rounded-md px-1 py-2 text-xs font-semibold leading-tight transition-colors ${
                             eleccion?.destino === "BAJA"
                               ? "bg-primary text-primary-foreground"
                               : "text-muted-foreground hover:bg-muted"
@@ -314,26 +332,24 @@ export function DevolucionModal({
           )}
 
           <div className="space-y-2">
-            <Label className="text-sm font-semibold">
+            <Label htmlFor="motivo-devolucion" className="text-sm font-semibold">
               ¿Por qué la devuelve? <span className="text-danger">*</span>
             </Label>
-            <div className="grid gap-1.5">
-              {MOTIVOS_ANULACION.map((opcion) => (
-                <button
-                  key={opcion.codigo}
-                  type="button"
-                  onClick={() => setMotivoCodigo(opcion.codigo)}
-                  aria-pressed={motivoCodigo === opcion.codigo}
-                  className={`cursor-pointer rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
-                    motivoCodigo === opcion.codigo
-                      ? "border-primary bg-primary/5"
-                      : "border-border hover:bg-muted"
-                  }`}
-                >
-                  {opcion.label}
-                </button>
-              ))}
-            </div>
+            <Select
+              value={motivoCodigo ?? undefined}
+              onValueChange={(valor) => setMotivoCodigo(valor as MotivoAnulacion)}
+            >
+              <SelectTrigger id="motivo-devolucion" className="w-full">
+                <SelectValue placeholder="Elegí un motivo" />
+              </SelectTrigger>
+              <SelectContent>
+                {MOTIVOS_ANULACION.map((opcion) => (
+                  <SelectItem key={opcion.codigo} value={opcion.codigo}>
+                    {opcion.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             {motivoCodigo === "OTRO" && (
               <Input
@@ -344,10 +360,7 @@ export function DevolucionModal({
               />
             )}
           </div>
-        </div>
-
-        <div className="border-t border-border pt-3">
-          <div className="mb-3">
+          <div>
             <SelectorMedioReintegro
               opciones={opciones}
               valor={medioReintegro}
@@ -355,7 +368,16 @@ export function DevolucionModal({
               monto={base}
             />
           </div>
-          <div className="mb-3 flex items-baseline justify-between">
+          {/* El recargo por método de pago no se reintegra. El aviso queda al
+              lado de la elección del medio para que se lea antes de confirmar. */}
+          <p className="text-xs text-muted-foreground">
+            Se devuelve el precio del producto. El recargo por medio de pago no
+            se reintegra.
+          </p>
+        </div>
+
+        <div className="shrink-0 border-t border-border bg-popover px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div className="mb-2 flex items-baseline justify-between gap-3">
             <span className="text-sm font-semibold text-muted-foreground">
               A devolver
             </span>
@@ -363,22 +385,19 @@ export function DevolucionModal({
               {pesos(base)}
             </span>
           </div>
-          {/* El recargo por método de pago NO se devuelve, y conviene que se
-              lea antes de confirmar: si el ticket tenía 15% de tarjeta, la
-              clienta recibe el precio del producto y no lo que pagó de más.
-              El motivo está en 20260903190000 — el banco no reintegra su
-              comisión, así que devolverlo sale del bolsillo del comercio. */}
-          <p className="mb-3 text-xs text-muted-foreground">
-            Se devuelve el precio del producto. El recargo por medio de pago no
-            se reintegra.
-          </p>
+          {pasoPendiente && (
+            <p aria-live="polite" className="mb-2 text-xs text-muted-foreground">
+              {pasoPendiente}
+            </p>
+          )}
           <Button
             type="button"
             onClick={confirmar}
             disabled={
+              cargandoOpciones ||
               !hayAlgo ||
               !motivoCodigo ||
-              faltaElegirMedio(opciones, medioReintegro) ||
+              medioPendiente ||
               enviando
             }
             className="h-11 w-full"

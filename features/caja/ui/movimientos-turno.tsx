@@ -109,6 +109,7 @@ export function MovimientosTurno({
       <CabeceraMovimientos
         titulo="Movimientos del local"
         cantidad={total.cantidad}
+        totalNeto={formatearMoneda(total.neto)}
         descripcion={
           variasCajas
             ? "Ventas, cobros, gastos e ingresos de todas las cajas abiertas."

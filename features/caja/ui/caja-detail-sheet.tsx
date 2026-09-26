@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { getDetallesTurnoAction } from "../actions/caja-action";
 import { etiquetaTipoEgreso } from "../lib/tipo-egreso";
+import { ingresosPorMetodo } from "../lib/ingresos-por-metodo";
 import {
   cssImpresionTicket,
   normalizarAnchoTicket,
@@ -81,14 +82,20 @@ export function CajaDetailSheet({
   });
   const [isLoading, setIsLoading] = useState(false);
   const [detallesCargados, setDetallesCargados] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!turno) return;
+    let vigente = true;
 
     const fetchDetalles = async () => {
       setIsLoading(true);
       setDetallesCargados(false);
+      setError(null);
+      setMovimientos([]);
+      setTotalesDigitales({ bruto: 0, comision: 0, neto: 0 });
       const res = await getDetallesTurnoAction(turno.id);
+      if (!vigente) return;
 
       if (res.data) {
         const ventas = res.data.ventas as unknown as VentaCaja[];
@@ -214,12 +221,17 @@ export function CajaDetailSheet({
           comision: digitales.reduce((acc, m) => acc + m.comision, 0),
           neto: digitales.reduce((acc, m) => acc + m.neto, 0),
         });
+      } else {
+        setError(res.error ?? "No se pudo cargar la auditoría del turno.");
       }
       setIsLoading(false);
-      setDetallesCargados(true);
+      setDetallesCargados(Boolean(res.data));
     };
 
     fetchDetalles();
+    return () => {
+      vigente = false;
+    };
   }, [turno]);
 
   if (!turno) return null;
@@ -235,6 +247,11 @@ export function CajaDetailSheet({
   const egresosActuales = movimientos
     .filter((mov) => mov.tipo === "EGRESO")
     .reduce((total, mov) => total + mov.monto, 0);
+  const porMetodo = ingresosPorMetodo(movimientos);
+  const totalIngresado = porMetodo.reduce(
+    (total, metodo) => total + metodo.monto,
+    0,
+  );
   const esperadoSegunMovimientos =
     Number(turno.monto_inicial) + ingresosEfectivoActuales - egresosActuales;
   const hayAjustePosterior =
@@ -263,7 +280,7 @@ export function CajaDetailSheet({
       </style>
       <SheetContent
         side="right"
-        className="ticket-sheet-print-scope w-full sm:max-w-2xl p-0 flex flex-col h-dvh overflow-hidden bg-card"
+        className="ticket-sheet-print-scope w-full sm:max-w-4xl p-0 flex flex-col h-dvh overflow-hidden bg-card"
       >
         <div className="ticket-screen-only flex min-h-0 flex-1 flex-col">
           <SheetHeader className="p-6 border-b border-border z-10 shrink-0">
@@ -282,8 +299,18 @@ export function CajaDetailSheet({
               </p>
             </div>
 
+            {error && (
+              <p
+                role="alert"
+                className="mb-4 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger"
+              >
+                {error}
+              </p>
+            )}
+
+            <div className="space-y-4">
             {/* ARQUEO FÍSICO */}
-            <div className="bg-card p-5 rounded-2xl border border-border mb-4">
+            <div className="bg-card p-5 rounded-2xl border border-border">
               <div className="flex justify-between items-start mb-4">
                 <span className="text-sm text-foreground font-semibold flex items-center gap-2">
                   <Wallet className="w-4 h-4 text-success" /> Arqueo Físico
@@ -313,7 +340,11 @@ export function CajaDetailSheet({
                       Diferencia de Efectivo
                       {hayAjustePosterior ? " corregida" : ""}
                     </p>
-                    {diferencia === 0 ? (
+                    {!detallesCargados ? (
+                      <span className="text-sm text-muted-foreground">
+                        {error ? "Arqueo no disponible" : "Cargando arqueo…"}
+                      </span>
+                    ) : diferencia === 0 ? (
                       <span className="text-xl font-semibold text-success">
                         Caja OK
                       </span>
@@ -375,7 +406,7 @@ export function CajaDetailSheet({
             </div>
 
             {/* ARQUEO DIGITAL */}
-            <div className="bg-card p-5 rounded-2xl border border-border mb-6">
+            <div className="bg-card p-5 rounded-2xl border border-border">
               <div className="flex justify-between items-start mb-4 border-b border-border/50 pb-3">
                 <span className="text-sm text-foreground font-semibold flex items-center gap-2">
                   <CreditCard className="w-4 h-4 text-info" />
@@ -386,7 +417,9 @@ export function CajaDetailSheet({
                 <div className="flex justify-between items-center text-muted-foreground">
                   <span>Monto Bruto:</span>
                   <span className="font-medium text-foreground">
-                    {formatearMoneda(totalesDigitales.bruto)}
+                    {detallesCargados
+                      ? formatearMoneda(totalesDigitales.bruto)
+                      : "…"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center font-medium">
@@ -394,16 +427,67 @@ export function CajaDetailSheet({
                     Comisiones Retenidas:
                   </span>
                   <span className="">
-                    -{formatearMoneda(totalesDigitales.comision)}
+                    {detallesCargados
+                      ? `-${formatearMoneda(totalesDigitales.comision)}`
+                      : "…"}
                   </span>
                 </div>
                 <div className="flex justify-between items-center font-medium pt-1">
                   <span className="text-muted-foreground">
                     Acreditación Neta:
                   </span>
-                  <span>{formatearMoneda(totalesDigitales.neto)}</span>
+                  <span>
+                    {detallesCargados
+                      ? formatearMoneda(totalesDigitales.neto)
+                      : "…"}
+                  </span>
                 </div>
               </div>
+            </div>
+            </div>
+
+            <div className="bg-card p-5 rounded-2xl border border-border my-4">
+              <h3 className="text-sm font-semibold text-foreground">
+                Ingresos por método
+              </h3>
+              {error ? (
+                <p className="pt-4 text-sm text-muted-foreground">
+                  Detalle no disponible.
+                </p>
+              ) : !detallesCargados ? (
+                <div className="flex justify-center py-6">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : porMetodo.length === 0 ? (
+                <p className="pt-4 text-sm text-muted-foreground">
+                  Sin ingresos en este turno.
+                </p>
+              ) : (
+                <div className="mt-4 divide-y divide-border/60">
+                  {porMetodo.map(({ metodo, cantidad, monto }) => (
+                    <div
+                      key={metodo}
+                      className="flex items-center justify-between gap-4 py-2.5 text-sm"
+                    >
+                      <span className="min-w-0 break-words text-foreground">
+                        {metodo}{" "}
+                        <span className="text-muted-foreground">
+                          ({cantidad} mov.)
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono font-medium tabular-nums text-foreground">
+                        {formatearMoneda(monto)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between gap-4 pt-3 text-sm font-semibold">
+                    <span>Total ingresado</span>
+                    <span className="font-mono tabular-nums">
+                      {formatearMoneda(totalIngresado)}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3 pb-8">
@@ -411,7 +495,11 @@ export function CajaDetailSheet({
                 <Clock className="w-4 h-4 text-muted-foreground" /> Movimientos
               </h3>
 
-              {isLoading ? (
+              {error ? (
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  Movimientos no disponibles.
+                </p>
+              ) : isLoading ? (
                 <div className="py-12 flex justify-center">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
@@ -496,6 +584,7 @@ export function CajaDetailSheet({
                 variant="ghost"
                 className="w-full flex h-12 gap-2 text-foreground font-bold hover:bg-muted border border-border shadow-none"
                 onClick={() => window.print()}
+                disabled={isLoading || !detallesCargados}
               >
                 <Printer className="w-5 h-5 mr-1" /> Imprimir Cierre Z
               </Button>

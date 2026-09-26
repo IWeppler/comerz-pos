@@ -195,6 +195,7 @@ export function CajaHistoryTable({
   return (
     <div>
       <CajaDetailSheet
+        key={turnoAbierto?.id ?? "sin-turno"}
         turno={turnoAbierto}
         onClose={() => setTurnoAbierto(null)}
         papel={papel}
@@ -219,7 +220,25 @@ export function CajaHistoryTable({
       </div>
 
       <div className="bg-card rounded-2xl border border-border shadow-none overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-border/60 md:hidden">
+          {diasPaginados.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">
+              No se encontraron turnos que coincidan con la búsqueda.
+            </p>
+          ) : (
+            diasPaginados.map((dia) => (
+              <DiaMovil
+                key={dia.clave}
+                dia={dia}
+                abierto={estaExpandido(dia.clave)}
+                totalesPorTurno={totalesPorTurno}
+                onToggle={() => toggleDia(dia.clave)}
+                onVerDetalle={setTurnoAbierto}
+              />
+            ))
+          )}
+        </div>
+        <div className="hidden md:block md:overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/30 text-muted-foreground text-[10px] uppercase font-bold tracking-widest">
               <tr>
@@ -389,6 +408,130 @@ function DiaFila({
   );
 }
 
+function DiaMovil({
+  dia,
+  abierto,
+  totalesPorTurno,
+  onToggle,
+  onVerDetalle,
+}: Readonly<{
+  dia: DiaAgrupado;
+  abierto: boolean;
+  totalesPorTurno?: Record<string, number>;
+  onToggle: () => void;
+  onVerDetalle: (turno: TurnoCajaHistorial) => void;
+}>) {
+  const cerrados = dia.turnos.filter((turno) => turno.estado !== "ABIERTO").length;
+
+  return (
+    <section className="min-w-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={abierto}
+        className="w-full cursor-pointer p-4 text-left hover:bg-muted/30 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring"
+      >
+        <span className="flex min-w-0 items-start justify-between gap-3">
+          <span className="min-w-0">
+            <span className="block font-semibold capitalize text-foreground">
+              {dia.etiqueta}
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              {dia.turnos.length === 1 ? "1 turno" : `${dia.turnos.length} turnos`}
+              {dia.hayAbiertos && ` · ${cerrados} cerrado${cerrados === 1 ? "" : "s"}`}
+            </span>
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            className={`mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform ${abierto ? "rotate-180" : ""}`}
+          />
+        </span>
+        <span className="mt-3 block space-y-1.5 border-t border-border/60 pt-3">
+          <DatoMovil etiqueta="Vendido" monto={dia.totalVendido} />
+          <DatoMovil etiqueta="Efectivo esperado" monto={dia.efectivoEsperado} />
+          <span className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-muted-foreground">Diferencia</span>
+            <DiferenciaDia dia={dia} />
+          </span>
+        </span>
+      </button>
+      {abierto && (
+        <div className="divide-y divide-border/60 border-t border-border/60 bg-muted/10">
+          {dia.turnos.map((turno) => (
+            <TurnoMovil
+              key={turno.id}
+              turno={turno}
+              vendido={totalesPorTurno ? (totalesPorTurno[turno.id] ?? 0) : null}
+              onVerDetalle={onVerDetalle}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function DatoMovil({
+  etiqueta,
+  monto,
+}: Readonly<{ etiqueta: string; monto: number | null }>) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-xs">
+      <span className="text-muted-foreground">{etiqueta}</span>
+      <span className="min-w-0 break-all text-right font-mono font-medium tabular-nums text-foreground">
+        <Cifra monto={monto} />
+      </span>
+    </span>
+  );
+}
+
+function TurnoMovil({
+  turno,
+  vendido,
+  onVerDetalle,
+}: Readonly<{
+  turno: TurnoCajaHistorial;
+  vendido: number | null;
+  onVerDetalle: (turno: TurnoCajaHistorial) => void;
+}>) {
+  const isAbierto = turno.estado === "ABIERTO";
+
+  return (
+    <div className="min-w-0 space-y-3 p-4">
+      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="font-medium text-foreground">
+            {turno.perfiles?.nombre || "Vendedor"}
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            #{turno.id.split("-")[0].toUpperCase()} · {formatearFechaHora(turno.fecha_apertura)}
+            {" → "}
+            {isAbierto ? "en curso" : formatearFechaHora(turno.fecha_cierre)}
+          </p>
+        </div>
+        <EstadoTurno turno={turno} />
+      </div>
+      <div className="space-y-1.5 border-t border-border/60 pt-3">
+        <DatoMovil etiqueta="Vendido" monto={vendido} />
+        <DatoMovil etiqueta="Efectivo esperado" monto={esperadoTurno(turno)} />
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <span className="text-muted-foreground">Diferencia</span>
+          <DiferenciaTurno turno={turno} />
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full cursor-pointer"
+        onClick={() => onVerDetalle(turno)}
+      >
+        <FileText className="mr-1.5 h-4 w-4" /> Ver auditoría
+      </Button>
+    </div>
+  );
+}
+
 /** Un importe, o S/D cuando no hay dato. Se comparte entre el día y el turno
  * para que los dos digan "no se sabe" de la misma forma: un cero y un dato
  * faltante se leen igual de lejos y significan cosas opuestas. */
@@ -434,6 +577,64 @@ function DiferenciaDia({ dia }: Readonly<{ dia: DiaAgrupado }>) {
   );
 }
 
+function EstadoTurno({ turno }: Readonly<{ turno: TurnoCajaHistorial }>) {
+  if (turno.estado === "ABIERTO") {
+    return <Badge variant="success">ABIERTO</Badge>;
+  }
+
+  const fueAjustado =
+    turno.efectivo_esperado_actual != null &&
+    turno.efectivo_esperado != null &&
+    Math.abs(
+      Number(turno.efectivo_esperado_actual) - Number(turno.efectivo_esperado),
+    ) >= 0.01;
+
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      <Badge variant="outline">CERRADO</Badge>
+      {fueAjustado && (
+        <Badge
+          variant="info"
+          title={`Al cerrar se firmó ${formatearMoneda(Number(turno.efectivo_esperado))}. Recalculado con los movimientos actuales del turno (una venta anulada, un egreso cargado después o un medio de pago corregido) da ${formatearMoneda(Number(turno.efectivo_esperado_actual))}. La diferencia se calcula con el número recalculado.`}
+        >
+          AJUSTADO
+        </Badge>
+      )}
+    </span>
+  );
+}
+
+function DiferenciaTurno({ turno }: Readonly<{ turno: TurnoCajaHistorial }>) {
+  if (turno.estado === "ABIERTO") {
+    return <Badge variant="warning">En curso</Badge>;
+  }
+
+  const esperado = esperadoTurno(turno);
+  if (esperado !== null && esperado < 0) {
+    return (
+      <Badge variant="danger" title="El efectivo esperado calculado dio negativo">
+        ⚠ Esperado negativo
+      </Badge>
+    );
+  }
+
+  const diferencia = diferenciaTurno(turno);
+  if (diferencia === null) {
+    return (
+      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+        S/D
+      </span>
+    );
+  }
+  if (diferencia === 0) {
+    return <Badge variant="success">Perfecto</Badge>;
+  }
+  if (diferencia < 0) {
+    return <Badge variant="danger">{formatearMoneda(diferencia)}</Badge>;
+  }
+  return <Badge variant="info">+{formatearMoneda(diferencia)}</Badge>;
+}
+
 /**
  * Fila individual de cajera, ALINEADA con las columnas del día.
  *
@@ -455,18 +656,6 @@ function TurnoFila({
 }>) {
   const isAbierto = h.estado === "ABIERTO";
   const idCorto = h.id.split("-")[0].toUpperCase();
-  const diferencia = diferenciaTurno(h);
-  const fueAjustado =
-    h.efectivo_esperado_actual != null &&
-    h.efectivo_esperado != null &&
-    Math.abs(
-      Number(h.efectivo_esperado_actual) - Number(h.efectivo_esperado),
-    ) >= 0.01;
-  const esperadoNegativo =
-    (h.efectivo_esperado_actual ?? h.efectivo_esperado) != null &&
-    (h.efectivo_esperado_actual ?? h.efectivo_esperado) !== "" &&
-    Number(h.efectivo_esperado_actual ?? h.efectivo_esperado) < 0;
-
   const esperado = esperadoTurno(h);
 
   return (
@@ -490,24 +679,7 @@ function TurnoFila({
       </td>
 
       <td className="px-5 py-2.5 hidden sm:table-cell">
-        {isAbierto ? (
-          <Badge variant="success">ABIERTO</Badge>
-        ) : (
-          <div className="flex items-center gap-1">
-            <Badge variant="outline">CERRADO</Badge>
-            {/* El badge existía sin decir por qué. Un número del historial
-                que cambió respecto del que se firmó necesita explicar el
-                motivo, o se lee como que el sistema se contradice. */}
-            {fueAjustado && (
-              <Badge
-                variant="info"
-                title={`Al cerrar se firmó ${formatearMoneda(Number(h.efectivo_esperado))}. Recalculado con los movimientos actuales del turno (una venta anulada, un egreso cargado después o un medio de pago corregido) da ${formatearMoneda(Number(h.efectivo_esperado_actual))}. La diferencia se calcula con el número recalculado.`}
-              >
-                AJUSTADO
-              </Badge>
-            )}
-          </div>
-        )}
+        <EstadoTurno turno={h} />
       </td>
 
       <td className="px-5 py-2.5 text-right font-mono font-medium text-foreground whitespace-nowrap">
@@ -522,28 +694,7 @@ function TurnoFila({
       </td>
 
       <td className="px-5 py-2.5 text-right">
-        {isAbierto ? (
-          <Badge variant="warning">En curso</Badge>
-        ) : esperadoNegativo ? (
-          /* Va antes del chequeo de null: diferenciaTurno() devuelve null
-             para estos turnos, y sin este orden el ⚠ se perdería. */
-          <Badge
-            variant="danger"
-            title="El efectivo esperado calculado dio negativo"
-          >
-            ⚠ Esperado negativo
-          </Badge>
-        ) : diferencia === null ? (
-          <span className="text-muted-foreground text-[10px] uppercase tracking-widest font-bold">
-            S/D
-          </span>
-        ) : diferencia === 0 ? (
-          <Badge variant="success">Perfecto</Badge>
-        ) : diferencia < 0 ? (
-          <Badge variant="danger">{formatearMoneda(diferencia)}</Badge>
-        ) : (
-          <Badge variant="info">+{formatearMoneda(diferencia)}</Badge>
-        )}
+        <DiferenciaTurno turno={h} />
       </td>
 
       <td className="px-5 py-2.5 text-right">

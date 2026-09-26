@@ -60,7 +60,7 @@ export function SelectorMedioReintegro({
           <Label
             key={metodo.id}
             htmlFor={`reintegro-${metodo.id}`}
-            className="flex cursor-pointer items-center gap-3 rounded-md border border-transparent px-2 py-2 hover:bg-muted"
+            className="flex min-w-0 cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-transparent px-2 py-2 hover:bg-muted"
           >
             <RadioGroupItem value={metodo.id} id={`reintegro-${metodo.id}`} />
             {metodo.tipo === "EFECTIVO" ? (
@@ -68,7 +68,9 @@ export function SelectorMedioReintegro({
             ) : (
               <Landmark className="h-4 w-4 shrink-0 text-muted-foreground" />
             )}
-            <span className="text-sm font-medium">{metodo.nombre}</span>
+            <span className="min-w-0 flex-1 break-words text-sm font-medium">
+              {metodo.nombre}
+            </span>
             {metodo.esElDelCobro && (
               <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Con esto se cobró

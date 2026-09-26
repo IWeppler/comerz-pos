@@ -1,5 +1,6 @@
 import type { TurnoCajaHistorial } from "@/entities/caja/types";
 import { formatTicketMoney } from "@/features/sales/ui/ticket-utils";
+import { ingresosPorMetodo } from "../lib/ingresos-por-metodo";
 
 /** Lo que el papel necesita de cada movimiento: solo para SUMAR. El
  * detalle renglón por renglón no se imprime — es un resumen del turno. */
@@ -74,15 +75,7 @@ export function CierreZPrintable({
   const netoDigital = digitales.reduce((acc, m) => acc + m.neto, 0);
 
   // Por método, con conteo: es lo que se coteja contra el cierre del posnet.
-  const porMetodo = new Map<string, { cantidad: number; monto: number }>();
-  for (const m of movimientos) {
-    if (m.tipo !== "INGRESO") continue;
-    const actual = porMetodo.get(m.metodo) ?? { cantidad: 0, monto: 0 };
-    porMetodo.set(m.metodo, {
-      cantidad: actual.cantidad + 1,
-      monto: actual.monto + m.monto,
-    });
-  }
+  const porMetodo = ingresosPorMetodo(movimientos);
 
   const inicial = Number(turno.monto_inicial || 0);
   const esperadoAlCerrar = Number(turno.efectivo_esperado ?? 0);
@@ -172,15 +165,15 @@ export function CierreZPrintable({
           <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
             Cobros por medio
           </p>
-          {porMetodo.size === 0 ? (
+          {porMetodo.length === 0 ? (
             <p className="text-xs text-gray-700">Sin cobros en este turno.</p>
           ) : (
-            Array.from(porMetodo.entries()).map(([metodo, t]) => (
+            porMetodo.map(({ metodo, cantidad, monto }) => (
               <div key={metodo} className="flex justify-between text-xs">
                 <span className="uppercase truncate pr-2">
-                  {metodo} ({t.cantidad})
+                  {metodo} ({cantidad})
                 </span>
-                <span>{formatTicketMoney(t.monto)}</span>
+                <span>{formatTicketMoney(monto)}</span>
               </div>
             ))
           )}
