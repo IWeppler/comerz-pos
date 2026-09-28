@@ -7,6 +7,7 @@ import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import type { CajaActionState } from "@/entities/caja/types";
 import { esTipoIngreso } from "../lib/tipo-ingreso";
+import { mensajeSaldoInsuficienteCaja } from "../lib/saldo-insuficiente-caja";
 
 /**
  * Ingresos que no vienen de una venta (`20260922100000`): aporte de la
@@ -130,7 +131,9 @@ export async function anularIngresoAction(
       error.message.includes(c),
     );
     return {
-      error: codigo ? MENSAJES_ANULAR[codigo] : "No se pudo anular el ingreso.",
+      error: codigo
+        ? MENSAJES_ANULAR[codigo]
+        : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo anular el ingreso."),
       success: false,
     };
   }

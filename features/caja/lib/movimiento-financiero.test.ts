@@ -56,6 +56,18 @@ describe("etiquetaMovimiento", () => {
     );
   });
 
+  it("la reversa de un horario corregido no se lee como faltante ni como transferencia", () => {
+    expect(etiquetaMovimiento("TURNO_CAJA", "CORRECCION_REVERSA", -44290)).toBe(
+      "Corrección de horario de caja",
+    );
+    expect(etiquetaMovimiento("TRANSFERENCIA", "CORRECCION_REVERSA", 100000)).toBe(
+      "Transferencia corregida",
+    );
+    expect(etiquetaMovimiento("TRANSFERENCIA", "CORRECCION_APLICADA", -100000)).toBe(
+      "Transferencia corregida",
+    );
+  });
+
   it("un gasto siempre se llama gasto", () => {
     expect(etiquetaMovimiento("EGRESO", "REGISTRO", -150000)).toBe("Gasto");
     expect(etiquetaMovimiento("EGRESO", "MIGRACION_ESTADO_INICIAL", -150000)).toBe(

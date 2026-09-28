@@ -908,6 +908,23 @@ tiene 11.
   período los muestra aparte (`otros_ingresos`) y los suma al `neto_caja`.
   **A propósito NO suman a la ganancia del panel** (decidido el 22/9/2026):
   `get-dashboard-metrics` lee ventas y egresos, no el ledger.
+- **De una caja arqueada no sale plata que no está** (`20260928120000`,
+  trigger `validar_saldo_caja_arqueada` sobre `movimientos_financieros`).
+  Caso: El Nono Cacho, 26/9/2026, tres sueldos por $400.000 contra un cajón
+  con $375.799 — esperado −$24.201 y "sobrante" de $235.001, porque los
+  sueldos se pagaron en parte con otra plata y quedaron imputados al cajón
+  (el modal de egreso usa Caja diaria por defecto con turno abierto). Toda
+  salida de una cuenta con `requiere_arqueo` que deje el saldo del turno
+  (suma del ledger, no `efectivo_esperado`) debajo de cero falla con
+  `SALDO_INSUFICIENTE_CAJA` (detail JSON `disponible`/`monto`, mensaje en
+  `features/caja/lib/saldo-insuficiente-caja.ts`). Va en el ledger y no en
+  `egresos` para cubrir egresos, devoluciones, transferencias y sus
+  reversas, anulación de ingresos y lo que venga. Afuera: `TURNO_CAJA`
+  (arqueo y cierre siempre corren) y `VENTA_PAGO` (corregir un cobro es
+  arreglar el dato). Row lock sobre el turno para serializar dos salidas.
+  OJO con anular una venta FACTURADA: la NC se pide a ARCA antes de la RPC,
+  así que si el cajón no alcanza para el reintegro en efectivo queda la NC
+  emitida sin anulación (el caso residual que ya loguea `cancel-sale.ts`).
 - Métodos de pago, dos porcentajes que NO son lo mismo: `comision` es lo que
   el comercio le paga al procesador (se resta, interno) y `recargo_porcentaje`
   es lo que le cobra al cliente (se suma, se muestra). El cálculo vive en

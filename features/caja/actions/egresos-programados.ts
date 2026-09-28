@@ -6,6 +6,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { FRECUENCIAS, type Frecuencia } from "../lib/egreso-programado";
+import { mensajeSaldoInsuficienteCaja } from "../lib/saldo-insuficiente-caja";
 
 /**
  * La agenda de gastos que se repiten (`20260923120000`).
@@ -293,7 +294,9 @@ export async function confirmarEgresoProgramadoAction(
     console.error("Error confirmando el egreso programado:", error);
     const clave = Object.keys(MENSAJES).find((k) => error.message?.includes(k));
     return {
-      error: clave ? MENSAJES[clave] : "No se pudo registrar el gasto.",
+      error: clave
+        ? MENSAJES[clave]
+        : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo registrar el gasto."),
       success: false,
     };
   }

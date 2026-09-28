@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { CajaActionState } from "@/entities/caja/types";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { normalizarTipoEgreso } from "@/features/caja/lib/tipo-egreso";
+import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 
 const SIN_PERMISO_CAJA = "No tenés permiso para operar la caja.";
@@ -352,7 +353,11 @@ export async function registrarEgresoAction(
 
   if (error) {
     console.error("Error al registrar egreso:", error);
-    return { error: "Ocurrió un error al guardar el gasto.", success: false };
+    return {
+      error:
+        mensajeSaldoInsuficienteCaja(error) ?? "Ocurrió un error al guardar el gasto.",
+      success: false,
+    };
   }
 
   revalidatePath("/");

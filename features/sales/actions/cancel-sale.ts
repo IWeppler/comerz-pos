@@ -7,6 +7,7 @@ import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { requiereNotaCredito } from "@/shared/lib/facturacion";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 import type { VentaComprobante } from "@/entities/ventas/types";
 import { negocioActualId } from "@/features/arca/lib/credenciales";
 import {
@@ -246,7 +247,8 @@ export async function anularVentaAction(
       return {
         error: noAnulable
           ? "No se pudo anular: o ya estaba anulada, o no tenés permiso."
-          : "Error de BD al intentar anular la venta.",
+          : (mensajeSaldoInsuficienteCaja(anulacionError) ??
+            "Error de BD al intentar anular la venta."),
         success: false,
       };
     }

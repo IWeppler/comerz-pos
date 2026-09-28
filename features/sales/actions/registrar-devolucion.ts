@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
+import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 
 /**
  * Devolver renglones sueltos de una venta.
@@ -128,7 +129,7 @@ export async function registrarDevolucionAction(
         data: null,
         error: codigo
           ? MENSAJES[codigo]
-          : "No se pudo registrar la devolución.",
+          : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo registrar la devolución."),
       };
     }
 

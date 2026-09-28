@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
+import { mensajeSaldoInsuficienteCaja } from "../lib/saldo-insuficiente-caja";
 import type { MovimientoCuenta } from "../lib/movimiento-financiero";
 
 export type CuentaFinanciera = {
@@ -130,7 +131,7 @@ export async function registrarTransferenciaFinancieraAction(
     console.error("Error registrando transferencia:", error);
     const mensaje = error.message.includes("CAJA_DIARIA_REQUIERE_TURNO_ABIERTO")
       ? "Abrí la caja antes de mover dinero hacia o desde Caja diaria."
-      : "No se pudo registrar la transferencia.";
+      : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo registrar la transferencia.");
     return { error: mensaje, success: false };
   }
 
@@ -278,7 +279,9 @@ export async function revertirTransferenciaFinancieraAction(
     console.error("Error revirtiendo transferencia:", error);
     const codigo = Object.keys(MENSAJES_REVERSA).find((c) => error.message.includes(c));
     return {
-      error: codigo ? MENSAJES_REVERSA[codigo] : "No se pudo revertir la transferencia.",
+      error: codigo
+        ? MENSAJES_REVERSA[codigo]
+        : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo revertir la transferencia."),
       reversaId: null,
     };
   }

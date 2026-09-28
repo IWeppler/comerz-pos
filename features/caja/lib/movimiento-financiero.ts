@@ -70,12 +70,17 @@ export function etiquetaMovimiento(
       return "Gasto";
 
     case "TRANSFERENCIA":
+      // Reversa + re-emisión al corregir de qué turno era (20260928130000).
+      if (evento.startsWith("CORRECCION")) return "Transferencia corregida";
       return importe >= 0 ? "Entró desde otra cuenta" : "Salió hacia otra cuenta";
 
     case "ACREDITACION":
       return importe >= 0 ? "Se acreditó" : "Pasó a su cuenta";
 
     case "TURNO_CAJA":
+      // Reversa de una apertura/cierre/ajuste al corregir el horario de un
+      // turno (20260928130000): no es un faltante ni un cierre nuevo.
+      if (evento.startsWith("CORRECCION")) return "Corrección de horario de caja";
       if (evento === "APERTURA_TURNO") return "Apertura de caja";
       if (evento === "CIERRE_TURNO") return "Cierre de caja";
       if (evento === "AJUSTE_ARQUEO") {
