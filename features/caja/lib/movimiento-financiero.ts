@@ -79,8 +79,9 @@ export function etiquetaMovimiento(
 
     case "TURNO_CAJA":
       // Reversa de una apertura/cierre/ajuste al corregir el horario de un
-      // turno (20260928130000): no es un faltante ni un cierre nuevo.
-      if (evento.startsWith("CORRECCION")) return "Corrección de horario de caja";
+      // turno (20260928130000) o su arqueo al reimputar gastos
+      // (20260928140000): no es un faltante ni un cierre nuevo.
+      if (evento.startsWith("CORRECCION")) return "Corrección de cierre de caja";
       if (evento === "APERTURA_TURNO") return "Apertura de caja";
       if (evento === "CIERRE_TURNO") return "Cierre de caja";
       if (evento === "AJUSTE_ARQUEO") {

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { FRECUENCIAS, type Frecuencia } from "../lib/egreso-programado";
 import { mensajeSaldoInsuficienteCaja } from "../lib/saldo-insuficiente-caja";
@@ -280,7 +281,13 @@ export async function confirmarEgresoProgramadoAction(
     return { error: "No tenés permiso para registrar gastos.", success: false };
   }
 
-  const { turnoId } = await resolverTurnoActivo(supabase, user.id);
+  // Turno de otro día: no recibe gastos. Sin cuenta elegida la base usaría
+  // ese turno (o la caja general si se lo saca), así que se frena.
+  const { turnoId: turnoActivo, turnoDeOtroDia } = await resolverTurnoActivo(supabase, user.id);
+  if (turnoDeOtroDia && !opciones.cuentaOrigenId) {
+    return { error: MENSAJE_TURNO_DE_OTRO_DIA, success: false };
+  }
+  const turnoId = turnoDeOtroDia ? null : turnoActivo;
 
   const { error } = await supabase.rpc("confirmar_egreso_programado", {
     p_id: id,
@@ -295,7 +302,9 @@ export async function confirmarEgresoProgramadoAction(
     const clave = Object.keys(MENSAJES).find((k) => error.message?.includes(k));
     return {
       error: clave
-        ? MENSAJES[clave]
+        ? clave === "CAJA_DIARIA_REQUIERE_TURNO_ABIERTO" && turnoDeOtroDia
+          ? MENSAJE_TURNO_DE_OTRO_DIA
+          : MENSAJES[clave]
         : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo registrar el gasto."),
       success: false,
     };

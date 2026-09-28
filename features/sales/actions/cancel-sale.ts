@@ -4,6 +4,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import { requiereNotaCredito } from "@/shared/lib/facturacion";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
@@ -103,7 +104,7 @@ export async function anularVentaAction(
     // si la caja está cerrada y la política lo exige.
     let turnoDevolucionId: string | null = null;
     if (venta.monto_cobrado > 0) {
-      const { turnoId, requiereCajaAbierta } = await resolverTurnoActivo(
+      const { turnoId, requiereCajaAbierta, turnoDeOtroDia } = await resolverTurnoActivo(
         supabase,
         user.id,
       );
@@ -112,6 +113,10 @@ export async function anularVentaAction(
           error: "Necesitas abrir la caja antes de anular esta venta.",
           success: false,
         };
+      }
+      // Un turno que quedó abierto de noche no recibe el reintegro de hoy.
+      if (turnoId && turnoDeOtroDia) {
+        return { error: MENSAJE_TURNO_DE_OTRO_DIA, success: false };
       }
       turnoDevolucionId = turnoId;
     }

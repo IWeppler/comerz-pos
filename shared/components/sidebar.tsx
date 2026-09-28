@@ -29,6 +29,7 @@ import { useSidebarStore } from "@/shared/store/sidebar-store";
 import { NegocioSwitcher } from "@/features/auth/ui/negocio-switcher";
 import type { MembresiaNegocio } from "@/features/auth/actions/negocios";
 import { useCajaStatusStore } from "@/shared/store/caja-status-store";
+import { useAlertasCajaStore } from "@/shared/store/alertas-caja-store";
 import {
   Tooltip,
   TooltipContent,
@@ -118,6 +119,11 @@ export function Sidebar({
   const fetchCajaStatusStore = useCajaStatusStore(
     (state) => state.fetchCajaStatus,
   );
+  const alertasCajaPendientes = useAlertasCajaStore((state) => state.pendientes);
+  const refrescarAlertasCaja = useAlertasCajaStore((state) => state.refrescar);
+  // El aviso de Auditoría es para quien la puede abrir. La RPC igual devuelve
+  // 0 sin permiso; filtrar acá ahorra el request a las vendedoras.
+  const veAuditoriaCaja = userRole === "ADMIN";
 
   const visibleNavGroups = useMemo(() => {
     return NAV_GROUPS.map((group) => ({
@@ -178,6 +184,18 @@ export function Sidebar({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [branding.modo_caja, userId, fetchCajaStatusStore]);
+
+  // Alertas de caja sin revisar: cada 5 minutos con la pestaña visible. Es
+  // un aviso, no un tiempo real: lo urgente (caja de otro día) ya lo dice el
+  // chip de caja en el momento.
+  useEffect(() => {
+    if (!veAuditoriaCaja) return;
+    refrescarAlertasCaja();
+    const intervalo = setInterval(() => {
+      if (document.visibilityState === "visible") refrescarAlertasCaja();
+    }, 5 * 60_000);
+    return () => clearInterval(intervalo);
+  }, [veAuditoriaCaja, negocioActivoId, refrescarAlertasCaja]);
 
   const initial = branding.posName?.substring(0, 1).toUpperCase() || "C";
 
@@ -367,6 +385,20 @@ export function Sidebar({
                           {!isCollapsed && (
                             <span className="text-sm">{item.name}</span>
                           )}
+                          {/* Colapsado no hay lugar para el número: el
+                              tooltip del link lo dice. */}
+                          {item.href === "/caja" &&
+                            veAuditoriaCaja &&
+                            !isCollapsed &&
+                            alertasCajaPendientes > 0 && (
+                              <span
+                                aria-label={`${alertasCajaPendientes} alertas de caja sin revisar`}
+                                title="Alertas de caja sin revisar"
+                                className="ml-auto rounded-full bg-destructive px-1.5 text-[10px] font-bold leading-4 text-white"
+                              >
+                                {alertasCajaPendientes}
+                              </span>
+                            )}
                           {bloqueadoPorPlan && !isCollapsed && (
                             <span className="ml-auto flex items-center gap-0.5">
                               <Lock className="h-3 w-3 text-muted-foreground/70" />
@@ -378,7 +410,9 @@ export function Sidebar({
                       <TooltipContent side="right" hidden={!isCollapsed}>
                         {bloqueadoPorPlan
                           ? `${item.name} — mejorá tu plan`
-                          : item.name}
+                          : item.href === "/caja" && veAuditoriaCaja && alertasCajaPendientes > 0
+                            ? `${item.name} — ${alertasCajaPendientes} alertas sin revisar`
+                            : item.name}
                       </TooltipContent>
                     </Tooltip>
                   );

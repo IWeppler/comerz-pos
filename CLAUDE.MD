@@ -925,6 +925,46 @@ tiene 11.
   OJO con anular una venta FACTURADA: la NC se pide a ARCA antes de la RPC,
   así que si el cajón no alcanza para el reintegro en efectivo queda la NC
   emitida sin anulación (el caso residual que ya loguea `cancel-sale.ts`).
+- **Un gasto dice de dónde sale la plata; sin default** (28/9/2026). El modal
+  de egreso es de dos pasos: primero la caja (caja chica con lo que hay en el
+  cajón, Caja Grande, banco, billetera — `features/caja/lib/origen-egreso.ts`),
+  después el tipo. `registrarEgresoAction` rechaza la cuenta vacía, y el
+  `turno_caja_id` se anota SOLO si la cuenta es arqueada: un gasto de la Caja
+  Grande no es del arqueo de nadie (los sueldos del 19/9 quedaban colgados
+  del turno abierto). El default a la caja chica fue la causa de los
+  sobrantes falsos de El Nono Cacho. Los "cambios de efectivo por
+  transferencia" no son gastos: son transferencias.
+- **Un turno de otro día no se usa** (`entities/caja/lib/turno-de-otro-dia.ts`,
+  `20260928190000`). Si el turno abierto se abrió un día comercial anterior
+  (hora de Argentina), `resolverTurnoActivo` lo marca `turnoDeOtroDia` y la
+  venta (`TURNO_DE_OTRO_DIA`), el gasto de caja chica, la devolución, la
+  anulación, el ingreso y la transferencia con la caja diaria frenan hasta que
+  se cierre. Excepción: una venta OFFLINE cobrada el mismo día del turno que
+  recién se sincroniza. Al cerrarlo, `cerrarTurnoAction` fecha el cierre un
+  minuto después de su último movimiento (`ultimo_movimiento_turno`, DEFINER
+  con filtro de negocio), en el día del turno; como la bitácora usa
+  `fecha_cierre`, el ajuste y el retiro caen en ese día. Motivo: El Nono
+  Cacho cerró el 24 y el 25/9 a la mañana siguiente con ventas del otro día
+  adentro, y separarlos llevó `20260928130000`. El chip de caja del navbar se
+  pone ámbar ("Caja de otro día: cerrala") y el POS ofrece cerrarla.
+- **/caja → Auditoría** (`20260928200000`, `alertas_caja(p_dias)`). Cuarta
+  pestaña, para quien tiene `caja.ver_movimientos` o `caja.ver_gerencial`.
+  La base DEVUELVE HECHOS con severidad (ALTA / MEDIA / BAJA) y no corrige
+  nada: caja de otro día, cierre al día siguiente, diferencia de arqueo
+  ≥ $5.000, fondo de apertura igual al cierre de otro día (el 254.700 del
+  25/9), plata movida entre turnos del mismo día, cambio cargado como gasto,
+  gasto ≥ $50.000 de la caja chica, salida ≥ $100.000 de la Caja Grande,
+  devolución en efectivo, cobro corregido a mano, ajuste de saldo y Caja
+  Grande negativa. Cada alerta tiene una `clave` estable (tipo + id) y
+  `alertas_caja_revisadas` guarda quién la revisó y con qué nota; la revisión
+  es del NEGOCIO, no de la persona. `alertas_caja_pendientes()` (ALTA + MEDIA
+  sin revisar, 30 días) alimenta el número del link de Caja en el menú (solo
+  ADMIN, cada 5 minutos) y de la pestaña; sin permiso devuelve 0 en vez de
+  lanzar, porque la llama un polling. Los montos del texto salen de
+  `pesos_ar()`: `to_char` usa el locale de la base y ponía comas. Un tipo de
+  alerta nuevo se agrega en la RPC y su "qué hacer" en
+  `features/caja/lib/alerta-caja.ts` (fail-closed: sin entrada, no inventa un
+  consejo).
 - Métodos de pago, dos porcentajes que NO son lo mismo: `comision` es lo que
   el comercio le paga al procesador (se resta, interno) y `recargo_porcentaje`
   es lo que le cobra al cliente (se suma, se muestra). El cálculo vive en

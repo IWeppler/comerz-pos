@@ -14,6 +14,7 @@ import {
   TooltipTrigger,
 } from "@/shared/ui/tooltip";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { esTurnoDeOtroDia } from "@/entities/caja/lib/turno-de-otro-dia";
 
 interface CajaStatusButtonProps {
   modoCaja: string;
@@ -45,34 +46,44 @@ export function CajaStatusButton({
   // hermano: anidar un Dialog dentro de otro rompe foco y scroll-lock.
   const [isEgresoOpen, setIsEgresoOpen] = useState(false);
   const [isIngresoOpen, setIsIngresoOpen] = useState(false);
+  // Quedó abierta de noche: no se puede vender hasta cerrarla (ver
+  // turno-de-otro-dia.ts). El chip lo dice en ámbar para que se vea antes
+  // de que el POS rebote la primera venta.
+  const deOtroDia = Boolean(isCajaAbierta && esTurnoDeOtroDia(turno?.fecha_apertura));
 
   const boton = (
     <button
       type="button"
       onClick={() => setIsModalOpen(true)}
       aria-label={
-        isCajaAbierta
-          ? `Caja abierta — efectivo esperado ${formatearMoneda(turno?.montoActual ?? 0)}`
-          : "Abrir turno"
+        deOtroDia
+          ? "La caja quedó abierta desde otro día: cerrala"
+          : isCajaAbierta
+            ? `Caja abierta — efectivo esperado ${formatearMoneda(turno?.montoActual ?? 0)}`
+            : "Abrir turno"
       }
       className={`inline-flex h-9 cursor-pointer items-center gap-2 rounded-lg border px-3 text-xs font-medium transition-colors ${
-        isCajaAbierta
-          ? "border-success/20 bg-success/10 text-success hover:bg-success/20"
-          : "border-border bg-muted text-muted-foreground hover:bg-muted/70"
+        deOtroDia
+          ? "border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+          : isCajaAbierta
+            ? "border-success/20 bg-success/10 text-success hover:bg-success/20"
+            : "border-border bg-muted text-muted-foreground hover:bg-muted/70"
       } ${className}`}
     >
       <span
         className={`h-2 w-2 shrink-0 rounded-full ${
-          isCajaAbierta ? "bg-success" : "bg-muted-foreground/40"
+          deOtroDia ? "bg-warning" : isCajaAbierta ? "bg-success" : "bg-muted-foreground/40"
         }`}
       />
       <Wallet className="h-3.5 w-3.5 shrink-0" />
       <span className="hidden sm:inline">
         {isCajaAbierta === null
           ? "Caja"
-          : isCajaAbierta
-            ? "Caja abierta"
-            : "Caja cerrada"}
+          : deOtroDia
+            ? "Caja de otro día: cerrala"
+            : isCajaAbierta
+              ? "Caja abierta"
+              : "Caja cerrada"}
       </span>
     </button>
   );

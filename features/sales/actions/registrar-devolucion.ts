@@ -4,6 +4,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
 import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 
@@ -96,7 +97,7 @@ export async function registrarDevolucionAction(
     // la política del comercio exige caja abierta y no la hay, la devolución no
     // puede quedar a medias. La plata en efectivo sale de la caja de HOY, no de
     // la del día de la venta, que puede estar cerrada hace semanas.
-    const { turnoId, requiereCajaAbierta } = await resolverTurnoActivo(
+    const { turnoId, requiereCajaAbierta, turnoDeOtroDia } = await resolverTurnoActivo(
       supabase,
       user.id,
     );
@@ -105,6 +106,10 @@ export async function registrarDevolucionAction(
         data: null,
         error: "Necesitás abrir la caja antes de registrar una devolución.",
       };
+    }
+    // Un turno que quedó abierto de noche no recibe el reintegro de hoy.
+    if (turnoId && turnoDeOtroDia) {
+      return { data: null, error: MENSAJE_TURNO_DE_OTRO_DIA };
     }
 
     const { data, error } = await supabase.rpc("registrar_devolucion", {

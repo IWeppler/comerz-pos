@@ -366,6 +366,116 @@ que falta es **desorganización del circuito de efectivo**: retiros de cajón a
 Caja Grande sin registro, egresos imputados a la caja equivocada y cambios
 cargados como gasto o al revés.
 
+### 6.5 Reimputación aplicada — `20260928140000_nono_cacho_reimputar_gastos_a_caja_grande.sql`
+
+Decidido con la dueña el 28/9. Aplicada y verificada ese día (prueba en seco
+revertida antes, todos los guards pasaron).
+
+| Turno | Gasto que pasa a Caja Grande | Esperado | Contado | Diferencia antes | Diferencia ahora |
+|---|---|---|---|---|---|
+| Jue 17 tarde | Ramiro 102.000 + Dipa 100.000 | 288.548 | 269.000 | +182.452 | **−19.548** |
+| Sáb 19 tarde | DESCARTABLE 78.000 | 257.196 | 254.700 | +81.500,50 firmado / +75.504 ledger | **−2.496** |
+| Jue 24 | 44.290 del dulce de leche (partido: 205.710 cajón + 44.290 CG) | 99.200 | 99.200 | +44.290 | **0** |
+| Sáb 26 tarde | Sueldo Agu 150.000 + Sueldo Analia 100.000 | 225.799,30 | 210.800 | +235.000,70 | **−14.999,30** |
+
+- Gastos: cambian de cuenta y pierden el turno; el ledger escribe solo el par
+  CORRECCION_REVERSA / CORRECCION_APLICADA fechado en el gasto. Total de gastos
+  sin cambio.
+- Arqueo: reversa del ajuste vigente + ajuste nuevo, fechados en el cierre. El
+  conteo firmado no cambia; la observación del turno guarda el esperado y la
+  diferencia firmados.
+- El sábado 19 además queda con el esperado correcto (el firmado tenía una
+  devolución restada dos veces).
+- Caja diaria sin cambio (0). **Caja Grande: 443.702 → −130.588.** Es
+  esperable: le faltan el saldo inicial al 17/9 y los cierres del 17–19/9.
+- Etiqueta en pantalla de las reversas de turno: "Corrección de cierre de
+  caja" (`movimiento-financiero.ts`).
+
+### 6.6 Caja Grande desde el 17/9 — `20260928150000_nono_cacho_caja_grande_desde_el_17.sql`
+
+Aplicada el 28/9, con prueba en seco antes.
+
+- Saldo inicial **202.000** al 17/9 16:29. La dueña: "era igual a la
+  cantidad de egresos", o sea justo Ramiro + Dipa.
+- Patas de Caja Grande de los turnos del 17 al 19/9: +997.900 de cierres,
+  −168.600 de fondos. El fondo de 1.000 del primer turno no sale de la Caja
+  Grande: la dejaría en −1.000 esa tarde.
+- Caja Grande: −130.588 → **900.712**. Caja diaria y resultado sin cambio.
+
+Mínimos diarios de la Caja Grande en el sistema después de esto:
+
+| Día | Mínimo | Fin del día |
+|---|---|---|
+| 17/9 | 0 | 269.000 |
+| 18/9 | 240.600 | 460.200 |
+| **19/9** | **−253.400** | 1.300 |
+| **21/9** | **−27.700** | 215.500 |
+| 22/9 en adelante | positivo | |
+
+El 19/9 los sueldos (750.000, 20:35–20:39) se cargan antes del cierre de la
+tarde (20:47) y superan lo que había. Parte se pagó con otra plata (al menos
+"Diferencia Sueldo Ani Transferencia" 80.000). El 21/9 el fondo (29.000) sale
+de una Caja Grande con 1.300.
+
+**Diferencia contra lo físico:** sistema 900.712 contra ~209.700 físicos
+(159.600 del lunes a la mañana + 50.100 del cierre del lunes). Son **~691.000
+que salieron de la Caja Grande sin registrarse** entre el 17 y el 28/9. Hay
+que pedirle a la dueña la lista de pagos, depósitos y retiros.
+
+### 6.7 Jueves 17 exacto — `20260928160000_nono_cacho_jueves_17_exacto.sql`
+
+Aplicada el 28/9. De Ramiro, 82.452 con Caja Grande y 19.548 con la caja
+chica (fila nueva "Pago Proveedor Ramiro (parte pagada con la caja chica)").
+Turno del jueves 17 en 0. Saldo inicial de la Caja Grande corregido a 182.452
+(reversa del de 202.000 y re-emisión, misma fecha). Caja Grande sin cambio:
+900.712.
+
+Nota: a las 16:44 del 28/9 el detalle del turno del sábado 19 tarde no cargó
+(turnos_caja 406, `transferencias_caja_turno` 400, `flujo_caja_turno` 403):
+los pedidos salieron sin negocio activo. Los datos del turno están intactos.
+
+### 6.8 Modelo final del 17/9 y cambios — `20260928170000_nono_cacho_jueves_17_y_cambios.sql`
+
+Aplicada el 28/9. **Reemplaza** lo que 140000/150000/160000 hicieron con el
+jueves 17, siguiendo el modelo de la dueña:
+
+- El 17/9 todo arranca en cero y la Caja Grande todavía no existe. Ramiro y
+  Dipa salieron de la caja física, así que vuelven a la caja chica del turno.
+  La Caja Grande **no tiene saldo inicial** (se revirtió el de 182.452) y
+  nace con el cierre de ese turno (269.000).
+- El sobrante de 182.452 era plata que ya estaba en la caja antes de la
+  primera venta del sistema: el fondo del jueves se corrige de 1.000 a
+  **183.452**, sin pata en la Caja Grande. El turno cierra en 0.
+- Los seis "Cambio de efectivo por transferencia" cargados como egreso
+  (375.000, de los cuales 115.000 eran OPERATIVO) pasan a transferencias
+  caja chica → Caja Grande, con el mismo formato que el del 22/9 (que la
+  dueña confirma como bien cargado). El egreso se borra (ELIMINACION_REVERSA
+  con motivo) y la transferencia queda con su fecha y su turno. Ningún arqueo
+  cambia.
+
+Efectos: caja diaria sin cambio, Caja Grande +375.000 (**1.225.612**),
+ganancia +115.000, gastos −375.000. La Caja Grande ya no queda negativa en
+ningún día: el mínimo del 19/9 pasa a 121.600.
+
+Diferencia contra lo físico: 1.225.612 en el sistema contra ~159.600 (189.000
+del conteo del lunes − 29.400 del cajón; el cierre del lunes 50.100 volvió al
+cajón como fondo de la tarde). Son **~1.066.000 que salieron de la Caja Grande
+sin registrarse** entre el 17 y el 28/9. La dueña tiene que listarlos o se
+carga un ajuste único con el conteo de hoy.
+
+### 6.9 Ajuste al conteo — `20260928180000_nono_cacho_caja_grande_ajuste_conteo.sql`
+
+Aplicada el 28/9. Un solo movimiento en la Caja Grande (origen AJUSTE,
+evento REGISTRO, `impacto_resultado = 0`) de **−1.066.012**: "Diferencia no
+identificada 17–28/9". La Caja Grande queda en **159.600**, que es el conteo
+físico: 189.000 del lunes a la mañana menos los 29.400 del fondo del cajón. El
+cierre del lunes (+50.100) y el fondo de la tarde (−50.100) se compensan.
+
+Va con impacto 0 porque no se sabe cuánto fue gasto del negocio, cuánto
+retiro del dueño y cuánto mercadería. Si la dueña identifica algo, se carga
+como egreso de la Caja Grande con su tipo y se achica este ajuste (reversa +
+re-emisión por el resto).
+
 ## 5. Cómo consultar
 
 - MCP `supabase` (`execute_sql`). Si no responde, los datos se pueden leer con

@@ -4,6 +4,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { CreateSalePaymentInput } from "@/entities/ventas/types";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import { calcularPagosConRecargo } from "@/shared/lib/recargo-metodo";
 import {
   esFraccionable,
@@ -357,7 +358,12 @@ export async function registrarVentaAction(
   };
 
   const [
-    { turnoId: turnoAbiertoId, requiereCajaAbierta: requiereCaja },
+    {
+      turnoId: turnoAbiertoId,
+      requiereCajaAbierta: requiereCaja,
+      turnoDeOtroDia,
+      fechaApertura: fechaAperturaTurno,
+    },
     { data: metodosDb },
     { promoData, categoriasPromo, metodosPromo },
     { data: stockFilas },
@@ -408,6 +414,23 @@ export async function registrarVentaAction(
   // BLOQUEO Y ASIGNACIÓN DE CAJA (MODO DINÁMICO)
   if (requiereCaja && !turnoAbiertoId) {
     return { error: "CAJA_CERRADA", success: false };
+  }
+
+  // Un turno que quedó abierto de noche no recibe ventas del día siguiente
+  // (ver `turno-de-otro-dia.ts`). La excepción es la venta offline cobrada
+  // EL MISMO DÍA del turno que recién ahora se sincroniza: esa sí es suya, y
+  // rechazarla dejaría en la cola una venta que ya se cobró.
+  if (
+    turnoAbiertoId &&
+    turnoDeOtroDia &&
+    !(
+      esVentaOffline &&
+      vendidaEn &&
+      fechaAperturaTurno &&
+      diaComercial(vendidaEn) === diaComercial(fechaAperturaTurno)
+    )
+  ) {
+    return { error: "TURNO_DE_OTRO_DIA", success: false };
   }
 
   if (!metodosDb)

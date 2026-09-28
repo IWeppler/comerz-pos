@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { mensajeSaldoInsuficienteCaja } from "../lib/saldo-insuficiente-caja";
 import type { MovimientoCuenta } from "../lib/movimiento-financiero";
@@ -119,7 +120,11 @@ export async function registrarTransferenciaFinancieraAction(
     return { error: "No tenés permiso para transferir entre cuentas.", success: false };
   }
 
-  const { turnoId } = await resolverTurnoActivo(supabase, user.id);
+  // Un turno de otro día no recibe movimientos: se pasa como si no hubiera
+  // turno. Entre cuentas que no son la caja diaria no cambia nada; si una lo
+  // es, la base frena y el mensaje dice por qué.
+  const { turnoId: turnoActivo, turnoDeOtroDia } = await resolverTurnoActivo(supabase, user.id);
+  const turnoId = turnoDeOtroDia ? null : turnoActivo;
   const { error } = await supabase.rpc("registrar_transferencia_financiera", {
     p_cuenta_origen_id: cuentaOrigenId,
     p_cuenta_destino_id: cuentaDestinoId,
@@ -130,7 +135,9 @@ export async function registrarTransferenciaFinancieraAction(
   if (error) {
     console.error("Error registrando transferencia:", error);
     const mensaje = error.message.includes("CAJA_DIARIA_REQUIERE_TURNO_ABIERTO")
-      ? "Abrí la caja antes de mover dinero hacia o desde Caja diaria."
+      ? turnoDeOtroDia
+        ? MENSAJE_TURNO_DE_OTRO_DIA
+        : "Abrí la caja antes de mover dinero hacia o desde Caja diaria."
       : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo registrar la transferencia.");
     return { error: mensaje, success: false };
   }
@@ -269,7 +276,8 @@ export async function revertirTransferenciaFinancieraAction(
     return { error: MENSAJES_REVERSA.SIN_PERMISO, reversaId: null };
   }
 
-  const { turnoId } = await resolverTurnoActivo(supabase, user.id);
+  const { turnoId: turnoActivo, turnoDeOtroDia } = await resolverTurnoActivo(supabase, user.id);
+  const turnoId = turnoDeOtroDia ? null : turnoActivo;
   const { data, error } = await supabase.rpc("revertir_transferencia_financiera", {
     p_transferencia_id: transferenciaId,
     p_motivo: motivo.trim(),
@@ -280,7 +288,9 @@ export async function revertirTransferenciaFinancieraAction(
     const codigo = Object.keys(MENSAJES_REVERSA).find((c) => error.message.includes(c));
     return {
       error: codigo
-        ? MENSAJES_REVERSA[codigo]
+        ? codigo === "CAJA_DIARIA_REQUIERE_TURNO_ABIERTO" && turnoDeOtroDia
+          ? MENSAJE_TURNO_DE_OTRO_DIA
+          : MENSAJES_REVERSA[codigo]
         : (mensajeSaldoInsuficienteCaja(error) ?? "No se pudo revertir la transferencia."),
       reversaId: null,
     };

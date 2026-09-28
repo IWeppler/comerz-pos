@@ -1,9 +1,16 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { esTurnoDeOtroDia } from "./turno-de-otro-dia";
 
 export interface TurnoActivoResuelto {
   turnoId: string | null;
   modoCaja: string;
   requiereCajaAbierta: boolean;
+  /** El turno abierto es de un día anterior (quedó abierto de noche). Quien
+   * vende o mueve plata del cajón tiene que frenar y pedir que se cierre:
+   * ver `turno-de-otro-dia.ts`. */
+  turnoDeOtroDia: boolean;
+  /** Para comparar contra la hora de una venta offline (ver create-sale). */
+  fechaApertura: string | null;
 }
 
 /** Las dos columnas de `configuracion_pos` que esta función necesita. */
@@ -37,7 +44,10 @@ export async function resolverTurnoActivo(
   const modoCaja = config?.modo_caja || "UNICA";
   const requiereCajaAbierta = config?.requiere_caja_abierta ?? true;
 
-  let query = supabase.from("turnos_caja").select("id").eq("estado", "ABIERTO");
+  let query = supabase
+    .from("turnos_caja")
+    .select("id, fecha_apertura")
+    .eq("estado", "ABIERTO");
 
   if (modoCaja === "UNICA") {
     query = query.eq("modo", "UNICA");
@@ -47,5 +57,11 @@ export async function resolverTurnoActivo(
 
   const { data: turno } = await query.maybeSingle();
 
-  return { turnoId: turno?.id ?? null, modoCaja, requiereCajaAbierta };
+  return {
+    turnoId: turno?.id ?? null,
+    modoCaja,
+    requiereCajaAbierta,
+    turnoDeOtroDia: esTurnoDeOtroDia(turno?.fecha_apertura),
+    fechaApertura: turno?.fecha_apertura ?? null,
+  };
 }

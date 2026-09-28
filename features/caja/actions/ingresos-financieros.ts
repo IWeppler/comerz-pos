@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import type { CajaActionState } from "@/entities/caja/types";
 import { esTipoIngreso } from "../lib/tipo-ingreso";
 import { mensajeSaldoInsuficienteCaja } from "../lib/saldo-insuficiente-caja";
@@ -61,7 +62,14 @@ export async function registrarIngresoAction(
     return { error: MENSAJES_REGISTRAR.SIN_PERMISO, success: false };
   }
 
-  const { turnoId } = await resolverTurnoActivo(supabase, user.id);
+  // Turno de otro día: no recibe movimientos. Sin cuenta elegida la base
+  // mandaría la plata a la caja general en silencio (sin turno), así que ahí
+  // se frena; con una cuenta elegida que no es la caja diaria, sigue.
+  const { turnoId: turnoActivo, turnoDeOtroDia } = await resolverTurnoActivo(supabase, user.id);
+  if (turnoDeOtroDia && !cuentaId) {
+    return { error: MENSAJE_TURNO_DE_OTRO_DIA, success: false };
+  }
+  const turnoId = turnoDeOtroDia ? null : turnoActivo;
 
   const { error } = await supabase.rpc("registrar_ingreso_financiero", {
     p_monto: monto,
@@ -76,7 +84,11 @@ export async function registrarIngresoAction(
       error.message.includes(c),
     );
     return {
-      error: codigo ? MENSAJES_REGISTRAR[codigo] : "No se pudo registrar el ingreso.",
+      error: codigo
+        ? codigo === "CAJA_DIARIA_REQUIERE_TURNO_ABIERTO" && turnoDeOtroDia
+          ? MENSAJE_TURNO_DE_OTRO_DIA
+          : MENSAJES_REGISTRAR[codigo]
+        : "No se pudo registrar el ingreso.",
       success: false,
     };
   }

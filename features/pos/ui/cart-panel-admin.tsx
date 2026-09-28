@@ -26,6 +26,7 @@ import {
 } from "@/features/pedidos/ui/pedidos-por-cobrar";
 import { encolarVenta } from "@/features/sales/lib/outbox-ventas";
 import { useVentasPendientesStore } from "@/shared/store/ventas-pendientes-store";
+import { useCajaModalStore } from "@/shared/store/caja-modal-store";
 import { esErrorDeRed } from "@/shared/lib/error-de-red";
 import { getDisponibilidadUnidadesAction } from "@/features/sales/actions/get-unidades-serie";
 import { SeleccionarUnidadesModal } from "./seleccionar-unidades-modal";
@@ -1585,6 +1586,19 @@ export function CartPanelAdmin({
                 onClick: () => {
                   closeSidebar();
                   router.push("/caja");
+                },
+              },
+            });
+          } else if (result.error === "TURNO_DE_OTRO_DIA") {
+            toast.error("La caja quedó abierta desde otro día", {
+              description:
+                "Cerrala contando el efectivo y abrí un turno nuevo para cobrar. El cierre se registra en el día de ese turno.",
+              duration: 15000,
+              action: {
+                label: "Cerrar caja",
+                onClick: () => {
+                  closeSidebar();
+                  useCajaModalStore.getState().setAbierto(true);
                 },
               },
             });

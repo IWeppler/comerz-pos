@@ -23,6 +23,10 @@ import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { abrirTurnoAction, cerrarTurnoAction } from "../actions/caja-action";
 import {
+  describirAperturaTurno,
+  esTurnoDeOtroDia,
+} from "@/entities/caja/lib/turno-de-otro-dia";
+import {
   AvisoVentasPendientes,
   useFrenoVentasPendientes,
 } from "@/features/caja/ui/freno-ventas-pendientes";
@@ -166,6 +170,23 @@ export function CajaQuickModal({
                 Resumen del turno de caja actual y cierre rápido.
               </DialogDescription>
             </DialogHeader>
+
+            {esTurnoDeOtroDia(turno.fecha_apertura) && (
+              <div
+                role="alert"
+                className="mx-6 mb-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-foreground"
+              >
+                <p className="font-semibold text-warning">
+                  Esta caja quedó abierta desde el{" "}
+                  {describirAperturaTurno(turno.fecha_apertura)}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  Contá el efectivo y cerrala antes de vender. El cierre se
+                  registra en el día de ese turno; las ventas de hoy van a un
+                  turno nuevo.
+                </p>
+              </div>
+            )}
 
             <div className="px-6 pb-4 space-y-2 text-sm">
               <div className="flex justify-between">

@@ -5,6 +5,11 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { CajaActionState } from "@/entities/caja/types";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
+import {
+  esTurnoDeOtroDia,
+  fechaCierreTurnoOlvidado,
+  MENSAJE_TURNO_DE_OTRO_DIA,
+} from "@/entities/caja/lib/turno-de-otro-dia";
 import { normalizarTipoEgreso } from "@/features/caja/lib/tipo-egreso";
 import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
@@ -99,7 +104,7 @@ export async function cerrarTurnoAction(
 
   const { data: turno, error: turnoError } = await supabase
     .from("turnos_caja")
-    .select("monto_inicial, estado, vendedor_id, modo")
+    .select("monto_inicial, estado, vendedor_id, modo, fecha_apertura, observacion_cierre")
     .eq("id", turnoId)
     .single();
 
@@ -152,6 +157,39 @@ export async function cerrarTurnoAction(
   const efectivoEsperado = Number(turno.monto_inicial) + Number(flujoCaja ?? 0);
   const diferenciaCaja = montoDeclarado - efectivoEsperado;
 
+  // Turno que quedó abierto de noche: el cierre se fecha en SU día, un
+  // minuto después de su último movimiento, no ahora. Mientras estuvo
+  // olvidado no se pudo vender ni mover plata del cajón (ver
+  // `turno-de-otro-dia.ts`), así que lo que se cuenta hoy es lo que había al
+  // final de ese día. La bitácora usa `fecha_cierre` para el ajuste y el
+  // retiro, así que el sobrante o faltante también cae en ese día.
+  const ahora = new Date();
+  let fechaCierre = ahora;
+  let observacionCierre: string | undefined;
+  if (esTurnoDeOtroDia(turno.fecha_apertura, ahora)) {
+    const { data: ultimoMovimiento } = await supabase.rpc("ultimo_movimiento_turno", {
+      p_turno_id: turnoId,
+    });
+    fechaCierre = fechaCierreTurnoOlvidado(
+      turno.fecha_apertura,
+      (ultimoMovimiento as string | null) ?? null,
+      ahora,
+    );
+    const contadoEl = ahora.toLocaleString("es-AR", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    observacionCierre = [
+      turno.observacion_cierre,
+      `[Quedó abierto de noche: se contó el ${contadoEl} y el cierre se registró al final de su día]`,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
   const { data: turnoCerrado, error } = await supabase
     .from("turnos_caja")
     .update({
@@ -160,8 +198,9 @@ export async function cerrarTurnoAction(
       efectivo_esperado: efectivoEsperado,
       diferencia: diferenciaCaja,
       cerrada_por: user?.id,
-      fecha_cierre: new Date().toISOString(),
+      fecha_cierre: fechaCierre.toISOString(),
       estado: "CERRADO",
+      ...(observacionCierre !== undefined && { observacion_cierre: observacionCierre }),
     })
     .eq("id", turnoId)
     .eq("estado", "ABIERTO")
@@ -291,11 +330,15 @@ export async function registrarEgresoAction(
       success: false,
     };
   }
-  // La cuenta es OPCIONAL desde `20260921170000`. Vacía, la decide la base
-  // por una regla que no depende de la pantalla: con turno abierto sale del
-  // cajón (CAJA_DIARIA); sin turno, de la caja general. Es lo que permite
-  // registrar un gasto desde Dinero sin elegir nada, y lo que hace que un
-  // egreso sin turno ya no caiga en una caja arqueada que lo rechaza.
+  // La cuenta es OBLIGATORIA (auditoría de El Nono Cacho, 28/9/2026). Hasta
+  // acá era opcional y vacía la decidía la base: con turno abierto, el cajón.
+  // Así se cargaron contra la caja del turno sueldos y proveedores que se
+  // pagaron con la Caja Grande, y cada uno apareció como un sobrante falso en
+  // el arqueo (hasta 235.000 en un turno). Un default es la decisión que se
+  // guarda cuando nadie mira: quien registra un gasto dice de dónde salió.
+  if (!cuentaOrigenId) {
+    return { error: "Elegí de qué caja sale la plata.", success: false };
+  }
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -316,27 +359,28 @@ export async function registrarEgresoAction(
     return { error: "No tenés permiso para registrar gastos.", success: false };
   }
 
-  const { turnoId, requiereCajaAbierta } = await resolverTurnoActivo(
-    supabase,
-    user.id,
-  );
-
-  if (cuentaOrigenId) {
-    const { data: cuenta } = await supabase
+  const [{ turnoId, turnoDeOtroDia }, { data: cuenta }] = await Promise.all([
+    resolverTurnoActivo(supabase, user.id),
+    supabase
       .from("cuentas_financieras")
       .select("id, requiere_arqueo")
       .eq("id", cuentaOrigenId)
       .eq("activa", true)
-      .maybeSingle();
-    if (!cuenta) {
-      return { error: "La cuenta elegida no está disponible.", success: false };
-    }
+      .maybeSingle(),
+  ]);
+  if (!cuenta) {
+    return { error: "La cuenta elegida no está disponible.", success: false };
+  }
 
-    if (cuenta.requiere_arqueo && requiereCajaAbierta && !turnoId) {
+  if (cuenta.requiere_arqueo) {
+    if (!turnoId) {
       return {
-        error: "Necesitas abrir la caja antes de registrar un gasto.",
+        error: "Para sacar plata de la caja chica tenés que tener la caja abierta.",
         success: false,
       };
+    }
+    if (turnoDeOtroDia) {
+      return { error: MENSAJE_TURNO_DE_OTRO_DIA, success: false };
     }
   }
 
@@ -346,8 +390,11 @@ export async function registrarEgresoAction(
     tipo,
     orden_compra_id: tipo === "COMPRA_MERCADERIA" ? ordenCompraId : null,
     creado_por: user.id,
-    turno_caja_id: turnoId,
-    cuenta_origen_id: cuentaOrigenId || null,
+    // El turno se anota solo si la plata sale del cajón: un gasto de la Caja
+    // Grande o del banco no es del arqueo de nadie. Antes quedaba colgado del
+    // turno abierto aunque saliera de otra cuenta (los sueldos del 19/9).
+    turno_caja_id: cuenta.requiere_arqueo ? turnoId : null,
+    cuenta_origen_id: cuentaOrigenId,
     categoria_id: categoriaId,
   });
 

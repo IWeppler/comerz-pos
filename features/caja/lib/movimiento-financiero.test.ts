@@ -56,9 +56,9 @@ describe("etiquetaMovimiento", () => {
     );
   });
 
-  it("la reversa de un horario corregido no se lee como faltante ni como transferencia", () => {
+  it("la reversa de un cierre corregido no se lee como faltante ni como transferencia", () => {
     expect(etiquetaMovimiento("TURNO_CAJA", "CORRECCION_REVERSA", -44290)).toBe(
-      "Corrección de horario de caja",
+      "Corrección de cierre de caja",
     );
     expect(etiquetaMovimiento("TRANSFERENCIA", "CORRECCION_REVERSA", 100000)).toBe(
       "Transferencia corregida",

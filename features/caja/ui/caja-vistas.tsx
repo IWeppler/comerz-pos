@@ -3,11 +3,14 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { ArrowLeft, History, List, PiggyBank, Wallet } from "lucide-react";
+import { ArrowLeft, History, List, PiggyBank, ShieldAlert, Wallet } from "lucide-react";
+import { useAlertasCajaStore } from "@/shared/store/alertas-caja-store";
 
-/** Las tres pestañas. "Movimientos" NO está acá: es una vista de pantalla
- * completa a la que se entra desde Dinero, no una cuarta pregunta. */
-type Vista = "hoy" | "dinero" | "cierres";
+/** Las pestañas. "Movimientos" NO está acá: es una vista de pantalla
+ * completa a la que se entra desde Dinero. "Auditoría" sí es una pregunta
+ * propia —¿qué pasó que alguien tendría que mirar?— y solo la ve quien tiene
+ * `caja.ver_movimientos` o `caja.ver_gerencial`. */
+type Vista = "hoy" | "dinero" | "cierres" | "auditoria";
 
 /** A dónde se puede navegar desde adentro del contenido de una vista. */
 export type DestinoCaja = Vista | "movimientos";
@@ -46,6 +49,9 @@ interface CajaVistasProps {
   /** Turnos pasados y cierres firmados. Lo ve cualquiera: son los turnos que
    * esa persona ya podía ver. */
   historial: ReactNode;
+  /** Alertas de lo que pasa con la plata (`alertas_caja`). Ausente = sin
+   * `caja.ver_movimientos` ni `caja.ver_gerencial`. */
+  auditoria?: ReactNode;
   /** false para la dueña que nunca abre caja: no se le muestra el bloque de
    * turno. Siempre puede abrir uno desde el botón de caja del navbar. */
   esCajera: boolean;
@@ -92,10 +98,12 @@ export function CajaVistas({
   dinero,
   movimientos,
   historial,
+  auditoria,
   esCajera,
   vistaInicial,
 }: Readonly<CajaVistasProps>) {
   const searchParams = useSearchParams();
+  const pendientesAuditoria = useAlertasCajaStore((s) => s.pendientes);
 
   // Movimientos vive adentro de Dinero. Sin Dinero no hay puerta, así que
   // vuelve a ser pestaña propia (ver el comentario de arriba).
@@ -115,6 +123,9 @@ export function CajaVistas({
       ? [{ valor: "movimientos" as const, label: "Movimientos", Icono: List }]
       : []),
     { valor: "cierres" as const, label: "Cierres", Icono: History },
+    ...(auditoria
+      ? [{ valor: "auditoria" as const, label: "Auditoría", Icono: ShieldAlert }]
+      : []),
   ];
 
   // `?vista=` sigue aceptando `historial`, que es como se llamaba Cierres:
@@ -174,6 +185,7 @@ export function CajaVistas({
     dinero,
     movimientos,
     cierres: historial,
+    auditoria,
   };
 
   if (enMovimientos && movimientos) {
@@ -221,6 +233,14 @@ export function CajaVistas({
               >
                 <Icono className="h-3.5 w-3.5 shrink-0" />
                 {label}
+                {valor === "auditoria" && pendientesAuditoria > 0 && (
+                  <span
+                    aria-label={`${pendientesAuditoria} sin revisar`}
+                    className="ml-0.5 rounded-full bg-destructive px-1.5 text-[10px] font-bold leading-4 text-white"
+                  >
+                    {pendientesAuditoria}
+                  </span>
+                )}
               </button>
             );
           })}
