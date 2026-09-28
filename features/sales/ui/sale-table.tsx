@@ -596,6 +596,7 @@ export function VentasTable({
       estadoPago: venta.estado_pago ?? undefined,
       montoCobrado: Number(venta.monto_cobrado || 0),
       montoPendiente: Number(venta.monto_pendiente || 0),
+      saldoAFavorAplicado: Number(venta.saldo_a_favor_aplicado || 0),
     });
   };
 

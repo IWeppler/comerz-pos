@@ -11,6 +11,8 @@ import {
   RecargoMoraConfig,
 } from "@/features/clients/lib/calcular-saldo-con-recargo";
 import { validarPerdonDeuda } from "@/features/clients/lib/validar-perdon-deuda";
+import { mensajeCobroSuperaDeuda } from "@/features/clients/lib/tope-cobro-cc";
+import { deudaDe } from "@/features/clients/lib/saldo-a-favor";
 import { urlDeResumen } from "@/shared/lib/dominios";
 import { esCuitValido, normalizarCuit } from "@/shared/lib/cuit";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
@@ -223,6 +225,19 @@ export async function getClienteDetalleAction(clienteId: string) {
   };
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type ResultadoCobroCC = {
+  error: string | null;
+  success: boolean;
+  recibo?: ReciboCobroCC;
+  /** El cobro con ese id ya estaba registrado: este intento no escribió nada. */
+  yaRegistrado?: boolean;
+  /** Monto base del cobro que ya estaba, para decírselo a la cajera. */
+  montoYaRegistrado?: number;
+};
+
 // 3. REGISTRAR PAGO DE DEUDA
 //
 // Devuelve, además del éxito, el RECIBO del cobro con los números que quedaron
@@ -231,7 +246,7 @@ export async function getClienteDetalleAction(clienteId: string) {
 export async function registrarPagoDeudaAction(
   prevState: ClientActionState | null,
   formData: FormData,
-): Promise<{ error: string | null; success: boolean; recibo?: ReciboCobroCC }> {
+): Promise<ResultadoCobroCC> {
   const clienteId = formData.get("cliente_id") as string;
   const metodoPagoId = formData.get("metodo_pago_id") as string;
   const montoRaw = formData.get("monto") as string;
@@ -240,6 +255,21 @@ export async function registrarPagoDeudaAction(
   if (!clienteId || !metodoPagoId || isNaN(monto) || monto <= 0) {
     return { error: "Datos inválidos para registrar el pago.", success: false };
   }
+
+  // Clave de idempotencia: el id del cobro lo genera el modal al abrirse y lo
+  // repite en cada reintento, así que tocar Confirmar dos veces (o reintentar
+  // tras un timeout) no registra dos cobros. Si no viene —un navegador con el
+  // JS de antes del deploy— se genera acá: ese cobro no es idempotente, pero
+  // el tope de la base igual frena el duplicado que salda de más.
+  const pagoIdRaw = ((formData.get("pago_id") as string | null) ?? "").trim();
+  const pagoId = UUID_RE.test(pagoIdRaw) ? pagoIdRaw : crypto.randomUUID();
+
+  // Cobrar de más, o una seña sin deuda, deja saldo a favor
+  // (20260928250000). Solo si quien cobra lo confirmó en la pantalla: sin
+  // esto la base rechaza el excedente, que es el freno contra el cobro
+  // duplicado y el monto mal tipeado.
+  const permitirSaldoAFavor =
+    formData.get("permitir_saldo_a_favor") === "true";
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
@@ -362,160 +392,125 @@ export async function registrarPagoDeudaAction(
     recargoConfig,
   );
 
-  // D. Iniciar Transacción Manual
-  // 1. Guardar en venta_pagos (Para que impacte en el Cierre Z de Caja)
-  const { data: pagoRegistrado, error: pagoError } = await supabase
-    .from("venta_pagos")
-    .insert({
-      cliente_id: clienteId,
-      turno_caja_id: turno.id, // 🚀 FIX: Ahora sí se vincula a la caja
-      metodo_pago_id: metodo.id,
-      metodo_nombre: metodo.nombre,
-      metodo_tipo: metodo.tipo,
-      monto_base: monto,
-      recargo_porcentaje: recargoPorcentaje,
-      recargo_monto: recargoMetodoMonto,
-      monto_bruto: montoBruto,
-      comision_porcentaje: comisionPorcentaje,
-      comision_monto: comisionMonto,
-      monto_neto: montoNeto,
-      acreditacion_dias: metodo.acreditacion_dias,
-      tipo_movimiento: "PAGO_CUENTA_CORRIENTE",
-    })
-    .select("id")
-    .single();
-
-  if (pagoError || !pagoRegistrado)
-    return { error: "Error al registrar pago en caja.", success: false };
-
-  // 2. El recargo por mora se MATERIALIZA como un DEBITO propio antes de
-  // imputar el pago.
+  // D. La escritura entera va en UNA transacción: `registrar_cobro_cc`
+  // (20260928210000). Antes eran cuatro escrituras sueltas desde acá
+  // (venta_pagos → mora → crédito → saldo), sin tope, sin idempotencia y con
+  // el saldo calculado en Node a partir de una lectura previa. Así quedaron
+  // los dos cobros duplicados de Evens del 21/7/2026.
   //
-  // Antes vivía solo como texto adentro de la descripción del pago y como
-  // `monto_recargo`, y el saldo bajaba por el monto entero: o sea que la mora
-  // se anunciaba pero no se cobraba nunca. Con el DEBITO, el recargo entra al
-  // capital y el pago se aplica sobre el total ya recargado — que es el
-  // "recargo primero" de verdad, y además le deja al comerciante una línea en
-  // el Libro Mayor para mostrarle al cliente de dónde salió el aumento.
+  // Lo que se sigue calculando acá (recargo por método, comisión, mora) viaja
+  // ya resuelto: vive en TypeScript con sus tests y no se duplica en SQL. La
+  // base pone el tope, contra el saldo releído bajo lock.
   //
-  // Va con `pago_id` a propósito: lo ata al cobro que lo generó y lo mantiene
-  // fuera del circuito de movimientos manuales (los que se editan/anulan son
-  // los que NO tienen ni venta_id ni pago_id — ver el bloque 8).
-  if (montoRecargo > 0) {
-    const detalleMora =
-      recargoConfig.recargo_mora_tipo === "PORCENTAJE"
-        ? `${recargoConfig.recargo_mora_valor}% sobre la deuda vencida`
-        : "monto fijo por deuda vencida";
+  // El recargo por mora se MATERIALIZA como un DEBITO propio antes del
+  // crédito: entra al capital y el pago se aplica sobre el total ya recargado
+  // — el "recargo primero" de verdad. Va atado al cobro (`pago_id`), que lo
+  // deja fuera del circuito de movimientos manuales (los que se editan/anulan
+  // son los que NO tienen ni venta_id ni pago_id), y al ticket del que es
+  // (`debito_origen_id`): capital y mora del mismo ticket se imputan como una
+  // unidad. Se DECLARA acá —no se deduce después— porque este es el único
+  // momento en que se sabe con certeza cuál era la deuda más vieja viva.
+  const detalleMora =
+    recargoConfig.recargo_mora_tipo === "PORCENTAJE"
+      ? `${recargoConfig.recargo_mora_valor}% sobre la deuda vencida`
+      : "monto fijo por deuda vencida";
 
-    const { error: moraError } = await supabase
-      .from("cuenta_corriente_movimientos")
-      .insert({
-        cliente_id: clienteId,
-        pago_id: pagoRegistrado.id,
-        tipo: "DEBITO",
-        monto: montoRecargo,
-        descripcion: `Recargo por mora (${detalleMora})`,
-        creado_por: user.id,
-        // De qué deuda es este recargo. Capital y mora del mismo ticket se
-        // imputan como una unidad: la clienta paga su compra más vieja
-        // completa, recargo incluido. Se DECLARA acá —no se deduce después—
-        // porque este es el único momento en que se sabe con certeza cuál era
-        // la deuda más vieja viva. Los 39 recargos anteriores a esto se
-        // reconstruyeron desde el ledger y quedaron marcados como tales.
-        debito_origen_id:
-          (deudaVencida as { debito_capital_mas_antiguo_id: string | null } | null)
-            ?.debito_capital_mas_antiguo_id ?? null,
-        origen_reconstruido: false,
-      });
-
-    if (moraError) {
-      console.error("[PAGO DEUDA] No se pudo registrar la mora:", moraError);
-      return {
-        error: "Error al registrar el recargo por mora.",
-        success: false,
-      };
-    }
-  }
-
-  // 3. Guardar en el Ledger de la Cuenta Corriente (Para que baje la deuda)
-  //
-  // El movimiento va por la BASE, no por el bruto: el recargo por método es
-  // plata del cobro, no capital amortizado. Si fuera por el bruto, la deuda
-  // bajaría más de lo que el cliente realmente pagó a cuenta.
+  // El crédito va por la BASE, no por el bruto: el recargo por método es
+  // plata del cobro, no capital amortizado.
+  // Qué es este cobro para el libro: sin deuda es una seña; con deuda y de
+  // más, un pago que deja saldo a favor. El número lo pone la base; esto es
+  // solo la leyenda que ve la dueña (y la clienta en su resumen).
+  const deudaAlCobrar = deudaDe(clienteDeuda?.saldo_pendiente) + montoRecargo;
+  const concepto =
+    deudaAlCobrar <= 0
+      ? "Seña (saldo a favor)"
+      : monto > deudaAlCobrar + 0.005
+        ? `Pago a cuenta (deja $${(monto - deudaAlCobrar).toLocaleString("es-AR", { maximumFractionDigits: 2 })} a favor)`
+        : "Pago a cuenta";
   const descripcionPago =
     recargoMetodoMonto > 0
-      ? `Pago a cuenta - ${metodo.nombre} (incluye $${recargoMetodoMonto.toLocaleString("es-AR")} de recargo por ${metodo.nombre})`
-      : `Pago a cuenta - ${metodo.nombre}`;
+      ? `${concepto} - ${metodo.nombre} (incluye $${recargoMetodoMonto.toLocaleString("es-AR")} de recargo por ${metodo.nombre})`
+      : `${concepto} - ${metodo.nombre}`;
 
-  const { error: ccError } = await supabase
-    .from("cuenta_corriente_movimientos")
-    .insert({
-      cliente_id: clienteId,
-      pago_id: pagoRegistrado.id,
-      tipo: "CREDITO",
-      monto: monto,
-      descripcion: descripcionPago,
-      creado_por: user.id,
-    });
+  const { data: resultadoCobro, error: errorCobro } = await supabase.rpc(
+    "registrar_cobro_cc",
+    {
+      p_pago: {
+        id: pagoId,
+        cliente_id: clienteId,
+        turno_caja_id: turno.id,
+        metodo_pago_id: metodo.id,
+        metodo_nombre: metodo.nombre,
+        metodo_tipo: metodo.tipo,
+        monto_base: monto,
+        recargo_porcentaje: recargoPorcentaje,
+        recargo_monto: recargoMetodoMonto,
+        monto_bruto: montoBruto,
+        comision_porcentaje: comisionPorcentaje,
+        comision_monto: comisionMonto,
+        monto_neto: montoNeto,
+        acreditacion_dias: metodo.acreditacion_dias,
+        descripcion_cc: descripcionPago,
+        permitir_saldo_a_favor: permitirSaldoAFavor,
+      },
+      p_mora:
+        montoRecargo > 0
+          ? {
+              monto: montoRecargo,
+              descripcion: `Recargo por mora (${detalleMora})`,
+              debito_origen_id:
+                (
+                  deudaVencida as {
+                    debito_capital_mas_antiguo_id: string | null;
+                  } | null
+                )?.debito_capital_mas_antiguo_id ?? null,
+            }
+          : null,
+    },
+  );
 
-  if (ccError)
-    return { error: "Error al registrar movimiento en CC.", success: false };
+  if (errorCobro || !resultadoCobro) {
+    const superaDeuda = mensajeCobroSuperaDeuda(errorCobro);
+    if (superaDeuda) return { error: superaDeuda, success: false };
 
-  // 4. Actualizar el caché de deuda en el Cliente.
-  //
-  // El saldo se relee (no se reusa el de C-bis) porque entre medio pudo
-  // entrar otro movimiento; el orden es el mismo que el del ledger: primero
-  // se suma la mora, después se descuenta lo pagado.
-  const { data: clienteActual } = await supabase
-    .from("clientes")
-    .select("saldo_pendiente")
-    .eq("id", clienteId)
-    .single();
-  const saldoActual = Number(clienteActual?.saldo_pendiente || 0);
-  const saldoFinal = Math.max(0, saldoActual + montoRecargo - monto);
-
-  // Vencimiento: lo resuelve la regla única, que ya vio el CREDITO del pago y
-  // el DEBITO de la mora recién escritos.
-  //
-  // - Un pago que cancela la deuda más vieja corre el vencimiento a la que
-  //   sigue, que es lo correcto y lo que antes no pasaba (acá se movía la fecha
-  //   solo si se había cobrado mora).
-  // - Con mora cobrada, el piso interno de la función deja "hoy + plazo": es lo
-  //   que evita el interés sobre interés, porque el recargo ya entró al capital.
-  // - Sin deuda viva devuelve null y la fecha se limpia sola.
-  const actualizacionCliente: {
-    saldo_pendiente: number;
-    fecha_vencimiento_deuda: string | null;
-  } = {
-    saldo_pendiente: saldoFinal,
-    fecha_vencimiento_deuda: await recalcularVencimientoCC(supabase, clienteId),
-  };
-
-  // El error del update SÍ se mira: el trigger de límite de cuenta corriente
-  // puede rechazarlo (23514) y hasta acá se ignoraba, así que el pago quedaba
-  // registrado en caja con la deuda intacta.
-  const { error: errorSaldoCliente } = await supabase
-    .from("clientes")
-    .update(actualizacionCliente)
-    .eq("id", clienteId);
-
-  if (errorSaldoCliente) {
-    console.error(
-      "[PAGO DEUDA] No se pudo actualizar el saldo:",
-      errorSaldoCliente,
-    );
-    return {
-      error:
-        "El pago quedó registrado en caja, pero no se pudo actualizar el saldo del cliente. Revisalo antes de seguir.",
-      success: false,
-    };
+    // Nada quedó escrito: la transacción entera se deshizo.
+    console.error("[PAGO DEUDA] No se pudo registrar el cobro:", errorCobro);
+    return { error: "No se pudo registrar el cobro.", success: false };
   }
+
+  const cobro = resultadoCobro as
+    | {
+        ya_registrado: true;
+        pago_id: string;
+        monto_base: number;
+        saldo_actual: number;
+      }
+    | {
+        ya_registrado: false;
+        pago_id: string;
+        monto_base: number;
+        saldo_anterior: number;
+        saldo_nuevo: number;
+        fecha_vencimiento: string | null;
+      };
 
   revalidatePath("/clientes");
   revalidatePath("/caja");
 
+  // Reintento de un cobro que YA entró (se perdió la respuesta, o se volvió a
+  // tocar Confirmar): no se escribió nada. Es un éxito, pero no hay recibo
+  // nuevo que imprimir — los números de ese papel eran los del primer intento.
+  if (cobro.ya_registrado) {
+    return {
+      error: null,
+      success: true,
+      yaRegistrado: true,
+      montoYaRegistrado: Number(cobro.monto_base),
+    };
+  }
+
   const recibo: ReciboCobroCC = {
-    pagoId: pagoRegistrado.id,
+    pagoId: cobro.pago_id,
     fecha: new Date().toISOString(),
     clienteNombre: clienteDeuda?.nombre ?? "",
     metodoNombre: metodo.nombre,
@@ -524,13 +519,12 @@ export async function registrarPagoDeudaAction(
     recargoMetodoMonto: recargoMetodoMonto,
     montoBruto,
     moraMonto: montoRecargo,
-    // `saldoActual` es el caché de `clientes` releído ANTES de aplicarle la
-    // mora y el pago (la mora vive en el ledger; el caché lo escribe recién el
-    // update de arriba), así que es exactamente lo que la clienta debía al
-    // entrar.
-    saldoAnterior: saldoActual,
-    saldoNuevo: saldoFinal,
-    fechaVencimiento: actualizacionCliente.fecha_vencimiento_deuda,
+    // Los dos saldos los devuelve la base: el anterior es el que leyó bajo
+    // lock, ANTES de sumarle la mora de este cobro, o sea lo que la clienta
+    // debía al entrar.
+    saldoAnterior: Number(cobro.saldo_anterior),
+    saldoNuevo: Number(cobro.saldo_nuevo),
+    fechaVencimiento: cobro.fecha_vencimiento,
     comercio: {
       nombre: configPos?.posName ?? null,
       direccion: configPos?.direccion ?? null,
@@ -801,42 +795,31 @@ export async function ajustarSaldoAction(
     .from("cuenta_corriente_movimientos")
     .insert(movimientos);
 
-  if (ccError)
+  if (ccError) {
+    // 23514 = tope de clientes con cuenta corriente del plan. Lo tira
+    // `trg_limite_cc_manual` al insertar el DÉBITO (no al tocar el cliente, que
+    // es donde se lo buscaba antes). El mensaje ya viene redactado para el
+    // comerciante: se pasa tal cual.
+    if (ccError.code === "23514") {
+      return { error: ccError.message, success: false };
+    }
     return { error: "Error al registrar los movimientos.", success: false };
+  }
 
-  // 2. Saldo y vencimiento del cliente
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("saldo_pendiente")
-    .eq("id", clienteId)
-    .single();
-
-  const saldoActual = Number(cliente?.saldo_pendiente || 0);
-
-  // Vencimiento por la regla única: los movimientos ya están escritos, así que
-  // la función los ve. Antes se comparaba a mano contra el valor existente y
-  // eso ignoraba tanto los pagos como las ventas fiadas del cliente.
-  const fechaVencimientoFinal = await recalcularVencimientoCC(
+  // 2. Saldo y vencimiento del cliente, con delta: los movimientos ya están
+  // escritos, así que el vencimiento los ve.
+  const { error: errorSaldo } = await ajustarSaldoCliente(
     supabase,
     clienteId,
+    montoTotal,
   );
 
-  const { error: errorSaldo } = await supabase
-    .from("clientes")
-    .update({
-      saldo_pendiente: saldoActual + montoTotal,
-      fecha_vencimiento_deuda: fechaVencimientoFinal,
-    })
-    .eq("id", clienteId);
-
   if (errorSaldo) {
-    // 23514 = tope de clientes con cuenta corriente del plan. El mensaje del
-    // trigger ya viene redactado para el comerciante: se pasa tal cual.
-    if (errorSaldo.code === "23514") {
-      return { error: errorSaldo.message, success: false };
-    }
-    console.error("[REGISTRAR DEUDA ERROR]", errorSaldo);
-    return { error: "No se pudo registrar la deuda.", success: false };
+    return {
+      error:
+        "Los movimientos quedaron registrados pero no se pudo actualizar el saldo. Revisá la cuenta del cliente.",
+      success: false,
+    };
   }
 
   revalidatePath("/clientes");
@@ -1005,32 +988,34 @@ async function esUsuarioAdmin(
 }
 
 /**
- * El vencimiento de la deuda del cliente, calculado por la ÚNICA regla que hay:
- * la función `recalcular_vencimiento_cc` de la base.
+ * Mueve el saldo del cliente por DELTA y recalcula su vencimiento, en un solo
+ * statement (`ajustar_saldo_cliente`, 20260928230000). Se llama DESPUÉS de
+ * escribir el movimiento del libro: el vencimiento lo tiene que ver.
  *
- * Antes se calculaba acá, mirando SOLO los movimientos manuales: ignoraba los
- * pagos y las ventas fiadas, así que anular un ajuste manual devolvía el
- * vencimiento a un débito que ya estaba pagado — y la venta lo resolvía con
- * otro criterio. Tres implementaciones de la misma pregunta divergen siempre;
- * el porqué está en la migración 20260828130000.
+ * Reemplaza a "leer el saldo, sumarle en Node y escribirlo", que perdía un
+ * cobro concurrente, y al `Math.max(0, ...)` que venía con eso: con saldo a
+ * favor (saldo negativo) recortar a cero le borra la plata a la clienta.
  *
- * La imputación FIFO de los pagos y el piso por mora ya cobrada viven adentro
- * de la función, no acá.
+ * El vencimiento sale de la ÚNICA regla que hay, `recalcular_vencimiento_cc`
+ * (el porqué, en 20260828130000): la imputación FIFO y el piso por mora ya
+ * cobrada viven adentro de esa función, no acá.
  */
-async function recalcularVencimientoCC(
+async function ajustarSaldoCliente(
   supabase: ReturnType<typeof createClient>,
   clienteId: string,
-): Promise<string | null> {
-  const { data, error } = await supabase.rpc("recalcular_vencimiento_cc", {
+  delta: number,
+): Promise<{ error: string | null }> {
+  const { error } = await supabase.rpc("ajustar_saldo_cliente", {
     p_cliente_id: clienteId,
+    p_delta: delta,
   });
 
   if (error) {
-    console.error("[VENCIMIENTO CC] No se pudo recalcular:", error);
-    throw new Error("RECALCULO_VENCIMIENTO_FALLIDO");
+    console.error("[SALDO CC] No se pudo ajustar el saldo:", error);
+    return { error: error.message };
   }
 
-  return (data as string | null) ?? null;
+  return { error: null };
 }
 
 export async function editarMovimientoManualAction(
@@ -1106,25 +1091,18 @@ export async function editarMovimientoManualAction(
   const signo = movimiento.tipo === "DEBITO" ? 1 : -1;
   const delta = signo * (monto - montoAnterior);
 
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("saldo_pendiente")
-    .eq("id", movimiento.cliente_id)
-    .single();
-  const saldoActual = Number(cliente?.saldo_pendiente || 0);
-
-  const nuevaFechaVencimiento = await recalcularVencimientoCC(
+  const { error: errorSaldo } = await ajustarSaldoCliente(
     supabase,
     movimiento.cliente_id,
+    delta,
   );
-
-  await supabase
-    .from("clientes")
-    .update({
-      saldo_pendiente: Math.max(0, saldoActual + delta),
-      fecha_vencimiento_deuda: nuevaFechaVencimiento,
-    })
-    .eq("id", movimiento.cliente_id);
+  if (errorSaldo) {
+    return {
+      error:
+        "El movimiento se corrigió pero no se pudo actualizar el saldo. Revisá la cuenta del cliente.",
+      success: false,
+    };
+  }
 
   revalidatePath("/clientes");
   return { error: null, success: true };
@@ -1184,25 +1162,18 @@ export async function anularMovimientoManualAction(movimientoId: string) {
   const signo = movimiento.tipo === "DEBITO" ? -1 : 1;
   const delta = signo * Number(movimiento.monto);
 
-  const { data: cliente } = await supabase
-    .from("clientes")
-    .select("saldo_pendiente")
-    .eq("id", movimiento.cliente_id)
-    .single();
-  const saldoActual = Number(cliente?.saldo_pendiente || 0);
-
-  const nuevaFechaVencimiento = await recalcularVencimientoCC(
+  const { error: errorSaldo } = await ajustarSaldoCliente(
     supabase,
     movimiento.cliente_id,
+    delta,
   );
-
-  await supabase
-    .from("clientes")
-    .update({
-      saldo_pendiente: Math.max(0, saldoActual + delta),
-      fecha_vencimiento_deuda: nuevaFechaVencimiento,
-    })
-    .eq("id", movimiento.cliente_id);
+  if (errorSaldo) {
+    return {
+      error:
+        "El movimiento quedó anulado pero no se pudo actualizar el saldo. Revisá la cuenta del cliente.",
+      success: false,
+    };
+  }
 
   revalidatePath("/clientes");
   return { error: null, success: true };
@@ -1273,7 +1244,7 @@ export async function perdonarDeudaAction(
     return { error: validacion.error, success: false };
   }
 
-  const { monto, motivo, saldoFinal } = validacion;
+  const { monto, motivo } = validacion;
 
   const { error: errorMovimiento } = await supabase
     .from("cuenta_corriente_movimientos")
@@ -1297,23 +1268,15 @@ export async function perdonarDeudaAction(
     };
   }
 
-  const actualizacion: {
-    saldo_pendiente: number;
-    fecha_vencimiento_deuda?: string | null;
-  } = { saldo_pendiente: saldoFinal };
-
-  // Perdonar baja el saldo, así que puede dejar sin deuda viva a la más
-  // antigua: la regla única devuelve el vencimiento que corresponde, o null si
-  // no quedó nada que pueda vencer.
-  actualizacion.fecha_vencimiento_deuda = await recalcularVencimientoCC(
+  // Con delta, no con el `saldoFinal` que calculó la validación: ese sale de
+  // una lectura previa y pisaría un cobro que entre en el medio. Perdonar puede
+  // dejar sin deuda viva a la más antigua; el vencimiento lo recalcula la
+  // misma función (null si no quedó nada que pueda vencer).
+  const { error: errorSaldo } = await ajustarSaldoCliente(
     supabase,
     clienteId,
+    -monto,
   );
-
-  const { error: errorSaldo } = await supabase
-    .from("clientes")
-    .update(actualizacion)
-    .eq("id", clienteId);
 
   if (errorSaldo) {
     // El movimiento ya está escrito: si el saldo no baja, el libro y la columna

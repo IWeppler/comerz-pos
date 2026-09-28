@@ -34,6 +34,7 @@ import {
   RecargoMoraConfig,
 } from "../lib/calcular-saldo-con-recargo";
 import type { ScoringCliente } from "../lib/scoring-cliente";
+import { saldoAFavorDe } from "../lib/saldo-a-favor";
 import {
   calcularReferencia,
   scoringDesdeCliente,
@@ -562,6 +563,13 @@ export function ClientsView({
                         {saldo > 0 ? (
                           <span className="font-mono font-medium text-foreground px-2 py-0.5 shadow-none text-sm">
                             {formatearMoneda(cliente.saldoConRecargo)}
+                          </span>
+                        ) : saldo < 0 ? (
+                          // Saldo con signo: negativo es plata del cliente
+                          // (seña, pago de más, vale). Nunca se muestra como
+                          // un número negativo, que se lee como deuda.
+                          <span className="font-mono font-medium text-success px-2 py-0.5 text-sm whitespace-nowrap">
+                            {formatearMoneda(saldoAFavorDe(saldo))} a favor
                           </span>
                         ) : (
                           <span className="text-muted-foreground/50 font-bold text-lg">

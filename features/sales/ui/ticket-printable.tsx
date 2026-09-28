@@ -227,6 +227,14 @@ export function TicketPrintable({
             <span>{formatTicketMoney(ticket?.total)}</span>
           </div>
 
+          {/* Un pago, no un descuento: va DEBAJO del total. */}
+          {(ticket?.saldoAFavorAplicado ?? 0) > 0 && (
+            <div className="flex justify-between items-center text-gray-700">
+              <span className="truncate pr-2">Pagado con saldo a favor</span>
+              <span>-{formatTicketMoney(ticket?.saldoAFavorAplicado)}</span>
+            </div>
+          )}
+
           {/* Con qué lista se cobró. Solo cuando NO es el precio base: es el
               papel que el cliente presenta si después reclama por el precio,
               y en una venta normal no hay nada que aclarar. */}

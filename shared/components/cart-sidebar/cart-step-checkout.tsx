@@ -31,7 +31,15 @@ interface CartStepCheckoutProps {
   metodosPagoDB: MetodoPagoPOS[];
   pagos: CreateSalePaymentInput[];
   onPagosChange: (pagos: CreateSalePaymentInput[]) => void;
+  /** Lo que tienen que cubrir los pagos. Con saldo a favor aplicado, el ticket
+   * menos esa parte. */
   totalFinal: number;
+  /** Saldo a favor que tiene el cliente elegido (0 = no ofrecer nada). */
+  saldoAFavorDisponible?: number;
+  /** Cuánto se está usando en este ticket. */
+  saldoAFavorAplicado?: number;
+  usarSaldoAFavor?: boolean;
+  onUsarSaldoAFavorChange?: (usar: boolean) => void;
   isCuentaCorriente: boolean;
   onCuentaCorrienteChange: (value: boolean) => void;
   isReserva?: boolean;
@@ -63,6 +71,10 @@ export function CartStepCheckout({
   pagos,
   onPagosChange,
   totalFinal,
+  saldoAFavorDisponible = 0,
+  saldoAFavorAplicado = 0,
+  usarSaldoAFavor = false,
+  onUsarSaldoAFavorChange,
   isCuentaCorriente,
   onCuentaCorrienteChange,
   isReserva = false,
@@ -260,6 +272,38 @@ export function CartStepCheckout({
               abierto={selectorClienteAbierto}
               onAbiertoChange={onSelectorClienteAbiertoChange}
             />
+
+            {/* SALDO A FAVOR. Se ofrece, no se aplica solo: gastarle la seña
+                a la clienta es su decisión. Sin recargo de cuenta corriente
+                sobre esa parte, y nunca más que la compra. */}
+            {isPOSMode && saldoAFavorDisponible > 0 && onUsarSaldoAFavorChange ? (
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-success/30 bg-success/10 p-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-success">
+                    Tiene $
+                    {saldoAFavorDisponible.toLocaleString("es-AR", {
+                      maximumFractionDigits: 2,
+                    })}{" "}
+                    a favor
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {usarSaldoAFavor
+                      ? `Usando $${saldoAFavorAplicado.toLocaleString("es-AR", { maximumFractionDigits: 2 })} en esta compra.`
+                      : "Se puede descontar de esta compra."}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={usarSaldoAFavor ? "default" : "outline"}
+                  onClick={() => onUsarSaldoAFavorChange(!usarSaldoAFavor)}
+                  className="h-9 shrink-0"
+                >
+                  <Wallet className="mr-1.5 h-4 w-4" />
+                  {usarSaldoAFavor ? "Quitar" : "Usar"}
+                </Button>
+              </div>
+            ) : null}
           </section>
 
           {!isReserva && isPOSMode ? (

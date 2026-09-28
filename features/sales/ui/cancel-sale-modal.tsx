@@ -30,6 +30,7 @@ import {
 import {
   SelectorMedioReintegro,
   faltaElegirMedio,
+  resolverReintegro,
 } from "./selector-medio-reintegro";
 import { AlertTriangle, PackagePlus, Loader2 } from "lucide-react";
 
@@ -104,12 +105,14 @@ export function AnularVentaModal({
 
   const handleAnular = () => {
     startTransition(async () => {
+      const reintegro = resolverReintegro(medioReintegro);
       const result = await anularVentaAction(
         id,
         motivo,
         motivoCodigo,
         motivoDetalle,
-        medioReintegro,
+        reintegro.metodoId,
+        reintegro.aCuenta,
       );
 
       if (result.success) {

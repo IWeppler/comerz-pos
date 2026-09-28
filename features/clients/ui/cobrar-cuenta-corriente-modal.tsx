@@ -28,6 +28,11 @@ import { useCajaModalStore } from "@/shared/store/caja-modal-store";
 import { useCobroCcStore } from "@/shared/store/cobro-cc-store";
 import { registrarPagoDeudaAction } from "../actions/manage-clients";
 import {
+  cobroSuperaDeuda,
+  excedenteSobreDeuda,
+  textoCobroSuperaDeuda,
+} from "../lib/tope-cobro-cc";
+import {
   getDatosCobroCuentaCorrienteAction,
   type ClienteConDeuda,
 } from "../actions/datos-cobro-cc";
@@ -65,6 +70,10 @@ export function CobrarCuentaCorrienteModal() {
   const [cliente, setCliente] = useState<ClienteConDeuda | null>(null);
   const [monto, setMonto] = useState("");
   const [metodoPagoId, setMetodoPagoId] = useState("");
+  // Id del cobro: clave de idempotencia de `registrar_cobro_cc`. Nace al
+  // elegir la clienta y se repite en cada reintento de ESE cobro.
+  const [pagoId, setPagoId] = useState("");
+  const [confirmaAFavor, setConfirmaAFavor] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const buscadorRef = useRef<HTMLInputElement>(null);
@@ -72,6 +81,8 @@ export function CobrarCuentaCorrienteModal() {
 
   const elegirCliente = (elegido: ClienteConDeuda) => {
     setCliente(elegido);
+    setPagoId(crypto.randomUUID());
+    setConfirmaAFavor(false);
     // Prefill = todo lo que debe, mora incluida. Es lo más frecuente y deja
     // el caso "me paga una parte" a un solo borrado.
     setMonto(String(elegido.saldo + elegido.mora));
@@ -150,6 +161,9 @@ export function CobrarCuentaCorrienteModal() {
 
   const metodoElegido = metodosPago.find((m) => m.id === metodoPagoId);
   const montoNumero = Number(monto) || 0;
+  const excedente = cliente
+    ? excedenteSobreDeuda(montoNumero, cliente.saldo + cliente.mora)
+    : 0;
   const recargoMetodo = calcularRecargoMonto(
     montoNumero,
     Number(metodoElegido?.recargo_porcentaje ?? 0),
@@ -163,10 +177,24 @@ export function CobrarCuentaCorrienteModal() {
       return;
     }
 
+    // Espejo del tope de la base, para avisar antes de confirmar. La base lo
+    // vuelve a chequear con el saldo bloqueado: esto es solo el aviso. El
+    // excedente puede quedar a favor, pero solo marcándolo.
+    const deuda = cliente.saldo + cliente.mora;
+    if (cobroSuperaDeuda(montoNumero, deuda) && !confirmaAFavor) {
+      toast.error(textoCobroSuperaDeuda(montoNumero, deuda));
+      return;
+    }
+
     const formData = new FormData();
     formData.append("cliente_id", cliente.id);
     formData.append("metodo_pago_id", metodoPagoId);
     formData.append("monto", String(montoNumero));
+    formData.append("pago_id", pagoId);
+    formData.append(
+      "permitir_saldo_a_favor",
+      excedente > 0 && confirmaAFavor ? "true" : "false",
+    );
 
     startTransition(async () => {
       const res = await registrarPagoDeudaAction(null, formData);
@@ -176,9 +204,15 @@ export function CobrarCuentaCorrienteModal() {
         return;
       }
 
-      toast.success(
-        `Cobro registrado: ${formatearMoneda(montoNumero)} de ${cliente.nombre}.`,
-      );
+      if (res.yaRegistrado) {
+        toast.info(
+          `Este cobro ya estaba registrado (${formatearMoneda(res.montoYaRegistrado ?? 0)} de ${cliente.nombre}). No se cobró de nuevo.`,
+        );
+      } else {
+        toast.success(
+          `Cobro registrado: ${formatearMoneda(montoNumero)} de ${cliente.nombre}.`,
+        );
+      }
       cerrar();
       // El recibo se abre con lo que el server ESCRIBIÓ, para imprimirlo.
       if (res.recibo) useReciboCcStore.getState().mostrar(res.recibo);
@@ -288,6 +322,20 @@ export function CobrarCuentaCorrienteModal() {
                   className="pl-8 h-12 text-lg font-bold shadow-none border-border"
                 />
               </div>
+              {excedente > 0 ? (
+                <label className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 p-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={confirmaAFavor}
+                    onChange={(e) => setConfirmaAFavor(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Dejar <strong>{formatearMoneda(excedente)}</strong> a favor
+                    de {cliente.nombre}. Se descuentan de su próxima compra.
+                  </span>
+                </label>
+              ) : null}
             </div>
 
             <div className="space-y-2">

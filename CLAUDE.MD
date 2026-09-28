@@ -1070,6 +1070,61 @@ tiene 11.
   la ayuda de esa misma pantalla promete lo contrario —"se suma una única vez
   ... no se acumula día a día"— y el cálculo lo cumple porque parte siempre de
   capital.
+- **El cobro de cuenta corriente es UNA transacción, idempotente y con tope**
+  (`registrar_cobro_cc`, `20260928210000`). Antes eran cuatro escrituras
+  sueltas desde Node (`venta_pagos` → mora → crédito → saldo), sin tope en el
+  server (solo el `max` de un input), sin idempotencia y con el saldo
+  recalculado en Node sobre una lectura previa. El excedente de un cobro de
+  más desaparecía en el `Math.max(0, ...)` del caché: el libro decía "a favor"
+  y la pantalla $0. Así quedaron los ÚNICOS dos saldos a favor del SaaS, y los
+  dos eran el mismo cobro registrado dos veces el 21/7/2026 (Silvina Rodriguez
+  $10.350 a 14 segundos, Rocio Cejas $21.850 a 41 minutos); se eliminaron en
+  `20260928220000` y el turno de Silvina quedó con un sobrante de $10.350
+  (AJUSTADO; el cierre firmado no se tocó).
+  El `id` del cobro lo genera el MODAL al abrirse y es la clave de idempotencia
+  (reintento → `ya_registrado`, no se escribe nada). Row lock sobre el cliente
+  antes de todo; el tope (`COBRO_SUPERA_DEUDA`, detail con `deuda`/`monto`) es
+  contra el saldo releído bajo lock + la mora de este cobro; el saldo baja con
+  delta en un statement y SIN recorte a cero (guard). Recargo, comisión y mora
+  se siguen calculando en TS y viajan resueltos. Espejo del tope y mensaje:
+  `features/clients/lib/tope-cobro-cc.ts`. Desde `20260928250000` el tope es un
+  PEDIDO DE CONFIRMACIÓN: con `p_pago.permitir_saldo_a_favor` (la casilla
+  "dejar $X a favor") el excedente queda como saldo a favor; sin ella sigue
+  rechazando, que es lo que frena el duplicado.
+- **Saldo a favor: `clientes.saldo_pendiente` tiene SIGNO** (`20260928230000`,
+  `20260928240000`, `20260928250000`, 28/9/2026). Positivo = debe, negativo =
+  el comercio le debe. Una columna con signo y no dos, porque deuda y saldo a
+  favor no conviven: el libro los compensa solo. Reglas:
+  * **Se mueve con delta y nunca se recorta a cero** (`registrar_cobro_cc`,
+    `ajustar_saldo_cliente`, `registrar_venta`). El `Math.max(0, ...)` era lo
+    que escondía los saldos a favor.
+  * **Toda lectura de DEUDA filtra `> 0`** (en TS, `deudaDe` /
+    `saldoAFavorDe` de `features/clients/lib/saldo-a-favor.ts`). Sumar el saldo
+    crudo resta las señas de la deuda de los demás. Guard en la migración A.
+  * **Nace de**: pago de más o seña (con confirmación), reintegro "a cuenta" al
+    anular o devolver (`p_reintegro_a_cuenta`; lo elige quien puede devolver,
+    no pide `ventas.elegir_medio_devolucion` porque no saca plata), y lo ya
+    pagado de un fiado que se anula o devuelve: ahora se acredita la deuda
+    ENTERA y el resto queda a favor, en vez del viejo "devolvéselo aparte".
+  * **Se usa en el POS** como pago aparte (`saldo_a_favor_usado` →
+    `ventas.saldo_a_favor_aplicado`), NO como fila de `venta_pagos`: esa plata
+    entró antes. Sin recargo de cuenta corriente sobre esa parte (la base del
+    recargo es subtotal − saldo a favor, `saldo-a-favor-venta.ts`), cuenta como
+    entrega mínima, y el tope contra el saldo real lo pone `registrar_venta`
+    con el cliente bloqueado. Offline no se usa. Anular la venta lo devuelve
+    siempre; una devolución parcial de una venta pagada así vuelve a cuenta.
+  * `cuenta_corriente_movimientos.es_saldo_a_favor` marca consumo y vales para
+    que no cuenten como fiado (`rentabilidad_por_metodo`).
+  * **Un vale no es plata que sale.** El reintegro a cuenta deja el cobro
+    ANULADO pero la plata en el negocio, igual que "reintegro por otro medio":
+    la bitácora no revierte, `posicion_dinero`/`acreditar_cobros_vencidos` lo
+    siguen contando, `resumen_financiero_periodo` lo cuenta en cobrado, y
+    `reintegros_al_cliente` lo EXCLUYE (alimenta neto_caja). Toda consulta
+    nueva que decida "¿volvió la plata?" tiene que mirar
+    `reintegro_metodo_tipo = 'SALDO_A_FAVOR'`.
+  * Pendiente: devolver en efectivo un saldo a favor (hoy: ajuste manual) y
+    mostrar las señas aparte en el resumen del período (hoy entran como
+    "cobros de deuda").
 - Recargo de cuenta corriente: existía y se cobraba (`configuracion_pos.
   cc_recargo_default`, 15% en Evens, recalculado server-side) pero se disolvía
   dentro de `ventas.total` — no había columna que dijera cuánto de un ticket

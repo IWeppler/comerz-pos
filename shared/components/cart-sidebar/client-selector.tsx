@@ -24,6 +24,10 @@ export interface ClienteBasico {
   /** Para saber qué letra le corresponde ANTES de cobrar (un RI a otro RI
    * es A, al resto B). Ausente = consumidor final. */
   condicion_iva?: string | null;
+  /** Saldo de cuenta corriente, con signo: negativo es saldo a favor, que el
+   * POS ofrece usar para pagar. Es una foto del momento de elegir al cliente;
+   * la autoridad es `registrar_venta`, que lo relee bajo lock. */
+  saldo_pendiente?: number | null;
 }
 
 interface ClientSelectorProps {
@@ -88,7 +92,7 @@ export function ClientSelector({
       const { data, error } = await supabase
         .from("clientes")
         .select(
-          "id, nombre, telefono, exceptuado_entrega_minima, lista_precio_id, condicion_iva",
+          "id, nombre, telefono, exceptuado_entrega_minima, lista_precio_id, condicion_iva, saldo_pendiente",
         )
         .eq("activo", true)
         .order("nombre");

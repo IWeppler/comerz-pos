@@ -32,6 +32,10 @@ export async function anularVentaAction(
    * `ventas.elegir_medio_devolucion`. La RPC vuelve a pedir el permiso: acá
    * no se decide nada, solo se pasa. */
   reintegroMetodoId?: string | null,
+  /** Lo cobrado no sale en plata: queda como saldo a favor del cliente
+   * (20260928240000). Lo puede elegir quien puede anular: no saca plata del
+   * cajón, así que no pide `ventas.elegir_medio_devolucion`. */
+  reintegroACuenta?: boolean,
 ) {
   try {
     const cookieStore = await cookies();
@@ -72,6 +76,16 @@ export async function anularVentaAction(
     // 2. Anulación lógica: preservamos ticket, items, pagos y relaciones contables.
     if (venta.estado_operacion === "ANULADA") {
       return { error: "La venta ya se encuentra anulada.", success: false };
+    }
+
+    // Un saldo a favor necesita de quién es. La RPC lo vuelve a frenar
+    // (A_CUENTA_SIN_CLIENTE); acá es para decirlo antes de tocar nada.
+    if (reintegroACuenta && !venta.cliente_id) {
+      return {
+        error:
+          "Para dejarlo a cuenta, la venta tiene que tener un cliente asignado.",
+        success: false,
+      };
     }
 
     // Una FACTURA emitida no se anula marcando la venta: se compensa con una
@@ -131,6 +145,16 @@ export async function anularVentaAction(
     // con una NC emitida que nadie registró.
     let notaCredito: FacturaEmitida | null = null;
     if (facturaOriginal) {
+      // `anular_venta_facturada` no tiene reintegro a cuenta: un vale contra
+      // una nota de crédito es una decisión fiscal que todavía nadie tomó. Se
+      // frena ANTES de pedir el CAE, no después.
+      if (reintegroACuenta) {
+        return {
+          error:
+            "Una venta con factura no se puede reintegrar a cuenta todavía. Elegí devolver la plata.",
+          success: false,
+        };
+      }
       if (!(await tienePermiso(supabase, PERMISOS.VENTAS_ANULAR))) {
         return { error: "No tenés permiso para anular ventas.", success: false };
       }
@@ -197,7 +221,9 @@ export async function anularVentaAction(
       // anulaciones son en realidad una venta mal cargada.
       p_motivo_codigo: normalizarMotivoAnulacion(motivoCodigo),
       p_motivo_detalle: motivoDetalle?.trim() || null,
-      p_reintegro_metodo_id: reintegroMetodoId || null,
+      // A cuenta y medio elegido son excluyentes (la RPC tira
+      // REINTEGRO_AMBIGUO): si viene a cuenta, el medio no se manda.
+      p_reintegro_metodo_id: reintegroACuenta ? null : reintegroMetodoId || null,
     };
 
     const { data: resultadoAnulacion, error: anulacionError } =
@@ -229,7 +255,10 @@ export async function anularVentaAction(
               emitido_por: user.id,
             },
           })
-        : await supabase.rpc("anular_venta", argumentosAnulacion);
+        : await supabase.rpc("anular_venta", {
+            ...argumentosAnulacion,
+            p_reintegro_a_cuenta: reintegroACuenta === true,
+          });
 
     if (anulacionError || !resultadoAnulacion) {
       console.error("[ANULACION] Error anulando la venta:", anulacionError);
@@ -264,10 +293,17 @@ export async function anularVentaAction(
       /** Recargo por método que NO se reintegra: se lo quedó el banco. */
       recargo_no_devuelto: number;
       credito_aplicado: number;
+      /** Lo que el cliente ya había pagado de ESTE fiado. Desde
+       * 20260928240000 no queda "para devolver aparte": queda como saldo a
+       * favor, porque se acredita la deuda entera de la venta. */
       excedente_ya_pagado: number;
       /** El medio elegido, o null si nadie eligió y salió por el del cobro. */
       reintegro_metodo_tipo: string | null;
       reintegro_metodo_nombre: string | null;
+      /** Saldo a favor que la venta había usado y que volvió a la cuenta. */
+      saldo_a_favor_devuelto?: number;
+      /** Lo cobrado que quedó a favor del cliente (reintegro a cuenta). */
+      a_cuenta?: number;
     };
 
     // 5. Manejo del Stock para TODOS los items del carrito de compras
@@ -395,10 +431,11 @@ export async function anularVentaAction(
     //
     // - `noEfectivo`: se cobró por tarjeta/transferencia, así que se devuelve
     //   por donde entró. La caja no lo toca.
-    // - `yaPagado`: lo que el cliente ya había amortizado de ESTE fiado. No se
-    //   devuelve solo porque los pagos de cuenta corriente no están imputados a
-    //   una venta: la base no sabe cuánto de ese pago era de este ticket ni con
-    //   qué medio se cobró. Adivinarlo sería mover plata por una suposición.
+    // - `yaPagado`: lo que el cliente ya había amortizado de ESTE fiado. Desde
+    //   20260928240000 queda como SALDO A FAVOR (se acredita la deuda entera y
+    //   el saldo con signo lo muestra): no hay que adivinar con qué medio se
+    //   cobró, porque no sale plata. Si el cliente la quiere en mano, se le
+    //   devuelve desde su cuenta.
     // - `sinStock`: mercadería que volvió y no se pudo sumar al inventario.
     const avisos: string[] = [];
 
@@ -425,7 +462,17 @@ export async function anularVentaAction(
     }
     if (anulacion.excedente_ya_pagado > 0) {
       avisos.push(
-        `El cliente ya había pagado $${Math.round(anulacion.excedente_ya_pagado).toLocaleString("es-AR")} de esta cuenta. Eso hay que devolvérselo aparte.`,
+        `El cliente ya había pagado $${Math.round(anulacion.excedente_ya_pagado).toLocaleString("es-AR")} de esta compra: quedan como saldo a favor en su cuenta.`,
+      );
+    }
+    if ((anulacion.a_cuenta ?? 0) > 0) {
+      avisos.push(
+        `Quedan $${Math.round(anulacion.a_cuenta ?? 0).toLocaleString("es-AR")} a favor del cliente. No sale plata de la caja.`,
+      );
+    }
+    if ((anulacion.saldo_a_favor_devuelto ?? 0) > 0) {
+      avisos.push(
+        `Volvieron $${Math.round(anulacion.saldo_a_favor_devuelto ?? 0).toLocaleString("es-AR")} de saldo a favor a la cuenta del cliente.`,
       );
     }
     if (itemsSinRestaurar.length > 0) {

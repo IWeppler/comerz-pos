@@ -26,6 +26,14 @@ export interface OpcionesReintegro {
   /** Cómo se cobró, para poder nombrarlo en la pantalla. Vacío si es fiado. */
   medioDelCobro: string | null;
   metodos: MetodoReintegro[];
+  /**
+   * Se puede dejar a cuenta del cliente (saldo a favor, 20260928240000): la
+   * venta tiene cliente. NO depende de `puedeElegir`: un vale no saca plata
+   * del cajón, así que alcanza con poder devolver (decidido el 28/9/2026).
+   */
+  puedeDejarACuenta: boolean;
+  /** Para nombrar a quién le queda el saldo a favor. */
+  clienteNombre: string | null;
 }
 
 const SIN_OPCIONES: OpcionesReintegro = {
@@ -33,6 +41,8 @@ const SIN_OPCIONES: OpcionesReintegro = {
   montoCobrado: 0,
   medioDelCobro: null,
   metodos: [],
+  puedeDejarACuenta: false,
+  clienteNombre: null,
 };
 
 /**
@@ -57,7 +67,8 @@ export async function getOpcionesReintegroAction(
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
 
-    const [puedeElegir, { data: pagos }, { data: metodos }] = await Promise.all([
+    const [puedeElegir, { data: pagos }, { data: metodos }, { data: venta }] =
+      await Promise.all([
       tienePermiso(supabase, PERMISOS.VENTAS_ELEGIR_MEDIO_DEVOLUCION),
       supabase
         .from("venta_pagos")
@@ -70,7 +81,22 @@ export async function getOpcionesReintegroAction(
         .select("id, nombre, tipo")
         .eq("activo", true)
         .order("nombre"),
+      supabase
+        .from("ventas")
+        .select("cliente_id, clientes(nombre)")
+        .eq("id", ventaId)
+        .maybeSingle(),
     ]);
+
+    // PostgREST devuelve la relación como objeto o como array según cómo
+    // infiere la FK; se normaliza.
+    const relacionCliente = venta?.clientes as unknown as
+      | { nombre: string | null }
+      | { nombre: string | null }[]
+      | null;
+    const cliente = Array.isArray(relacionCliente)
+      ? (relacionCliente[0] ?? null)
+      : relacionCliente;
 
     const cobros = pagos ?? [];
     const idsDelCobro = new Set(
@@ -93,6 +119,8 @@ export async function getOpcionesReintegroAction(
         tipo: metodo.tipo as TipoMetodo,
         esElDelCobro: idsDelCobro.has(metodo.id as string),
       })),
+      puedeDejarACuenta: Boolean(venta?.cliente_id),
+      clienteNombre: cliente?.nombre ?? null,
     };
   } catch (err) {
     console.error("[REINTEGRO] No se pudieron leer las opciones:", err);

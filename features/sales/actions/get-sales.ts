@@ -66,6 +66,7 @@ export async function getVentasAction(opts?: {
         metodo_pago,
         monto_cobrado,
         monto_pendiente,
+        saldo_a_favor_aplicado,
         monto_devuelto,
         base_devuelta,
         estado_pago,

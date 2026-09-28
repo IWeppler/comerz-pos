@@ -541,6 +541,11 @@ export function PaletaComandos({
                             Debe {formatearMoneda(c.saldo)}
                           </CommandShortcut>
                         )}
+                        {c.saldo < 0 && (
+                          <CommandShortcut className="text-success">
+                            A favor {formatearMoneda(-c.saldo)}
+                          </CommandShortcut>
+                        )}
                       </CommandItem>
                     ))}
 

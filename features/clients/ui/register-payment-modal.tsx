@@ -28,6 +28,8 @@ import { MetodoPago } from "@/entities/payments/types";
 import { cn } from "@/lib/utils";
 import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
+import { deudaDe } from "../lib/saldo-a-favor";
+import { excedenteSobreDeuda } from "../lib/tope-cobro-cc";
 
 export function RegisterPaymentModal({
   cliente,
@@ -42,14 +44,27 @@ export function RegisterPaymentModal({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  // Id del cobro, generado al ABRIR y repetido en cada reintento: es la clave
+  // de idempotencia de `registrar_cobro_cc`. Tocar Confirmar dos veces o
+  // reintentar después de un error de red no registra dos cobros.
+  const [pagoId, setPagoId] = useState(() => crypto.randomUUID());
   const queryClient = useQueryClient();
-  const saldoBase = Number(cliente.saldo_pendiente || 0);
+  // Deuda, no saldo crudo: con saldo a favor (negativo) no hay nada que
+  // sugerir cobrar, y este modal pasa a ser el de la seña.
+  const saldoBase = deudaDe(cliente.saldo_pendiente);
   const montoSugerido = saldoBase + recargoMoraEstimado;
+  const esSena = montoSugerido <= 0;
+  // Dejar plata a favor pide confirmación explícita: sin ella el server la
+  // rechaza, que es el freno contra el cobro duplicado.
+  const [confirmaAFavor, setConfirmaAFavor] = useState(false);
 
   // Monto y método son controlados solo para poder mostrar el recargo por
   // método en vivo: lo que se imputa a la deuda es el monto tipeado, y el
   // recargo se cobra encima. El server recalcula igual el mismo número.
-  const [monto, setMonto] = useState<string>(montoSugerido.toString());
+  const [monto, setMonto] = useState<string>(
+    esSena ? "" : montoSugerido.toString(),
+  );
+  const excedente = excedenteSobreDeuda(Number(monto) || 0, montoSugerido);
   const [metodoPagoId, setMetodoPagoId] = useState<string>(
     metodosPago[0]?.id ?? "",
   );
@@ -66,9 +81,15 @@ export function RegisterPaymentModal({
     startTransition(async () => {
       const result = await registrarPagoDeudaAction(null, formData);
       if (result.success) {
-        toast.success(
-          "Pago registrado exitosamente. La deuda se ha actualizado.",
-        );
+        if (result.yaRegistrado) {
+          toast.info(
+            `Este cobro ya estaba registrado ($${(result.montoYaRegistrado ?? 0).toLocaleString("es-AR")}). No se cobró de nuevo.`,
+          );
+        } else {
+          toast.success(
+            "Pago registrado exitosamente. La deuda se ha actualizado.",
+          );
+        }
         queryClient.invalidateQueries({ queryKey: queryKeys.clientes.listado });
         queryClient.invalidateQueries({
           queryKey: queryKeys.clientes.detalle(cliente.id),
@@ -83,12 +104,23 @@ export function RegisterPaymentModal({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(abrir) => {
+        // Cada apertura es un cobro nuevo, con su propio id.
+        if (abrir) {
+          setPagoId(crypto.randomUUID());
+          setConfirmaAFavor(false);
+        }
+        setIsOpen(abrir);
+      }}
+    >
       <DialogTrigger asChild>
         <Button
           className={cn("bg-primary hover:bg-primary/80 text-white", className)}
         >
-          <DollarSign className="w-4 h-4 mr-1.5" /> Registrar Cobro
+          <DollarSign className="w-4 h-4 mr-1.5" />{" "}
+          {esSena ? "Registrar seña" : "Registrar Cobro"}
         </Button>
       </DialogTrigger>
 
@@ -102,6 +134,12 @@ export function RegisterPaymentModal({
 
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <input type="hidden" name="cliente_id" value={cliente.id} />
+          <input type="hidden" name="pago_id" value={pagoId} />
+          <input
+            type="hidden"
+            name="permitir_saldo_a_favor"
+            value={excedente > 0 && confirmaAFavor ? "true" : "false"}
+          />
 
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">
@@ -115,7 +153,6 @@ export function RegisterPaymentModal({
                 name="monto"
                 type="number"
                 min="1"
-                max={montoSugerido}
                 step="any"
                 placeholder={montoSugerido.toString()}
                 value={monto}
@@ -141,9 +178,29 @@ export function RegisterPaymentModal({
               </div>
             ) : (
               <p className="text-[10px] text-muted-foreground">
-                Deuda total: ${saldoBase.toLocaleString("es-AR")}
+                {esSena
+                  ? "No debe nada: lo que cobres queda como saldo a favor."
+                  : `Deuda total: $${saldoBase.toLocaleString("es-AR")}`}
               </p>
             )}
+            {excedente > 0 ? (
+              <label className="flex items-start gap-2 rounded-lg border border-success/30 bg-success/10 p-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={confirmaAFavor}
+                  onChange={(e) => setConfirmaAFavor(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  Dejar{" "}
+                  <strong>
+                    ${excedente.toLocaleString("es-AR", { maximumFractionDigits: 2 })}
+                  </strong>{" "}
+                  a favor de {cliente.nombre}. Se descuentan de su próxima
+                  compra.
+                </span>
+              </label>
+            ) : null}
           </div>
 
           <div className="space-y-2">
@@ -208,7 +265,7 @@ export function RegisterPaymentModal({
             </Button>
             <Button
               type="submit"
-              disabled={isPending}
+              disabled={isPending || (excedente > 0 && !confirmaAFavor)}
               className="bg-primary hover:bg-primary/80 text-white"
             >
               {isPending ? (

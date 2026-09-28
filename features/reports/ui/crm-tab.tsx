@@ -18,6 +18,7 @@ import {
   ArrowDown,
 } from "lucide-react";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { deudaDe } from "@/features/clients/lib/saldo-a-favor";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -134,8 +135,10 @@ export function CrmTab({
       }
     });
 
+    // DEUDA, no saldo crudo: con saldo con signo, sumar el crudo restaría los
+    // saldos a favor de la deuda de los demás.
     const saldoPendienteTotal = clientes.reduce(
-      (acc, c) => acc + Number(c.saldo_pendiente || 0),
+      (acc, c) => acc + deudaDe(c.saldo_pendiente),
       0,
     );
     const avgDays =

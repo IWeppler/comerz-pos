@@ -46,6 +46,14 @@ function fechaHora(iso: string): string {
   }).format(new Date(iso));
 }
 
+/** El saldo corriente de una fila. Negativo es plata de la clienta: se dice
+ * "a favor" en vez de un "-$5.000" que se lee como deuda. */
+function saldoCuenta(saldo: number): string {
+  return saldo < 0
+    ? `${formatearMoneda(-saldo)} a favor`
+    : formatearMoneda(saldo);
+}
+
 /**
  * Resumen de cuenta corriente, público por token.
  *
@@ -85,6 +93,8 @@ export default async function ResumenCuentaPage({
 
   const { comercio, cliente, movimientos } = resumen;
   const alDia = resumen.saldo_actual <= 0;
+  // Saldo con signo: negativo es plata de la clienta (seña, pago de más, vale).
+  const aFavor = resumen.saldo_actual < 0;
 
   return (
     <main className="min-h-dvh bg-muted/20 py-6 px-4">
@@ -131,7 +141,7 @@ export default async function ResumenCuentaPage({
                   Saldo anterior
                 </td>
                 <td className="px-4 py-2 text-right tabular-nums">
-                  {formatearMoneda(resumen.saldo_anterior)}
+                  {saldoCuenta(resumen.saldo_anterior)}
                 </td>
               </tr>
 
@@ -155,7 +165,7 @@ export default async function ResumenCuentaPage({
                       {formatearMoneda(m.monto)}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums text-muted-foreground">
-                      {formatearMoneda(m.saldo)}
+                      {saldoCuenta(m.saldo)}
                     </td>
                   </tr>
                 );
@@ -179,18 +189,23 @@ export default async function ResumenCuentaPage({
         <div className="p-5 border-t border-border bg-muted/30">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-foreground">
-              {alDia ? "Saldo" : "Total a pagar"}
+              {aFavor ? "Saldo a favor" : alDia ? "Saldo" : "Total a pagar"}
             </span>
             <span
               className={`text-xl font-bold tabular-nums ${
                 alDia ? "text-success" : "text-foreground"
               }`}
             >
-              {formatearMoneda(resumen.saldo_actual)}
+              {formatearMoneda(Math.abs(resumen.saldo_actual))}
             </span>
           </div>
 
-          {alDia ? (
+          {aFavor ? (
+            <p className="text-xs text-success mt-1">
+              Tenés {formatearMoneda(-resumen.saldo_actual)} a favor para tu
+              próxima compra.
+            </p>
+          ) : alDia ? (
             <p className="text-xs text-success mt-1">
               Tu cuenta está al día. ¡Gracias!
             </p>

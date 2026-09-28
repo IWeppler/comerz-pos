@@ -46,6 +46,7 @@ import {
   RecargoMoraConfig,
 } from "../lib/calcular-saldo-con-recargo";
 import { PerdonarDeudaModal } from "./perdonar-deuda-modal";
+import { saldoAFavorDe } from "../lib/saldo-a-favor";
 import { construirMensajeDeuda } from "../lib/mensaje-deuda";
 import {
   linkWhatsapp,
@@ -320,6 +321,22 @@ export function ClientDetailSheet({
                     className="m-0 space-y-6 animate-in fade-in-50"
                   >
                     <div className="bg-card border border-border rounded-xl p-3 flex flex-col md:flex-row md:flex-wrap md:items-start md:justify-between gap-3">
+                      {saldo < 0 ? (
+                        // Saldo con signo: negativo es plata del cliente. Se
+                        // muestra en positivo y con su nombre — "-$5.000" se
+                        // lee como deuda.
+                        <div className="order-1">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">
+                            Saldo a favor
+                          </p>
+                          <p className="text-2xl font-mono font-medium text-success">
+                            {formatearMoneda(saldoAFavorDe(saldo))}
+                          </p>
+                          <p className="mt-1 text-[11px] text-muted-foreground">
+                            Plata del cliente: se descuenta de su próxima compra.
+                          </p>
+                        </div>
+                      ) : (
                       <div className="order-1">
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           {montoRecargo > 0
@@ -343,14 +360,15 @@ export function ClientDetailSheet({
                           </p>
                         )}
                       </div>
-                      {saldo > 0 && (
-                        <RegisterPaymentModal
-                          cliente={cliente}
-                          metodosPago={metodosPago}
-                          recargoMoraEstimado={montoRecargo}
-                          className="w-full md:w-auto order-3 md:order-2"
-                        />
                       )}
+                      {/* Siempre: sin deuda es para registrar una seña, que
+                          queda como saldo a favor (20260928250000). */}
+                      <RegisterPaymentModal
+                        cliente={cliente}
+                        metodosPago={metodosPago}
+                        recargoMoraEstimado={montoRecargo}
+                        className="w-full md:w-auto order-3 md:order-2"
+                      />
                       {lineaVencimiento && (
                         <p
                           className={`text-xs order-2 md:order-3 md:basis-full ${

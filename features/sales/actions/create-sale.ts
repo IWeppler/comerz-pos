@@ -24,6 +24,10 @@ import {
   type ListaDePrecios,
 } from "@/shared/lib/precio-de-lista";
 import { mensajeSinStock } from "../lib/mensaje-sin-stock";
+import {
+  baseRecargoCuentaCorriente,
+  mensajeSaldoAFavorInsuficiente,
+} from "../lib/saldo-a-favor-venta";
 import { agruparStockLegacy } from "../lib/agrupar-stock-legacy";
 import {
   cantidadBase,
@@ -120,6 +124,14 @@ export async function registrarVentaAction(
   // que no puede salir de la config, porque la config es global.
   const ccSinRecargo = formData.get("cc_sin_recargo") === "true";
   const clienteId = formData.get("cliente_id") as string | null;
+  // Saldo a favor que la clienta usa para pagar (20260928240000). NO es un
+  // cobro —esa plata entró antes— así que no va en `pagos`: viaja aparte y lo
+  // valida `registrar_venta` contra el saldo real, con el cliente bloqueado.
+  const saldoAFavorPedidoRaw = Number(formData.get("saldo_a_favor_usado") || 0);
+  const saldoAFavorPedido =
+    Number.isFinite(saldoAFavorPedidoRaw) && saldoAFavorPedidoRaw > 0
+      ? Math.round(saldoAFavorPedidoRaw * 100) / 100
+      : 0;
   const reservaIdsRaw = formData.get("reserva_ids") as string | null;
   const reservaIds: string[] = reservaIdsRaw ? JSON.parse(reservaIdsRaw) : [];
 
@@ -1050,10 +1062,30 @@ export async function registrarVentaAction(
   // usa para cobrar: se compara y se loguea, igual que el precio de los items.
   // Antes se confiaba en el número del cliente, así que un request modificado
   // podía fiar sin recargo (o inventarse uno) sobre plata real.
+  // El saldo a favor nunca paga más que la compra. El otro tope —no más de lo
+  // que la clienta tiene— lo pone `registrar_venta` con el saldo bloqueado.
+  if (saldoAFavorPedido > 0 && !clienteId) {
+    return {
+      error: "Para usar saldo a favor hay que elegir al cliente.",
+      success: false,
+    };
+  }
+  if (saldoAFavorPedido > subtotalConDescuento + 0.05) {
+    return {
+      error: "El saldo a favor que se quiere usar es mayor que la compra.",
+      success: false,
+    };
+  }
+  const saldoAFavorUsado = saldoAFavorPedido;
+
   const pctRecargoCC = Number(configVenta?.cc_recargo_default) || 0;
+  // La base del recargo excluye lo pagado con saldo a favor: es plata que la
+  // clienta adelantó, no se le cobra por esperar (decidido el 28/9/2026).
   const recargoCCServer =
     isCuentaCorriente && !ccSinRecargo
-      ? (subtotalConDescuento * pctRecargoCC) / 100
+      ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorUsado) *
+          pctRecargoCC) /
+        100
       : 0;
 
   // El porcentaje que efectivamente rigió para ESTA venta, que es lo que se
@@ -1110,7 +1142,8 @@ export async function registrarVentaAction(
   const totalConRecargoMetodo = totalConDescuentoYRecargo + recargoMetodoTotal;
   const montoCobradoReal = sumaPagos + recargoMetodoTotal;
 
-  const montoPendiente = totalConDescuentoYRecargo - sumaPagos;
+  // Lo que queda fiado: el ticket menos lo cobrado y menos el saldo a favor.
+  const montoPendiente = totalConDescuentoYRecargo - sumaPagos - saldoAFavorUsado;
   const estadoPago = montoPendiente > 0.05 ? "PARCIAL" : "PAGADA";
 
   if (isCuentaCorriente && !clienteId) {
@@ -1125,7 +1158,7 @@ export async function registrarVentaAction(
       success: false,
     };
   }
-  if (sumaPagos > totalConDescuentoYRecargo + 0.05) {
+  if (sumaPagos + saldoAFavorUsado > totalConDescuentoYRecargo + 0.05) {
     return {
       error: "Los cobros asignados superan el total del ticket.",
       success: false,
@@ -1172,7 +1205,8 @@ export async function registrarVentaAction(
       if (!clienteCC?.exceptuado_entrega_minima) {
         const entregaMinimaRequerida =
           (totalConDescuentoYRecargo * pctEntregaMinima) / 100;
-        if (sumaPagos + 0.05 < entregaMinimaRequerida) {
+        // El saldo a favor cuenta como entrega: es plata que ya pagó.
+        if (sumaPagos + saldoAFavorUsado + 0.05 < entregaMinimaRequerida) {
           return {
             error: `Este cliente requiere al menos $${entregaMinimaRequerida.toLocaleString("es-AR")} de entrega para esta compra.`,
             success: false,
@@ -1532,6 +1566,15 @@ export async function registrarVentaAction(
       metodoPagoSafe = "TARJETA";
     else metodoPagoSafe = "EFECTIVO";
   }
+  // Con saldo a favor: si pagó todo con eso, lo dice la columna; si se combinó
+  // con un cobro o con fiado, es un pago mixto. (`ventas.metodo_pago` no es
+  // fuente de verdad — ver CLAUDE.md — pero que no mienta de más.)
+  if (saldoAFavorUsado > 0) {
+    metodoPagoSafe =
+      pagosValidos.length === 0 && montoPendiente <= 0.05
+        ? "SALDO_A_FAVOR"
+        : "PAGO_MIXTO";
+  }
 
   const payloadVentas = {
     // PK explícita: es el mismo id con el que ya se marcaron las unidades
@@ -1567,7 +1610,9 @@ export async function registrarVentaAction(
     recargo_metodo_total: recargoMetodoTotal,
     comision_total: comisionTotalGeneral,
     total_neto: totalNetoGeneral,
-    es_pago_mixto: pagosValidos.length > 1,
+    es_pago_mixto:
+      pagosValidos.length > 1 ||
+      (saldoAFavorUsado > 0 && (pagosValidos.length > 0 || montoPendiente > 0.05)),
     monto_cobrado: montoCobradoReal,
     monto_pendiente: montoPendiente > 0 ? montoPendiente : 0,
     estado_pago: estadoPago,
@@ -1578,6 +1623,10 @@ export async function registrarVentaAction(
     // null en la columna significa "venta anterior a esto", no "sin recargo".
     recargo_cc_porcentaje: pctRecargoCCAplicado,
     recargo_cc_monto: recargoCCServer,
+    // Parte del ticket pagada con saldo a favor. `registrar_venta` la valida
+    // contra el saldo real y escribe el DÉBITO que la consume.
+    saldo_a_favor_aplicado: saldoAFavorUsado,
+    saldo_a_favor_descripcion: `Pago con saldo a favor - Ticket #${ventaId.split("-")[0].toUpperCase()}`,
     // La hora del COBRO, no la de la sincronización: una venta offline que
     // sube 40 minutos después caería en el turno equivocado y correría la
     // curva horaria de los reportes. Sin dato, la RPC usa now().
@@ -1817,10 +1866,11 @@ export async function registrarVentaAction(
     // que decirle a la vendedora que puede reintentar sin miedo, porque no
     // quedó nada a medias.
     const sinRenglones = ventaError?.message?.includes("VENTA_SIN_RENGLONES");
+    const sinSaldoAFavor = mensajeSaldoAFavorInsuficiente(ventaError);
     return {
       error: sinRenglones
         ? "No se pudo registrar el detalle de la venta. No se cobró nada ni se descontó stock: volvé a intentar."
-        : `Fallo en BD: ${ventaError?.message}`,
+        : (sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
       success: false,
     };
   }

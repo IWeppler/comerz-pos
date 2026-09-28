@@ -370,6 +370,17 @@ export function TicketSheet({
                         <span>TOTAL</span>
                         <span>{formatTicketMoney(ticket?.total)}</span>
                       </div>
+                      {/* Un pago, no un descuento: va DEBAJO del total. */}
+                      {(ticket?.saldoAFavorAplicado ?? 0) > 0 ? (
+                        <div className="flex justify-between font-mono text-xs text-success">
+                          <span className="uppercase">
+                            Pagado con saldo a favor
+                          </span>
+                          <span>
+                            -{formatTicketMoney(ticket?.saldoAFavorAplicado)}
+                          </span>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>

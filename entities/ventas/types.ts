@@ -132,6 +132,9 @@ export interface Venta {
   clientes?: SupabaseRelation<{ nombre?: string | null }>;
   monto_cobrado?: number | null;
   monto_pendiente?: number | null;
+  /** Parte del ticket pagada con saldo a favor. NO está en `monto_cobrado`:
+   * esa plata entró antes (20260928240000). */
+  saldo_a_favor_aplicado?: number | null;
   estado_pago?: EstadoPagoVenta | null;
 
   perfiles?: {
@@ -226,6 +229,10 @@ export interface TicketData {
   montoCobrado?: number;
   montoPendiente?: number;
   esFiadoDirecto?: boolean;
+  /** Parte del total pagada con saldo a favor del cliente. Ya está dentro de
+   * `total` (es un pago, no un descuento): se imprime como renglón propio
+   * debajo del total para que el papel cierre contra lo cobrado. */
+  saldoAFavorAplicado?: number;
   /** Presente SOLO si la venta salió con factura (CAE). Cambia el papel:
    * letra, número, emisor, receptor, IVA, CAE y QR. Ausente = ticket
    * interno, con su leyenda de "no válido como factura". */

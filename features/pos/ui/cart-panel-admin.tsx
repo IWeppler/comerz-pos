@@ -76,6 +76,11 @@ import {
   etiquetaRecargo,
 } from "@/shared/lib/recargo-metodo";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
+import { saldoAFavorDe } from "@/features/clients/lib/saldo-a-favor";
+import {
+  baseRecargoCuentaCorriente,
+  saldoAFavorAplicable,
+} from "@/features/sales/lib/saldo-a-favor-venta";
 import { useVentaLibreStore } from "@/shared/store/venta-libre-store";
 import { VentaLibreInline } from "./venta-libre-inline";
 import { ClipboardList, Plus, X } from "lucide-react";
@@ -292,6 +297,12 @@ export function CartPanelAdmin({
   const [pagos, setPagos] = useState<CreateSalePaymentInput[]>([]);
   const [modoMixto, setModoMixto] = useState(false);
   const [isCuentaCorriente, setIsCuentaCorriente] = useState(false);
+  // "Usar saldo a favor", atado al CLIENTE para el que se prendió: si cambia
+  // el cliente del ticket se apaga solo, sin efecto que lo resetee. Arranca
+  // apagado a propósito: gastarle la seña a la clienta es su decisión.
+  const [saldoAFavorClienteId, setSaldoAFavorClienteId] = useState<
+    string | null
+  >(null);
 
   // FACTURA O TICKET, por venta. `null` = todavía no se tocó: vale el
   // default del comercio. Solo tiene sentido con modo ARCA; en los otros
@@ -749,16 +760,37 @@ export function CartPanelAdmin({
   }, [promocionActivaId, promocionesElegibles, items]);
 
   const subtotalConDescuento = totalCarrito - descuentoDetalle.monto;
+
+  // SALDO A FAVOR (20260928240000). Lo que la clienta ya tiene pagado se usa
+  // antes que nada, sin recargo de cuenta corriente, y nunca más que la
+  // compra. Misma cuenta que create-sale.ts (`saldo-a-favor-venta.ts`).
+  const saldoAFavorDisponible = saldoAFavorDe(
+    clienteSeleccionado?.saldo_pendiente,
+  );
+  const usarSaldoAFavor =
+    saldoAFavorClienteId !== null &&
+    saldoAFavorClienteId === clienteSeleccionado?.id;
+  const saldoAFavorAplicado =
+    usarSaldoAFavor && !isReserva
+      ? saldoAFavorAplicable(saldoAFavorDisponible, subtotalConDescuento)
+      : 0;
+
   // Lo que el recargo CC sería si se aplicara. Se calcula igual esté anulado
-  // o no: es lo que el footer necesita para poder ofrecer "restaurar".
+  // o no: es lo que el footer necesita para poder ofrecer "restaurar". La
+  // base excluye lo pagado con saldo a favor.
   const recargoCuentaCorrientePotencial = isCuentaCorriente
-    ? (subtotalConDescuento * (branding?.cc_recargo_default || 0)) / 100
+    ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorAplicado) *
+        (branding?.cc_recargo_default || 0)) /
+      100
     : 0;
   const recargoCuentaCorriente = ccSinRecargo
     ? 0
     : recargoCuentaCorrientePotencial;
 
+  // `totalFinal` es el TICKET; `totalACubrir` es lo que tienen que cubrir los
+  // pagos (o el fiado): el ticket menos el saldo a favor, que ya está pagado.
   const totalFinal = subtotalConDescuento + recargoCuentaCorriente;
+  const totalACubrir = Math.max(0, totalFinal - saldoAFavorAplicado);
   const clienteExceptuadoEntregaMinima =
     clienteSeleccionado?.exceptuado_entrega_minima ?? false;
 
@@ -1057,9 +1089,16 @@ export function CartPanelAdmin({
     guardarVenta,
   ]);
 
+  // El saldo a favor cuenta como entrega (es plata que ya pagó): el mínimo que
+  // falta cobrar es el porcentaje del ticket menos lo que cubre. Mismo
+  // criterio que el chequeo del server.
   const anticipoMinimo =
     isCuentaCorriente && !clienteExceptuadoEntregaMinima
-      ? (totalFinal * (branding?.cc_anticipo_default || 0)) / 100
+      ? Math.max(
+          0,
+          (totalFinal * (branding?.cc_anticipo_default || 0)) / 100 -
+            saldoAFavorAplicado,
+        )
       : 0;
   const firstPagoId = pagos[0]?.metodoPagoId;
 
@@ -1077,7 +1116,7 @@ export function CartPanelAdmin({
     return [
       {
         metodoPagoId: metodoPagoRapidoId,
-        montoAsignado: isCuentaCorriente ? anticipoMinimo : totalFinal,
+        montoAsignado: isCuentaCorriente ? anticipoMinimo : totalACubrir,
       },
     ];
   }, [
@@ -1086,7 +1125,7 @@ export function CartPanelAdmin({
     metodoPagoRapidoId,
     modoMixto,
     pagos,
-    totalFinal,
+    totalACubrir,
   ]);
 
   const sumaPagos = useMemo(
@@ -1112,7 +1151,7 @@ export function CartPanelAdmin({
     () => etiquetaRecargo(recargoMetodo.pagos, metodosPagoDB),
     [recargoMetodo, metodosPagoDB],
   );
-  const totalACobrar = totalFinal + recargoMetodo.totalRecargo;
+  const totalACobrar = totalACubrir + recargoMetodo.totalRecargo;
 
   // 🚀 FIX: AUTO-SYNC DE PAGOS (Garantiza que el cajero nunca vea "$4.248 de $4.720")
   if (!mounted) return null;
@@ -1125,6 +1164,7 @@ export function CartPanelAdmin({
 
   const clearCartAndResetStep = () => {
     clearCart();
+    setSaldoAFavorClienteId(null);
     setCheckoutStep("CART");
     if (esCajaCentral) setVistaTicket("POR_COBRAR");
     // Vaciar el ticket vacía también la decisión de lista: el próximo cliente
@@ -1208,7 +1248,7 @@ export function CartPanelAdmin({
       setPagos([
         {
           metodoPagoId: metodosPagoDB[0].id,
-          montoAsignado: totalFinal,
+          montoAsignado: totalACubrir,
         },
       ]);
     }
@@ -1406,7 +1446,10 @@ export function CartPanelAdmin({
       return;
     }
 
-    if (!isCuentaCorriente && Math.abs(montoRealAsignado - totalFinal) > 0.05) {
+    if (
+      !isCuentaCorriente &&
+      Math.abs(montoRealAsignado - totalACubrir) > 0.05
+    ) {
       toast.error("La suma de los pagos no coincide con el total.", {
         description:
           "Asegúrate de asignar el dinero exacto para poder cerrar la caja correctamente.",
@@ -1466,6 +1509,9 @@ export function CartPanelAdmin({
         }
         formData.append("recargo_cc", String(recargoCuentaCorriente));
         formData.append("cc_sin_recargo", String(ccSinRecargo));
+        if (saldoAFavorAplicado > 0) {
+          formData.append("saldo_a_favor_usado", String(saldoAFavorAplicado));
+        }
 
         if (clienteSeleccionado) {
           formData.append("cliente_id", clienteSeleccionado.id);
@@ -1545,6 +1591,17 @@ export function CartPanelAdmin({
         let result: Awaited<ReturnType<typeof registrarVentaAction>>;
 
         if (sinSenal) {
+          // El saldo a favor lo valida la base contra el saldo REAL, con el
+          // cliente bloqueado. Encolado, se validaría recién al sincronizar,
+          // cuando la mercadería ya se fue: si para entonces no alcanza, la
+          // venta rebota sin clienta a quien cobrarle. Sin señal, no se usa.
+          if (saldoAFavorAplicado > 0) {
+            toast.error("Sin conexión no se puede usar el saldo a favor", {
+              description:
+                "Quitá el saldo a favor y cobrá la venta completa, o esperá a tener señal.",
+            });
+            return;
+          }
           if (!(await guardarParaDespues())) {
             toast.error("No se pudo guardar la venta en este dispositivo", {
               description:
@@ -1630,7 +1687,7 @@ export function CartPanelAdmin({
         // (`VentaExitosa`, en el lugar del catálogo), que es la confirmación
         // de verdad y no se puede perder de vista. Un cartel encima diciendo
         // lo mismo es ruido.
-        const nombreMetodoMostrar =
+        const nombreMetodoCobro =
           pagosToSubmit.length > 1
             ? `Pago mixto (${pagosToSubmit
                 .map(
@@ -1640,6 +1697,17 @@ export function CartPanelAdmin({
                 .join(" + ")})`
             : metodosPagoDB.find((m) => m.id === pagosToSubmit[0]?.metodoPagoId)
                 ?.nombre || "Efectivo";
+        // Con saldo a favor el método se nombra aparte: si pagó todo con eso
+        // no hubo cobro, y caer al "Efectivo" de arriba sería mentirle al papel.
+        const hayCobro = pagosToSubmit.some(
+          (p) => Number(p.montoAsignado || 0) > 0,
+        );
+        const nombreMetodoMostrar =
+          saldoAFavorAplicado > 0
+            ? hayCobro
+              ? `${nombreMetodoCobro} + Saldo a favor`
+              : "Saldo a favor"
+            : nombreMetodoCobro;
 
         // El correlativo emitido es el número real del comprobante. Si la
         // emisión falló, el ticket cae al identificador de la venta — que es
@@ -1651,10 +1719,10 @@ export function CartPanelAdmin({
             result.comprobante?.numero,
           ) ?? (result.ventaId ?? "").split("-")[0].toUpperCase();
         const montoPendiente = isCuentaCorriente
-          ? Math.max(0, totalFinal - montoRealAsignado)
+          ? Math.max(0, totalACubrir - montoRealAsignado)
           : 0;
         const estadoVenta = isCuentaCorriente
-          ? montoRealAsignado > 0
+          ? montoRealAsignado > 0 || saldoAFavorAplicado > 0
             ? "PARCIAL"
             : "PENDIENTE"
           : "PAGADA";
@@ -1690,6 +1758,7 @@ export function CartPanelAdmin({
           montoPendiente,
           montoCobrado: montoRealAsignado + recargoSubmit.totalRecargo,
           esFiadoDirecto: isCuentaCorriente,
+          saldoAFavorAplicado,
         });
 
         /**
@@ -2019,7 +2088,17 @@ export function CartPanelAdmin({
           metodosPagoDB={metodosPagoDB}
           pagos={pagos}
           onPagosChange={setPagos}
-          totalFinal={totalFinal}
+          // Lo que tienen que cubrir los pagos: el ticket menos el saldo a
+          // favor aplicado, que ya está pagado.
+          totalFinal={totalACubrir}
+          saldoAFavorDisponible={isReserva ? 0 : saldoAFavorDisponible}
+          saldoAFavorAplicado={saldoAFavorAplicado}
+          usarSaldoAFavor={usarSaldoAFavor}
+          onUsarSaldoAFavorChange={(usar) =>
+            setSaldoAFavorClienteId(
+              usar ? (clienteSeleccionado?.id ?? null) : null,
+            )
+          }
           isCuentaCorriente={isCuentaCorriente}
           onCuentaCorrienteChange={handleCuentaCorrienteChange}
           isReserva={usaReservas && isReserva}
@@ -2049,7 +2128,8 @@ export function CartPanelAdmin({
               onCcSinRecargoChange={setCcSinRecargo}
               recargoMetodoMonto={recargoMetodo.totalRecargo}
               recargoMetodoEtiqueta={recargoMetodoEtiqueta}
-              totalFinal={totalFinal}
+              totalFinal={totalACubrir}
+              saldoAFavorAplicado={saldoAFavorAplicado}
               totalACobrar={totalACobrar}
               sumaPagos={sumaPagos}
               isCuentaCorriente={isCuentaCorriente}

@@ -73,6 +73,10 @@ const MENSAJES: Record<string, string> = {
   CANTIDAD_INVALIDA: "Alguna cantidad no es válida.",
   DESTINO_INVALIDO: "El destino de la mercadería no es válido.",
   SIN_NEGOCIO_ACTIVO: "No hay un comercio activo en esta sesión.",
+  A_CUENTA_SIN_CLIENTE:
+    "Para dejarlo a cuenta, la venta tiene que tener un cliente asignado.",
+  REINTEGRO_AMBIGUO:
+    "Elegí devolver la plata por un medio o dejarla a cuenta, no las dos cosas.",
 };
 
 export async function registrarDevolucionAction(
@@ -83,6 +87,9 @@ export async function registrarDevolucionAction(
   /** Por qué medio se le devuelve la plata. null = por el del cobro, que es
    * lo único que puede quien no tiene `ventas.elegir_medio_devolucion`. */
   reintegroMetodoId?: string | null,
+  /** Lo devuelto queda como saldo a favor del cliente (20260928240000). Lo
+   * puede elegir quien puede devolver: no saca plata del cajón. */
+  reintegroACuenta?: boolean,
 ): Promise<{ data: ResultadoDevolucion | null; error: string | null }> {
   try {
     const cookieStore = await cookies();
@@ -122,7 +129,9 @@ export async function registrarDevolucionAction(
       p_motivo_codigo: normalizarMotivoAnulacion(motivoCodigo),
       p_motivo_detalle: motivoDetalle?.trim() || null,
       p_turno_id: turnoId,
-      p_reintegro_metodo_id: reintegroMetodoId || null,
+      // Excluyentes: con a cuenta el medio no viaja (REINTEGRO_AMBIGUO).
+      p_reintegro_metodo_id: reintegroACuenta ? null : reintegroMetodoId || null,
+      p_reintegro_a_cuenta: reintegroACuenta === true,
     });
 
     if (error || !data) {
@@ -155,6 +164,8 @@ export async function registrarDevolucionAction(
       reintegro_metodo_nombre: string | null;
       sale_de_caja: boolean;
       venta_totalmente_devuelta: boolean;
+      /** Lo que quedó a favor del cliente por un reintegro a cuenta. */
+      a_cuenta?: number;
     };
 
     const avisos = await moverStock(
@@ -172,12 +183,17 @@ export async function registrarDevolucionAction(
     if (resultado.es_cuenta_corriente) {
       if (resultado.excedente_a_devolver > 0) {
         // Pasa cuando el cliente ya pagó más de lo que quedaba de esta venta.
-        // No se mueve solo porque los pagos de cuenta corriente no están
-        // imputados a un ticket: la base no sabe con qué medio se cobró.
+        // Desde 20260928240000 se acredita la devolución entera y lo que ya
+        // había pagado queda como saldo a favor: no hay que adivinar con qué
+        // medio se cobró, porque no sale plata.
         avisos.push(
-          `La deuda no alcanzó a absorber ${pesos(resultado.excedente_a_devolver)}: el cliente ya había pagado esa parte y hay que devolvérsela aparte.`,
+          `El cliente ya había pagado ${pesos(resultado.excedente_a_devolver)} de esta compra: quedan como saldo a favor en su cuenta.`,
         );
       }
+    } else if ((resultado.a_cuenta ?? 0) > 0) {
+      avisos.push(
+        `Quedan ${pesos(resultado.a_cuenta ?? 0)} a favor del cliente. No sale plata de la caja.`,
+      );
     } else if (!resultado.sale_de_caja && resultado.monto_devuelto > 0) {
       // Con medio elegido es una constancia de lo decidido; sin elegir, es lo
       // que el sistema dedujo del cobro. Dos frases, y la primera no tiene que

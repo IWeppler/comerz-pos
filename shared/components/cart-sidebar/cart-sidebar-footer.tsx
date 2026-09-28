@@ -34,6 +34,10 @@ interface CartSidebarFooterProps {
   totalFinal: number;
   /** Lo que el cliente entrega: totalFinal + recargo por método. */
   totalACobrar?: number;
+  /** Parte del ticket pagada con saldo a favor. Ya está descontada de
+   * `totalFinal` y `totalACobrar`; se muestra como renglón para que el total
+   * no parezca salido de la nada. */
+  saldoAFavorAplicado?: number;
   sumaPagos: number;
   isCuentaCorriente: boolean;
   isReserva?: boolean;
@@ -67,6 +71,7 @@ export function CartSidebarFooter({
   totalCarrito,
   totalFinal,
   totalACobrar,
+  saldoAFavorAplicado = 0,
   sumaPagos,
   recargoCuentaCorriente,
   recargoCuentaCorrientePotencial = 0,
@@ -196,9 +201,17 @@ export function CartSidebarFooter({
               </span>
             </div>
           ) : null}
+          {saldoAFavorAplicado > 0 ? (
+            <div className="flex items-center justify-between font-mono text-sm text-success">
+              <span className="uppercase">Saldo a favor</span>
+              <span className="font-mono">
+                -{formatCurrency(saldoAFavorAplicado)}
+              </span>
+            </div>
+          ) : null}
           <div className="flex items-center justify-between border-t border-border pt-3">
             <span className="font-mono text-xl font-semibold uppercase text-foreground">
-              Total
+              {saldoAFavorAplicado > 0 ? "A cobrar" : "Total"}
             </span>
             <span className="font-mono text-2xl font-medium text-foreground">
               {formatCurrency(totalACobrar ?? totalFinal)}

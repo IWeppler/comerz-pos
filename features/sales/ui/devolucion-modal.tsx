@@ -39,6 +39,7 @@ import {
 import {
   SelectorMedioReintegro,
   faltaElegirMedio,
+  resolverReintegro,
 } from "./selector-medio-reintegro";
 
 const pesos = (monto: number) => `$${Math.round(monto).toLocaleString("es-AR")}`;
@@ -173,12 +174,14 @@ export function DevolucionModal({
     );
 
     iniciar(async () => {
+      const reintegro = resolverReintegro(medioReintegro);
       const { data, error } = await registrarDevolucionAction(
         ventaId,
         lineas,
         motivoCodigo,
         motivoDetalle,
-        medioReintegro,
+        reintegro.metodoId,
+        reintegro.aCuenta,
       );
 
       if (error || !data) {
