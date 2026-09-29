@@ -105,7 +105,7 @@ const ESPECIFICAS: Record<Rubro, ColumnaPlantilla[]> = {
   // de más que se deja vacía cuesta mucho menos que no tener dónde poner el
   // dato — y el criterio de que UN comercio vende por unidad Y por peso a la
   // vez es justo el que hace que "vender por peso" sea del PRODUCTO y no del
-  // rubro (ver ROADMAP-VENTA-POR-PESO.md).
+  // rubro (ver AGENTS.md, "Venta por peso").
   quioscos: [
     CODIGO_BARRAS,
     { clave: "marca", descripcion: "Marca del fabricante" },

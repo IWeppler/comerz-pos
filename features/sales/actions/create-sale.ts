@@ -1568,7 +1568,7 @@ export async function registrarVentaAction(
   }
   // Con saldo a favor: si pagó todo con eso, lo dice la columna; si se combinó
   // con un cobro o con fiado, es un pago mixto. (`ventas.metodo_pago` no es
-  // fuente de verdad — ver CLAUDE.md — pero que no mienta de más.)
+  // fuente de verdad — ver AGENTS.md — pero que no mienta de más.)
   if (saldoAFavorUsado > 0) {
     metodoPagoSafe =
       pagosValidos.length === 0 && montoPendiente <= 0.05

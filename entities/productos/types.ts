@@ -52,7 +52,7 @@ export type EstadoUnidadSerie = "disponible" | "vendido";
  */
 export interface UnidadSerie {
   id: string;
-  /** Reservado para multi-tenant (ROADMAP TIER 2). Siempre null en el modelo por-proyecto actual. */
+  /** Negocio dueño de la unidad (multi-tenant por `negocio_id`, ver AGENTS.md). */
   negocio_id?: string | null;
   producto_variante_id: string;
   imei: string;

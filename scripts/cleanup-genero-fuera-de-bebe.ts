@@ -50,7 +50,7 @@ const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
 
 const COMMIT = process.argv.includes("--commit");
 
-// Decisión 2026-07-26 (ROADMAP.md, ÉPICA de categorías): Género deja de ser
+// Decisión 2026-07-26 (ver AGENTS.md, "El GÉNERO no es un atributo de variante"): Género deja de ser
 // atributo combinable para estas 4 audiencias — la categoría padre ya lo
 // implica. Ropa Bebé es la ÚNICA excepción (Beba/Bebe/Unisex): nunca se toca.
 const AUDIENCIAS_A_LIMPIAR = new Set([

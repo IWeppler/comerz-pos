@@ -3,7 +3,7 @@
 **El sistema de gestión que reemplaza el cuaderno, el Excel y el grupo de WhatsApp.**
 Punto de venta, stock, caja, clientes y catálogo web — todo en un solo lugar, funcionando desde el celular del mostrador.
 
-> Hoy en producción real en comercios de Tostado, Santa Fe: indumentaria y electro.
+> SaaS multi-comercio, hoy en producción real en comercios de Tostado, Santa Fe.
 > Lo usan dueñas y vendedoras todos los días, con plata real.
 
 ---
@@ -92,8 +92,11 @@ Next.js (App Router, Server Actions) · TypeScript · Supabase (PostgreSQL, RLS,
 Storage, Auth) · Tailwind CSS · shadcn/ui · Zustand · Vercel.
 
 Decisiones que importan: toda operación que toca plata se **revalida en el servidor**,
-el stock se mueve con UPDATE atómico condicional, y los datos de cada comercio viven en
-su propia base con Row Level Security.
+el stock se mueve con UPDATE atómico condicional, y todos los comercios comparten UNA
+base, aislados por `negocio_id` con Row Level Security.
+
+Las decisiones de arquitectura, los invariantes y los incidentes que las motivaron
+están en [`AGENTS.md`](AGENTS.md), que es la única fuente de verdad del proyecto.
 
 ---
 
@@ -110,19 +113,28 @@ Variables mínimas en `.env.local`:
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+NEXT_PUBLIC_ROOT_DOMAIN=
+NEXT_PUBLIC_SITE_URL=
 ```
 
-App en http://localhost:3000. Las migraciones de base viven en `supabase/migrations/` y
-se aplican a cada proyecto Supabase del comercio.
+Opcionales según la feature: `SUPABASE_SERVICE_ROLE_KEY`, `ARCA_CLAVE_CIFRADO`
+(facturación), `RESEND_API_KEY` / `MAIL_REMITENTE` / `MAIL_RESPONDER_A` (mails),
+`CATALOGO_MAESTRO_SUPABASE_URL` / `CATALOGO_MAESTRO_SUPABASE_PUBLISHABLE_KEY`
+(Catálogo Maestro de electro).
+
+App en http://localhost:3000. Las migraciones viven en `supabase/migrations/` y se
+aplican a la única base del SaaS: **una migración impacta a todos los comercios a la vez**.
 
 ### Arquitectura de carpetas
 
 ```
 app/
   (dashboard)/   Rutas privadas (POS, stock, caja, clientes, reportes)
-  (public)/      Catálogo público
-  auth/          Login
+  (public)/      Catálogo público (por subdominio)
+  admincomerz/   Panel del super admin de Comerz
+  api/           Route handlers
+  auth/          Login y alta
 entities/        Tipos e interfaces compartidas
 features/        Módulos: pos, stock, caja, clients, purchases, carga-rapida,
                  catalog, categories, promotions, payments, reports, config…
@@ -130,8 +142,8 @@ shared/          UI base, utils, stores, clientes de Supabase
 supabase/        Migraciones SQL versionadas
 ```
 
-`middleware.ts` protege las rutas: sin sesión → login; rol VENDEDOR fuera del dashboard
-financiero, configuración y caja ajena.
+`middleware.ts` protege las rutas (sin sesión → login) y resuelve el comercio activo.
+Los permisos por rol los hace cumplir la base (`tiene_permiso` en las policies), no la UI.
 
 ---
 

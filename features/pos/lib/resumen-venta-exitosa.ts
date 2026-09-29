@@ -78,7 +78,7 @@ export function resumirVentaExitosa(ticket: TicketData): ResumenVentaExitosa {
 
 /**
  * UNIDADES, no renglones: tres remeras en una línea son 3 artículos. Es la
- * misma trampa de `ventas.cantidad` (ver CLAUDE.md), que durante meses guardó
+ * misma trampa de `ventas.cantidad` (ver AGENTS.md), que durante meses guardó
  * `items.length`. Si alguna línea es fraccionada (0,75 kg), contar "artículos"
  * no tiene sentido y se cae a la cantidad de productos.
  */

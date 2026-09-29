@@ -165,13 +165,15 @@ export interface DefaultsFiscales {
  *
  * Los 7 arrancan igual —unidad + 21%— y eso es una decisión, no un pendiente:
  *
- * - **La unidad no puede ser KG todavía.** Toda la cadena de cantidad es
- *   `integer` en la base (`producto_variantes.stock`, `ventas_items.cantidad`,
- *   `ajustar_stock_variante`), así que hoy no hay forma de vender 0,750 kg.
- *   Un producto que nace en KG con stock entero y sin teclado de peso es peor
- *   que uno en UNIDAD: dice una cosa y se comporta como otra. `alimentos` pasa
- *   a KG el día que exista la venta por peso, no antes
- *   (ver ROADMAP-VENTA-POR-PESO.md, fases 1 y 2).
+ * - **La unidad arranca en UNIDAD también en `alimentos`, aunque ya se pueda
+ *   vender por peso.** Desde `20260819120000` toda la cadena de cantidad es
+ *   `numeric(12,3)` y el POS tiene teclado de peso, así que KG funciona. Lo
+ *   que no funciona es un default de KG: vender por peso es del PRODUCTO, no
+ *   del rubro, y un almacén vende la yerba, la gaseosa y el paquete de fideos
+ *   por unidad. Nacer en KG haría que cada producto envasado se cobre con el
+ *   teclado de peso hasta que alguien lo corrija; nacer en UNIDAD deja el
+ *   fiambre y lo suelto como la excepción que se elige en el alta
+ *   (ver AGENTS.md, "Venta por peso").
  *
  * - **La alícuota se queda en 21% por el mismo criterio fail-closed de
  *   `normalizarTratamientoIva`**: cobrar IVA de más se corrige, facturar sin el
