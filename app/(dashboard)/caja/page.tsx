@@ -32,7 +32,6 @@ import { getRolActual } from "@/shared/config/supabase/contexto-actual";
 import { getEstadoCuentasFinancierasAction } from "@/features/caja/actions/cuentas-financieras";
 import { getEgresosProgramadosAction } from "@/features/caja/actions/egresos-programados";
 import { CuentasFinancierasPanel } from "@/features/caja/ui/cuentas-financieras-panel";
-import { AuditoriaCaja } from "@/features/caja/ui/auditoria-caja";
 
 export const dynamic = "force-dynamic";
 
@@ -421,12 +420,6 @@ export default async function CajaPage() {
           veMovimientosGate ? (
             <MovimientosFinancierosTable puedeAnular={puedeAnular} />
           ) : undefined
-        }
-        auditoria={
-          // Mismo gate que la RPC (`alertas_caja`): quien ve los movimientos o
-          // la vista gerencial. El componente se autoabastece, igual que
-          // Movimientos, para no demorar el resto de la página.
-          veMovimientosGate || veGerencial ? <AuditoriaCaja /> : undefined
         }
         historial={
           <CajaHistoryTable

@@ -8,9 +8,12 @@ import {
   ChevronRight,
   Loader2,
   Repeat2,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { DatePickerAR } from "@/shared/components/date-picker-ar";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { etiquetaMovimiento } from "../lib/movimiento-financiero";
 import { CabeceraMovimientos } from "./cabecera-movimientos";
@@ -67,6 +70,9 @@ export function ActividadCuentas({
   const [busquedaAplicada, setBusquedaAplicada] = useState("");
   const [tipo, setTipo] = useState<FiltroTipo>("TODOS");
   const [cuentaId, setCuentaId] = useState(TODAS_LAS_CUENTAS);
+  // Día comercial "YYYY-MM-DD", o "" para todos. Uno solo y no un rango: la
+  // pregunta de esta pantalla es "¿qué pasó el jueves?".
+  const [dia, setDia] = useState("");
   const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([]);
   const [pagina, setPagina] = useState(0);
   const [cargando, setCargando] = useState(false);
@@ -98,6 +104,7 @@ export function ActividadCuentas({
       busqueda: busquedaAplicada || null,
       origenTipo: tipo === "TODOS" ? null : tipo,
       cuentaId: cuentaId === TODAS_LAS_CUENTAS ? null : cuentaId,
+      dia: dia || null,
       limite: TAMANO_PAGINA,
       offset: pagina * TAMANO_PAGINA,
     }).then((respuesta) => {
@@ -118,7 +125,7 @@ export function ActividadCuentas({
     return () => {
       vigente = false;
     };
-  }, [busquedaAplicada, cuentaId, pagina, tipo]);
+  }, [busquedaAplicada, cuentaId, dia, pagina, tipo]);
 
   const paginas = Math.max(1, Math.ceil(total / TAMANO_PAGINA));
   const desde = total === 0 ? 0 : pagina * TAMANO_PAGINA + 1;
@@ -132,6 +139,38 @@ export function ActividadCuentas({
         descripcion="Cierres de caja, acreditaciones, gastos y transferencias."
         busqueda={busqueda}
         onBusquedaChange={setBusqueda}
+        filtroFecha={
+          <div className="col-span-2 flex items-center gap-1 sm:col-span-1">
+            <DatePickerAR
+              value={dia}
+              max={diaComercial(new Date())}
+              onChange={(valor) => {
+                setPagina(0);
+                setDia(valor);
+              }}
+              placeholder="Día"
+              className="w-full sm:w-36"
+            />
+            {/* El picker no se puede vaciar tipeando (descarta lo que no es
+                una fecha completa), así que volver a "todos los días" tiene
+                su propio botón. */}
+            {dia && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Ver todos los días"
+                className="h-9 w-9 shrink-0"
+                onClick={() => {
+                  setPagina(0);
+                  setDia("");
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
+        }
         filtros={[
           {
             valor: tipo,

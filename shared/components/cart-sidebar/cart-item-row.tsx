@@ -15,6 +15,9 @@ import { SelectorFormaVentaDialog } from "./selector-forma-venta-dialog";
 interface CartItemRowProps {
   item: CartItemStore;
   onUpdateQuantity: (cantidad: number) => void;
+  /** Venta por importe exacto en productos por peso. Sin esto (catálogo
+   * público) el importe se convierte a peso como siempre. */
+  onFijarImporte?: (importe: number) => void;
   onRemove: () => void;
   /** La línea no se puede vender sin elegir el aparato (rubro electro). */
   esSerializada?: boolean;
@@ -49,6 +52,7 @@ interface CartItemRowProps {
 export function CartItemRow({
   item,
   onUpdateQuantity,
+  onFijarImporte,
   onRemove,
   esSerializada = false,
   imei,
@@ -70,6 +74,9 @@ export function CartItemRow({
     : null;
   const tienePresentaciones = (item.presentaciones?.length ?? 0) > 0;
   // El precio "de siempre" en la forma de la línea, para el tachado de lista.
+  // El precio vigente de la línea sin el ajuste de un importe fijado: es el
+  // que se muestra por kilo y el que se compara contra el de sin lista.
+  const precioDeLista = item.precioSinImporte ?? item.precio;
   const precioSinLista =
     item.precioBase != null
       ? precioEnForma(item.precioBase, presentacion)
@@ -184,6 +191,7 @@ export function CartItemRow({
             unidadMedida={item.unidadMedida}
             stockMaximo={item.stockMaximo}
             onChange={onUpdateQuantity}
+            onImporte={onFijarImporte}
             presentacion={presentacion ? { factor: presentacion.factor } : null}
           />
 
@@ -199,8 +207,11 @@ export function CartItemRow({
               esFraccionable(item.unidadMedida) && (
                 <p className="font-mono text-[10px] text-muted-foreground">
                   {formatearCantidad(item.cantidad, item.unidadMedida)} × $
-                  {item.precio.toLocaleString("es-AR")}/
+                  {/* El de LISTA: con importe fijado, `precio` es el efectivo
+                      de la línea ($8.620,69) y mostrarlo confunde. */}
+                  {precioDeLista.toLocaleString("es-AR")}/
                   {ABREVIATURA_UNIDAD[unidad]}
+                  {item.importeFijado != null ? " · importe fijo" : ""}
                 </p>
               )
             )}
@@ -209,7 +220,7 @@ export function CartItemRow({
                 precios de todos los días; la franja de arriba lo dice para el
                 ticket entero. Sin lista, `precioBase` es igual a `precio` y
                 acá no se dibuja nada. */}
-            {precioSinLista != null && precioSinLista !== item.precio && (
+            {precioSinLista != null && precioSinLista !== precioDeLista && (
               <p className="font-mono text-[10px] text-muted-foreground line-through">
                 ${(precioSinLista * item.cantidad).toLocaleString("es-AR")}
               </p>

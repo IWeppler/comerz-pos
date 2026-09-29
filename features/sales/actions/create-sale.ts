@@ -11,6 +11,7 @@ import {
   normalizarCantidadVendible,
   redondearCantidad,
 } from "@/shared/lib/unidad-venta";
+import { importeDentroDeMargen } from "@/shared/lib/importe-por-peso";
 import {
   baseDescontable,
   resolverDescuento,
@@ -696,7 +697,14 @@ export async function registrarVentaAction(
 
     // El cliente manda el precio en la unidad en que VENDE: por presentación
     // cuando hay una, por unidad base si no. Se compara en esa misma unidad.
-    const precioClienteEnForma = Number(item.precioUnitario ?? item.precio ?? 0);
+    // Con importe fijado, `precio` es el precio por kilo EFECTIVO de la línea
+    // (importe / peso); el de lista viaja en `precioSinImporte`, y es ese el
+    // que se compara contra la base.
+    const precioClienteEnForma = Number(
+      item.importeFijado != null && item.precioSinImporte != null
+        ? item.precioSinImporte
+        : (item.precioUnitario ?? item.precio ?? 0),
+    );
     const precioCliente = presentacionPedida
       ? precioClienteEnForma / factor
       : precioClienteEnForma;
@@ -764,6 +772,35 @@ export async function registrarVentaAction(
       };
     }
 
+    // IMPORTE FIJADO ("$1000 de jamón"). El peso va al gramo y casi nunca da
+    // justo el importe pedido, así que el POS cobra EXACTO lo tipeado y manda
+    // el importe. Se acepta solo si difiere de peso × precio VIGENTE en no
+    // más de lo que vale un gramo (`importe-por-peso.ts`): es el "leve
+    // margen", y sin ese tope sería una forma de cobrar cualquier precio. La
+    // línea queda con un precio por kilo EFECTIVO (importe / peso).
+    let precioLinea = precioUsado;
+    if (
+      item.importeFijado != null &&
+      !presentacionPedida &&
+      esFraccionable(unidadMedida)
+    ) {
+      const importeFijado = Number(item.importeFijado);
+      if (importeDentroDeMargen(importeFijado, cantidadValidada, precioUsado)) {
+        precioLinea = importeFijado / cantidadValidada;
+      } else {
+        // Fuera del margen no se respeta: la línea se cobra por peso, y si
+        // eso descuadra los pagos, la venta rebota más abajo.
+        console.error("[VENTA IMPORTE FUERA DE MARGEN]", {
+          vendedorId: user.id,
+          productoId: productoIdReal,
+          variante: item.variante,
+          importeFijado: item.importeFijado,
+          cantidad: cantidadValidada,
+          precioUsado,
+        });
+      }
+    }
+
     itemsResueltos.push({
       productoIdReal,
       // El nombre VIGENTE, no el que trajo el carrito: si el dispositivo tenía
@@ -779,7 +816,9 @@ export async function registrarVentaAction(
       nombreProducto: (productoData?.nombre as string | null) ?? item.nombre,
       cantidad: cantidadValidada,
       stockActual,
-      precioServer: precioUsado,
+      // Con importe fijado, el precio por kilo efectivo de la línea; si no,
+      // el de siempre.
+      precioServer: precioLinea,
       presentacion: presentacionPedida
         ? {
             id: presentacionPedida.id as string,

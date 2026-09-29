@@ -1,7 +1,15 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CartItemStore } from "@/entities/cart/types";
-import { pasoCantidad, redondearCantidad } from "@/shared/lib/unidad-venta";
+import {
+  esFraccionable,
+  pasoCantidad,
+  redondearCantidad,
+} from "@/shared/lib/unidad-venta";
+import {
+  cantidadParaImporte,
+  importeDentroDeMargen,
+} from "@/shared/lib/importe-por-peso";
 import {
   precioEnForma,
   topeCantidadEnForma,
@@ -22,6 +30,17 @@ export function claveLinea(item: {
 }
 
 /** Cuánto acepta la línea como máximo, en la unidad en que se vende. */
+/** Deshace un importe fijado: la línea vuelve al precio de lista. */
+function sinImporteFijado(
+  item: CartItemStore,
+): Pick<CartItemStore, "precio" | "importeFijado" | "precioSinImporte"> {
+  return {
+    precio: item.precioSinImporte ?? item.precio,
+    importeFijado: null,
+    precioSinImporte: null,
+  };
+}
+
 function topeDeLinea(item: CartItemStore): number {
   return topeCantidadEnForma(
     item.stockMaximo,
@@ -61,6 +80,18 @@ interface CartState {
     productoId: string,
     variante: string,
     cantidad: number,
+    presentacionId?: string | null,
+  ) => void;
+  /**
+   * Venta por importe de un producto por peso: cobra EXACTO el importe y
+   * redondea el peso al gramo, dentro del margen de un gramo
+   * (`importe-por-peso.ts`). Sin stock suficiente o fuera del margen, vende
+   * por peso como siempre.
+   */
+  fijarImporte: (
+    productoId: string,
+    variante: string,
+    importe: number,
     presentacionId?: string | null,
   ) => void;
   /**
@@ -130,6 +161,9 @@ export const useCartStore = create<CartState>()(
             updatedItems[existingItemIndex] = {
               ...currentItem,
               cantidad: newQuantity,
+              // Sumar más del mismo producto cambia el peso: el importe
+              // fijado deja de valer y la línea vuelve al precio de lista.
+              ...sinImporteFijado(currentItem),
               reservaIds:
                 currentItem.reservaIds || newItem.reservaIds
                   ? [
@@ -175,9 +209,57 @@ export const useCartStore = create<CartState>()(
               const safeQuantity = redondearCantidad(
                 Math.max(minimo, Math.min(pedida, topeDeLinea(item))),
               );
-              return { ...item, cantidad: safeQuantity };
+              // Tocar el peso deshace un importe fijado: la línea vuelve al
+              // precio de lista y el total sale del peso otra vez.
+              return {
+                ...item,
+                cantidad: safeQuantity,
+                ...sinImporteFijado(item),
+              };
             }
             return item;
+          }),
+        }));
+      },
+
+      fijarImporte: (productoId, variante, importe, presentacionId = null) => {
+        const clave = claveLinea({ productoId, variante, presentacionId });
+        set((state) => ({
+          items: state.items.map((item) => {
+            if (claveLinea(item) !== clave) return item;
+            // Solo por peso suelto: una presentación se vende entera.
+            if (item.presentacionId || !esFraccionable(item.unidadMedida)) {
+              return item;
+            }
+            const precioLista = item.precioSinImporte ?? item.precio;
+            const cantidad = cantidadParaImporte(importe, precioLista);
+            if (cantidad === null) return item;
+
+            // Si el stock no alcanza, se vende lo que hay al precio de lista:
+            // fijar el importe sobre un peso recortado sería cobrar de más.
+            const tope = topeDeLinea(item);
+            if (cantidad > tope) {
+              return {
+                ...item,
+                cantidad: redondearCantidad(tope),
+                ...sinImporteFijado(item),
+              };
+            }
+
+            // Fuera del margen de un gramo no se fija: se vende por peso.
+            if (!importeDentroDeMargen(importe, cantidad, precioLista)) {
+              return { ...item, cantidad, ...sinImporteFijado(item) };
+            }
+
+            return {
+              ...item,
+              cantidad,
+              importeFijado: importe,
+              precioSinImporte: precioLista,
+              // Precio por kilo EFECTIVO de esta línea: precio × peso da el
+              // importe exacto en el carrito, el ticket y el server.
+              precio: importe / cantidad,
+            };
           }),
         }));
       },
@@ -201,14 +283,19 @@ export const useCartStore = create<CartState>()(
           // Una forma que la línea no conoce no se puede elegir.
           if (nueva !== null && !presentacion) return {};
 
-          const precioBase = origen.precioBase ?? origen.precio;
+          // Con un importe fijado, `precio` es el efectivo de esa línea: el de
+          // lista es `precioSinImporte`.
+          const precioOrigen = origen.precioSinImporte ?? origen.precio;
+          const precioBase = origen.precioBase ?? precioOrigen;
           // No derivarlo del precio de la presentación: una FIJA de $45.000
           // no revela si el kilo vigente por lista vale $12.000 o $10.000.
           const precioBaseEfectivo =
             origen.precioBaseEfectivo ??
-            (origen.presentacionId ? precioBase : origen.precio);
+            (origen.presentacionId ? precioBase : precioOrigen);
           const cambiada: CartItemStore = {
             ...origen,
+            importeFijado: null,
+            precioSinImporte: null,
             presentacionId: presentacion?.id ?? null,
             presentacionNombre: presentacion?.nombre ?? null,
             factor: presentacion?.factor ?? 1,
@@ -280,6 +367,10 @@ export const useCartStore = create<CartState>()(
               ? item
               : {
                   ...item,
+                  // Otra lista es otro precio por kilo: el importe fijado
+                  // sobre el anterior ya no vale.
+                  importeFijado: null,
+                  precioSinImporte: null,
                   precio: nuevo.precio,
                   precioBase: nuevo.precioBase,
                   precioBaseEfectivo:

@@ -4,7 +4,29 @@ import {
   diaComercial,
   esTurnoDeOtroDia,
   fechaCierreTurnoOlvidado,
+  rangoDiaComercial,
 } from "./turno-de-otro-dia";
+
+describe("rangoDiaComercial", () => {
+  it("va de las 00:00 a las 00:00 del día siguiente, en hora de Argentina", () => {
+    expect(rangoDiaComercial("2026-09-24")).toEqual({
+      desde: "2026-09-24T03:00:00.000Z",
+      hasta: "2026-09-25T03:00:00.000Z",
+    });
+  });
+
+  it("una transferencia de las 21:30 del jueves cae en el jueves", () => {
+    const rango = rangoDiaComercial("2026-09-24")!;
+    const transferencia = "2026-09-25T00:30:00.000Z"; // jue 24 21:30
+    expect(transferencia >= rango.desde && transferencia < rango.hasta).toBe(true);
+  });
+
+  it("rechaza lo que no es un día real", () => {
+    expect(rangoDiaComercial("2026-02-30")).toBeNull();
+    expect(rangoDiaComercial("24/09/2026")).toBeNull();
+    expect(rangoDiaComercial("")).toBeNull();
+  });
+});
 
 describe("diaComercial", () => {
   it("usa la hora de Argentina, no la de UTC", () => {

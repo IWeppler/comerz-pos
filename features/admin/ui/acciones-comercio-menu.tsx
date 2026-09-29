@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import {
   MoreHorizontal,
   Ban,
+  FileText,
   Link2,
   LogIn,
   Play,
@@ -22,6 +23,7 @@ import {
 } from "@/shared/ui/dropdown-menu";
 import {
   cambiarEstadoNegocioAction,
+  cambiarModuloPresupuestosAction,
   cambiarPlanAction,
   cambiarSlugAction,
 } from "@/features/admin/actions/acciones-comercio";
@@ -57,6 +59,7 @@ export function AccionesComercioMenu({
   planId,
   planVencimiento,
   planes,
+  moduloPresupuestos,
 }: Readonly<{
   negocioId: string;
   nombre: string;
@@ -66,6 +69,7 @@ export function AccionesComercioMenu({
   /** Para que el modal de pago pueda mostrar desde cuándo cuenta el período. */
   planVencimiento: string | null;
   planes: PlanOpcion[];
+  moduloPresupuestos: boolean;
 }>) {
   const [pendiente, startTransition] = useTransition();
   const [pagoAbierto, setPagoAbierto] = useState(false);
@@ -87,6 +91,20 @@ export function AccionesComercioMenu({
     );
     if (!nuevo || nuevo === slug) return;
     correr(() => cambiarSlugAction(negocioId, nuevo));
+  };
+
+  const alternarPresupuestos = () => {
+    // Prender pide confirmación y apagar no: prender le habilita a un comercio
+    // otorgar crédito y cobrar cuotas. Apagar solo esconde, no borra nada.
+    if (
+      !moduloPresupuestos &&
+      !window.confirm(
+        `¿Prender presupuestos y planes en cuotas para ${nombre}?\n\nVan a poder cotizar, financiar en cuotas propias y cobrar anticipos.`,
+      )
+    ) {
+      return;
+    }
+    correr(() => cambiarModuloPresupuestosAction(negocioId, !moduloPresupuestos));
   };
 
   return (
@@ -151,6 +169,20 @@ export function AccionesComercioMenu({
               </span>
             </DropdownMenuItem>
           ))}
+
+          <DropdownMenuSeparator />
+
+          <div className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Módulos
+          </div>
+          <DropdownMenuItem onClick={alternarPresupuestos}>
+            <FileText
+              className={`mr-2 size-4 ${moduloPresupuestos ? "text-success" : "text-muted-foreground"}`}
+            />
+            {moduloPresupuestos
+              ? "Presupuestos y cuotas: prendido (apagar)"
+              : "Prender presupuestos y cuotas"}
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 

@@ -45,6 +45,15 @@ export interface CartItemStore {
   costoBase?: number | null;
   cantidad: number;
   /**
+   * Importe pedido por la clienta en un producto por peso ("$1000 de jamón"),
+   * cobrado EXACTO. Con esto presente, `precio` es el precio por kilo
+   * EFECTIVO de la línea (importe / peso al gramo) y `precioSinImporte` el de
+   * lista, para volver a él si se toca el peso. Ver `importe-por-peso.ts`.
+   * El server lo acepta solo dentro del margen de un gramo.
+   */
+  importeFijado?: number | null;
+  precioSinImporte?: number | null;
+  /**
    * Unidad en la que se vende el producto (`productos.unidad_medida`). Decide
    * si esta línea acepta cantidad fraccionada (0,750 kg) o solo enteros.
    *

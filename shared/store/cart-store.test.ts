@@ -294,3 +294,59 @@ describe("presentaciones en el carrito", () => {
     });
   });
 });
+
+describe("venta por importe exacto (producto por peso)", () => {
+  const jamon = (): CartItemStore =>
+    ({
+      productoId: "jamon",
+      varianteId: "jamon-v1",
+      nombre: "Jamón cocido",
+      variante: "Único",
+      precio: 8600,
+      cantidad: 0.1,
+      stockMaximo: 5,
+      unidadMedida: "KG",
+    }) as CartItemStore;
+
+  const total = () => useCartStore.getState().getTotalPrice();
+  const linea = () => useCartStore.getState().items[0];
+
+  beforeEach(() => {
+    useCartStore.setState({ items: [jamon()], negocioId: null, isOpen: false });
+  });
+
+  it("el caso que lo motivó: $1000 a $8.600/kg cobra $1000, no $1002", () => {
+    useCartStore.getState().fijarImporte("jamon", "Único", 1000);
+
+    expect(linea().cantidad).toBe(0.116);
+    expect(total()).toBeCloseTo(1000, 6);
+    expect(linea().importeFijado).toBe(1000);
+    expect(linea().precioSinImporte).toBe(8600);
+  });
+
+  it("tocar el peso vuelve al precio de lista", () => {
+    useCartStore.getState().fijarImporte("jamon", "Único", 1000);
+    useCartStore.getState().updateQuantity("jamon", "Único", 0.2);
+
+    expect(linea().precio).toBe(8600);
+    expect(linea().importeFijado).toBeNull();
+    expect(total()).toBeCloseTo(1720, 6);
+  });
+
+  it("sin stock suficiente vende lo que hay al precio de lista", () => {
+    // $50.000 a $8.600 son 5,8 kg y hay 5.
+    useCartStore.getState().fijarImporte("jamon", "Único", 50000);
+
+    expect(linea().cantidad).toBe(5);
+    expect(linea().precio).toBe(8600);
+    expect(linea().importeFijado).toBeNull();
+  });
+
+  it("un producto por unidad no se toca", () => {
+    useCartStore.setState({ items: [item("remera")] });
+    useCartStore.getState().fijarImporte("remera", "M", 5000);
+
+    expect(useCartStore.getState().items[0].precio).toBe(12000);
+    expect(useCartStore.getState().items[0].cantidad).toBe(1);
+  });
+});

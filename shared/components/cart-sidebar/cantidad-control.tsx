@@ -22,6 +22,12 @@ interface CantidadControlProps {
   stockMaximo: number;
   onChange: (cantidad: number) => void;
   /**
+   * Venta por importe EXACTO (`importe-por-peso.ts`): quien lo pasa cobra lo
+   * tipeado y redondea el peso al gramo. Sin esto el importe se convierte a
+   * peso y el total sale del peso, como antes (el carrito público).
+   */
+  onImporte?: (importe: number) => void;
+  /**
    * La línea se vende por presentación (Balde 4,7 kg): la cantidad es entera
    * siempre —aunque el producto sea por kilo— y el tope es cuántas entran en
    * el stock. Va el stepper de unidad, no el teclado de peso.
@@ -90,6 +96,7 @@ export function CantidadControl({
   unidadMedida,
   stockMaximo,
   onChange,
+  onImporte,
   presentacion,
 }: Readonly<CantidadControlProps>) {
   const unidad = normalizarUnidadMedida(unidadMedida);
@@ -126,6 +133,7 @@ export function CantidadControl({
       precio={precio}
       abreviatura={ABREVIATURA_UNIDAD[unidad]}
       onChange={onChange}
+      onImporte={onImporte}
     />
   );
 }
@@ -135,11 +143,13 @@ function ControlPorPeso({
   precio,
   abreviatura,
   onChange,
+  onImporte,
 }: Readonly<{
   cantidad: number;
   precio: number;
   abreviatura: string;
   onChange: (cantidad: number) => void;
+  onImporte?: (importe: number) => void;
 }>) {
   // Solo se guarda el BORRADOR del campo que se está tipeando; los dos valores
   // mostrados se derivan de `cantidad` en cada render. Es lo que evita tener
@@ -176,6 +186,12 @@ function ControlPorPeso({
     const parseado = parsearImporteEs(importeTexto);
     setBorrador(null);
     if (parseado === null || parseado <= 0 || precio <= 0) return;
+    // Cobrar EXACTO lo pedido: el peso se redondea al gramo y el importe se
+    // respeta, con un margen de hasta un gramo (`importe-por-peso.ts`).
+    if (onImporte) {
+      onImporte(parseado);
+      return;
+    }
     // La cuenta al revés: cuánto pesa lo que entra en ese importe.
     onChange(redondearCantidad(parseado / precio));
   };

@@ -255,6 +255,42 @@ export async function cambiarSlugAction(
   return { error: null, success: true };
 }
 
+/**
+ * Prende o apaga el módulo de presupuestos y planes en cuotas.
+ *
+ * Es una decisión de Comerz, no del comercio: la columna vive en `negocios`,
+ * que solo actualiza el super admin, y no en `configuracion_pos`, que la
+ * escribe el ADMIN del negocio. Apagarlo esconde el módulo pero no borra nada:
+ * los planes y los cobros quedan en la base.
+ *
+ * `.select("id")` + chequeo de filas: un UPDATE que la RLS filtra vuelve con
+ * `error: null` y 0 filas, y acá eso sería decir "prendido" sin haberlo hecho.
+ */
+export async function cambiarModuloPresupuestosAction(
+  negocioId: string,
+  activo: boolean,
+): Promise<ResultadoAccion> {
+  const { supabase, autorizado } = await comoSuperAdmin();
+  if (!autorizado) return { error: "No autorizado.", success: false };
+
+  const { data, error } = await supabase
+    .from("negocios")
+    .update({ modulo_presupuestos: activo })
+    .eq("id", negocioId)
+    .select("id");
+
+  if (error) {
+    console.error("[MODULO PRESUPUESTOS]", error);
+    return { error: "No se pudo cambiar el módulo.", success: false };
+  }
+  if (!data?.length) {
+    return { error: "No se encontró el comercio.", success: false };
+  }
+
+  refrescarPanel();
+  return { error: null, success: true };
+}
+
 export interface PagoDelNegocio {
   id: string;
   monto: number;

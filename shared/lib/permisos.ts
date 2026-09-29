@@ -45,4 +45,8 @@ export const PERMISOS = {
   CAJA_VER_MOVIMIENTOS: "caja.ver_movimientos",
   CAJA_ANULAR_MOVIMIENTO: "caja.anular_movimiento",
   REPORTES_VER_MODULO: "reportes.ver_modulo",
+  PRESUPUESTOS_CREAR: "presupuestos.crear",
+  PRESUPUESTOS_COBRAR_CUOTA: "presupuestos.cobrar_cuota",
+  PRESUPUESTOS_ACEPTAR_PLAN: "presupuestos.aceptar_plan",
+  PRESUPUESTOS_CANCELAR_PLAN: "presupuestos.cancelar_plan",
 } as const;

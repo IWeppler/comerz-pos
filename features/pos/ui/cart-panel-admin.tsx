@@ -119,6 +119,7 @@ export function CartPanelAdmin({
     setIsOpen,
     removeItem,
     updateQuantity,
+    fijarImporte,
     cambiarForma,
     getTotalPrice,
     getTotalItems,
@@ -135,6 +136,7 @@ export function CartPanelAdmin({
       setIsOpen: state.setIsOpen,
       removeItem: state.removeItem,
       updateQuantity: state.updateQuantity,
+      fijarImporte: state.fijarImporte,
       cambiarForma: state.cambiarForma,
       getTotalPrice: state.getTotalPrice,
       getTotalItems: state.getTotalItems,
@@ -384,8 +386,11 @@ export function CartPanelAdmin({
 
       // Una línea que entró desde otra pantalla (Inventario, la ficha de un
       // producto) no trae `precioBase`: ahí el precio con el que entró ES el
-      // base, porque esas pantallas no conocen la lista.
-      const precioBase = item.precioBase ?? item.precio;
+      // base, porque esas pantallas no conocen la lista. Con un importe
+      // fijado, `precio` es el efectivo de la línea y el de lista es
+      // `precioSinImporte`.
+      const precioBase =
+        item.precioBase ?? item.precioSinImporte ?? item.precio;
       const { precio: precioBaseConLista } = resolverPrecio({
         listaPrecioId: nuevaListaId,
         productoId: item.productoId,
@@ -421,14 +426,17 @@ export function CartPanelAdmin({
   const totalConLista = (listaId: string | null) =>
     items.reduce((acc, item) => {
       if (item.ventaLibre) return acc + item.precio * item.cantidad;
-      const base = item.precioBase ?? item.precio;
+      const base = item.precioBase ?? item.precioSinImporte ?? item.precio;
       const { precio: precioBaseConLista } = resolverPrecio({
         listaPrecioId: listaId,
         productoId: item.productoId,
         precioBase: base,
         precioCosto: item.costoBase,
       });
-      const precio = precioEnForma(precioBaseConLista, presentacionDeLinea(item));
+      const precio = precioEnForma(
+        precioBaseConLista,
+        presentacionDeLinea(item),
+      );
       return acc + precio * item.cantidad;
     }, 0);
 
@@ -451,7 +459,6 @@ export function CartPanelAdmin({
   const olvidarEleccionDeLista = () => {
     listaElegidaAMano.current = false;
   };
-
 
   /**
    * Una lista que ya no está no puede quedar elegida.
@@ -912,8 +919,7 @@ export function CartPanelAdmin({
 
   const guardarVentaActualAhora = () => {
     if (!alcanceVentas) return;
-    const sesion =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const sesion = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     const activa = sesion?.ventas.find(
       (venta) => venta.id === sesion.ventaActivaId,
     );
@@ -922,14 +928,12 @@ export function CartPanelAdmin({
 
   const crearNuevaVenta = (forzar = false): VentaEnCola | null => {
     if (!alcanceVentas) return null;
-    const sesion =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const sesion = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     if (!sesion) return null;
     if (!forzar && !ventaActualTieneContenido()) {
       setVistaTicket("VENTA_ACTUAL");
       return (
-        sesion.ventas.find((venta) => venta.id === sesion.ventaActivaId) ??
-        null
+        sesion.ventas.find((venta) => venta.id === sesion.ventaActivaId) ?? null
       );
     }
 
@@ -944,16 +948,14 @@ export function CartPanelAdmin({
     if (!alcanceVentas) return;
     guardarVentaActualAhora();
     activarVenta(alcanceVentas, ventaId);
-    const sesion =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const sesion = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     const venta = sesion?.ventas.find((actual) => actual.id === ventaId);
     if (venta) cargarVentaEnPantalla(venta);
   };
 
   const retirarVentaActiva = () => {
     if (!alcanceVentas) return;
-    const sesion =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const sesion = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     if (!sesion) return;
     // Cuando se termina la última, la numeración vuelve a V1. Los números
     // identifican lo que está abierto ahora; no son un correlativo fiscal.
@@ -961,8 +963,7 @@ export function CartPanelAdmin({
       sesion.ventas.length === 1 ? 1 : sesion.proximoNumero,
     );
     quitarVenta(alcanceVentas, sesion.ventaActivaId, reemplazo);
-    const siguiente =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const siguiente = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     const venta = siguiente?.ventas.find(
       (actual) => actual.id === siguiente.ventaActivaId,
     );
@@ -971,15 +972,13 @@ export function CartPanelAdmin({
 
   const quitarVentaPorId = (ventaId: string) => {
     if (!alcanceVentas) return;
-    const sesion =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const sesion = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     if (!sesion || sesion.ventas.length < 2) return;
     const eraActiva = sesion.ventaActivaId === ventaId;
     const reemplazo = crearVentaEnColaVacia(sesion.proximoNumero);
     quitarVenta(alcanceVentas, ventaId, reemplazo);
     if (!eraActiva) return;
-    const siguiente =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const siguiente = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     const venta = siguiente?.ventas.find(
       (actual) => actual.id === siguiente.ventaActivaId,
     );
@@ -1056,14 +1055,10 @@ export function CartPanelAdmin({
   // store persistido, no estado derivado de React: permite recuperar cliente,
   // pagos y promoción después de una recarga, no solo los renglones.
   useEffect(() => {
-    if (
-      !alcanceVentas ||
-      alcanceVentasCargado.current !== alcanceVentas
-    ) {
+    if (!alcanceVentas || alcanceVentasCargado.current !== alcanceVentas) {
       return;
     }
-    const sesion =
-      useVentasEnColaStore.getState().sesiones[alcanceVentas];
+    const sesion = useVentasEnColaStore.getState().sesiones[alcanceVentas];
     const activa = sesion?.ventas.find(
       (venta) => venta.id === sesion.ventaActivaId,
     );
@@ -1362,15 +1357,16 @@ export function CartPanelAdmin({
       preciosDelPedido[claveLinea(i)] = {
         precio: i.precio,
         precioBase: i.precioBase ?? i.precio,
-        precioBaseEfectivo:
-          i.precioBaseEfectivo ?? i.precioBase ?? i.precio,
+        precioBaseEfectivo: i.precioBaseEfectivo ?? i.precioBase ?? i.precio,
       };
     }
     setListaPrecio(ctx.listaPrecioId ?? null, preciosDelPedido);
 
     setClienteSeleccionado(
       ctx.cliente ??
-        (p.cliente_id ? { id: p.cliente_id, nombre: p.cliente_nombre ?? "Cliente" } : null),
+        (p.cliente_id
+          ? { id: p.cliente_id, nombre: p.cliente_nombre ?? "Cliente" }
+          : null),
     );
     setIsCuentaCorriente(Boolean(ctx.isCuentaCorriente));
     setCcSinRecargo(Boolean(ctx.isCuentaCorriente && ctx.ccSinRecargo));
@@ -1384,7 +1380,11 @@ export function CartPanelAdmin({
     setPagos(pagosValidos);
     setPromocionId(ctx.promocionId ?? "ninguna");
     setFacturarElegido(ctx.facturar ?? null);
-    setPedidoActivo({ id: p.id, numero: p.numero, vendedor: p.vendedor_nombre });
+    setPedidoActivo({
+      id: p.id,
+      numero: p.numero,
+      vendedor: p.vendedor_nombre,
+    });
     setCheckoutStep("PAYMENT");
     setVistaTicket("VENTA_ACTUAL");
     // Abre el ticket en el layout que sea: sheet en tablet, drawer en celular.
@@ -1586,7 +1586,7 @@ export function CartPanelAdmin({
         // lugar. `navigator.onLine` en false es confiable (no hay interfaz
         // de red); en true no garantiza nada, y para eso está el catch.
         const sinSenal =
-        typeof navigator !== "undefined" && navigator.onLine === false;
+          typeof navigator !== "undefined" && navigator.onLine === false;
 
         let result: Awaited<ReturnType<typeof registrarVentaAction>>;
 
@@ -1623,10 +1623,13 @@ export function CartPanelAdmin({
             if (!esErrorDeRed(error)) throw error;
 
             if (!(await guardarParaDespues())) {
-              toast.error("Se cortó la conexión y no se pudo guardar la venta", {
-              description:
-                  "Revisá la señal y volvé a cobrar: no quedó registrada.",
-              });
+              toast.error(
+                "Se cortó la conexión y no se pudo guardar la venta",
+                {
+                  description:
+                    "Revisá la señal y volvé a cobrar: no quedó registrada.",
+                },
+              );
               return;
             }
             result = { error: null, success: true, ventaId } as typeof result;
@@ -1648,8 +1651,7 @@ export function CartPanelAdmin({
             });
           } else if (result.error === "TURNO_DE_OTRO_DIA") {
             toast.error("La caja quedó abierta desde otro día", {
-              description:
-                "Cerrala contando el efectivo y abrí un turno nuevo para cobrar. El cierre se registra en el día de ese turno.",
+              description: "Cerrala y abrí un turno nuevo para cobrar.",
               duration: 15000,
               action: {
                 label: "Cerrar caja",
@@ -1670,9 +1672,13 @@ export function CartPanelAdmin({
               action: {
                 label: "Cobrar con ticket",
                 onClick: () =>
-                  handleConfirmarVentaPOS(montoAnticipoModal, unidadesOverride, {
-                    sinFacturaPorArcaCaido: true,
-                  }),
+                  handleConfirmarVentaPOS(
+                    montoAnticipoModal,
+                    unidadesOverride,
+                    {
+                      sinFacturaPorArcaCaido: true,
+                    },
+                  ),
               },
             });
           } else {
@@ -1846,56 +1852,57 @@ export function CartPanelAdmin({
     <>
       {(!esCajaCentral || vistaTicket === "VENTA_ACTUAL") && (
         <AtajosCarrito
-        paso={effectiveCheckoutStep}
-        hayItems={items.length > 0}
-        ocupado={isPending}
-        irAPagar={handleContinueToPayment}
-        volverAlCarrito={() => setCheckoutStep("CART")}
-        confirmar={() =>
-          usaReservas && isReserva
-            ? handleConfirmarReserva()
-            : handleConfirmarVentaPOS()
-        }
-        // El selector de cliente vive en el paso de pago: F7 desde el ticket
-        // avanza primero y lo abre después, en vez de no hacer nada.
-        abrirSelectorCliente={() => {
-          if (effectiveCheckoutStep === "CART") handleContinueToPayment();
-          setSelectorClienteAbierto(true);
-        }}
-        vaciarTicket={clearCartAndResetStep}
-        abrirVentaLibre={() => useVentaLibreStore.getState().abrir()}
-        // Pasa por los MISMOS handlers que los botones: apagar cuenta
-        // corriente descarta la exención de recargo, y prender una apaga la
-        // otra. Un atajo que seteara los estados por su cuenta se saltearía
-        // esas reglas y quedaría desincronizado del ticket.
-        elegirTipoVenta={(tipo: TipoVenta) => {
-          if (tipo === "CUENTA_CORRIENTE") {
-            handleCuentaCorrienteChange(true);
-            return;
+          paso={effectiveCheckoutStep}
+          hayItems={items.length > 0}
+          ocupado={isPending}
+          irAPagar={handleContinueToPayment}
+          volverAlCarrito={() => setCheckoutStep("CART")}
+          confirmar={() =>
+            usaReservas && isReserva
+              ? handleConfirmarReserva()
+              : handleConfirmarVentaPOS()
           }
-          if (tipo === "RESERVA") {
-            handleReservaChange(true);
-            return;
+          // El selector de cliente vive en el paso de pago: F7 desde el ticket
+          // avanza primero y lo abre después, en vez de no hacer nada.
+          abrirSelectorCliente={() => {
+            if (effectiveCheckoutStep === "CART") handleContinueToPayment();
+            setSelectorClienteAbierto(true);
+          }}
+          vaciarTicket={clearCartAndResetStep}
+          abrirVentaLibre={() => useVentaLibreStore.getState().abrir()}
+          // Pasa por los MISMOS handlers que los botones: apagar cuenta
+          // corriente descarta la exención de recargo, y prender una apaga la
+          // otra. Un atajo que seteara los estados por su cuenta se saltearía
+          // esas reglas y quedaría desincronizado del ticket.
+          elegirTipoVenta={(tipo: TipoVenta) => {
+            if (tipo === "CUENTA_CORRIENTE") {
+              handleCuentaCorrienteChange(true);
+              return;
+            }
+            if (tipo === "RESERVA") {
+              handleReservaChange(true);
+              return;
+            }
+            handleCuentaCorrienteChange(false);
+            handleReservaChange(false);
+          }}
+          puedeReservar={usaReservas}
+          // Solo para lo que se vende por unidad. En un producto por peso el
+          // paso mínimo es un gramo: "+1" ahí sería un kilo de más, y "+1 g" un
+          // atajo que no cambia nada visible. Esa cantidad se tipea.
+          ajustarUltimo={
+            ultimoItem &&
+            (ultimoItem.presentacionId ||
+              !esFraccionable(ultimoItem.unidadMedida))
+              ? (delta: number) =>
+                  updateQuantity(
+                    ultimoItem.productoId,
+                    ultimoItem.variante,
+                    ultimoItem.cantidad + delta,
+                    ultimoItem.presentacionId ?? null,
+                  )
+              : null
           }
-          handleCuentaCorrienteChange(false);
-          handleReservaChange(false);
-        }}
-        puedeReservar={usaReservas}
-        // Solo para lo que se vende por unidad. En un producto por peso el
-        // paso mínimo es un gramo: "+1" ahí sería un kilo de más, y "+1 g" un
-        // atajo que no cambia nada visible. Esa cantidad se tipea.
-        ajustarUltimo={
-          ultimoItem &&
-          (ultimoItem.presentacionId || !esFraccionable(ultimoItem.unidadMedida))
-            ? (delta: number) =>
-                updateQuantity(
-                  ultimoItem.productoId,
-                  ultimoItem.variante,
-                  ultimoItem.cantidad + delta,
-                  ultimoItem.presentacionId ?? null,
-                )
-            : null
-        }
         />
       )}
 
@@ -1997,9 +2004,7 @@ export function CartPanelAdmin({
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={
-                    activa && vistaTicket === "VENTA_ACTUAL"
-                  }
+                  aria-selected={activa && vistaTicket === "VENTA_ACTUAL"}
                   onClick={() => cambiarVentaActiva(venta.id)}
                   className="min-w-0 flex-1 truncate py-2 pl-2 text-left cursor-pointer"
                   title={`Venta ${venta.numero}`}
@@ -2042,124 +2047,128 @@ export function CartPanelAdmin({
         />
       ) : (
         <>
-      {pedidoActivo && (
-        <div className="shrink-0 flex items-center justify-between gap-2 border-b border-primary/20 bg-primary/5 px-4 py-2 text-xs">
-          <span>
-            Cobrando el <span className="font-bold">pedido #{pedidoActivo.numero}</span>
-            {pedidoActivo.vendedor ? ` de ${pedidoActivo.vendedor}` : ""}
-          </span>
-          <button
-            type="button"
-            onClick={soltarPedidoActivo}
-            className="font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
-          >
-            Soltar
-          </button>
-        </div>
-      )}
+          {pedidoActivo && (
+            <div className="shrink-0 flex items-center justify-between gap-2 border-b border-primary/20 bg-primary/5 px-4 py-2 text-xs">
+              <span>
+                Cobrando el{" "}
+                <span className="font-bold">pedido #{pedidoActivo.numero}</span>
+                {pedidoActivo.vendedor ? ` de ${pedidoActivo.vendedor}` : ""}
+              </span>
+              <button
+                type="button"
+                onClick={soltarPedidoActivo}
+                className="font-semibold text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                Soltar
+              </button>
+            </div>
+          )}
 
-      {effectiveCheckoutStep === "CART" ? (
-        <CartStepItems
-          items={items}
-          onUpdateQuantity={updateQuantity}
-          onRemoveItem={removeItem}
-          onCambiarForma={cambiarForma}
-          totalCarrito={totalCarrito}
-          onContinueToPayment={handleContinueToPayment}
-          variantesSerializadas={variantesSerializadas}
-          imeiPorVariante={imeiPorVariante}
-          onElegirUnidad={() => setModalUnidades("SOLO_ELEGIR")}
-          // Mismo criterio que la grilla: en kiosco y almacén el ticket va sin
-          // miniaturas para que entren más renglones en pantalla.
-          mostrarImagenes={!rubro || !posSinImagenes(rubro)}
-          encabezado={
-            <SelectorListaPrecio
-              listas={listas}
-              listaPrecioId={listaActiva?.id ?? null}
-              onCambiar={cambiarListaDesdeElChip}
-              deshabilitado={isPending}
-            />
-          }
-          pieDeLineas={<VentaLibreInline />}
-        />
-      ) : (
-        <CartStepCheckout
-          isPOSMode={isPOSMode}
-          metodosPagoDB={metodosPagoDB}
-          pagos={pagos}
-          onPagosChange={setPagos}
-          // Lo que tienen que cubrir los pagos: el ticket menos el saldo a
-          // favor aplicado, que ya está pagado.
-          totalFinal={totalACubrir}
-          saldoAFavorDisponible={isReserva ? 0 : saldoAFavorDisponible}
-          saldoAFavorAplicado={saldoAFavorAplicado}
-          usarSaldoAFavor={usarSaldoAFavor}
-          onUsarSaldoAFavorChange={(usar) =>
-            setSaldoAFavorClienteId(
-              usar ? (clienteSeleccionado?.id ?? null) : null,
-            )
-          }
-          isCuentaCorriente={isCuentaCorriente}
-          onCuentaCorrienteChange={handleCuentaCorrienteChange}
-          isReserva={usaReservas && isReserva}
-          // Sin `onReservaChange` el paso de pago no dibuja el botón
-          // "Reservado" y la fila queda en dos columnas. Es el mismo mecanismo
-          // que ya usaba el carrito público, donde reservar tampoco existe.
-          onReservaChange={usaReservas ? handleReservaChange : undefined}
-          modoMixto={modoMixto}
-          onModoMixtoChange={setModoMixto}
-          anticipoMinimo={anticipoMinimo}
-          clienteSeleccionado={clienteSeleccionado}
-          onClienteChange={setClienteSeleccionado}
-          selectorClienteAbierto={selectorClienteAbierto}
-          onSelectorClienteAbiertoChange={setSelectorClienteAbierto}
-          promocionesElegibles={promocionesElegibles}
-          promocionActivaId={promocionActivaId}
-          onPromocionChange={setPromocionId}
-        >
-          {items.length > 0 ? (
-            <CartSidebarFooter
-              isPOSMode={isPOSMode}
-              isPending={isPending}
+          {effectiveCheckoutStep === "CART" ? (
+            <CartStepItems
+              items={items}
+              onUpdateQuantity={updateQuantity}
+              onFijarImporte={fijarImporte}
+              onRemoveItem={removeItem}
+              onCambiarForma={cambiarForma}
               totalCarrito={totalCarrito}
-              recargoCuentaCorriente={recargoCuentaCorriente}
-              recargoCuentaCorrientePotencial={recargoCuentaCorrientePotencial}
-              ccSinRecargo={ccSinRecargo}
-              onCcSinRecargoChange={setCcSinRecargo}
-              recargoMetodoMonto={recargoMetodo.totalRecargo}
-              recargoMetodoEtiqueta={recargoMetodoEtiqueta}
-              totalFinal={totalACubrir}
-              saldoAFavorAplicado={saldoAFavorAplicado}
-              totalACobrar={totalACobrar}
-              sumaPagos={sumaPagos}
-              isCuentaCorriente={isCuentaCorriente}
-              isReserva={usaReservas && isReserva}
-              onConfirmarReserva={
-                usaReservas ? handleConfirmarReserva : undefined
+              onContinueToPayment={handleContinueToPayment}
+              variantesSerializadas={variantesSerializadas}
+              imeiPorVariante={imeiPorVariante}
+              onElegirUnidad={() => setModalUnidades("SOLO_ELEGIR")}
+              // Mismo criterio que la grilla: en kiosco y almacén el ticket va sin
+              // miniaturas para que entren más renglones en pantalla.
+              mostrarImagenes={!rubro || !posSinImagenes(rubro)}
+              encabezado={
+                <SelectorListaPrecio
+                  listas={listas}
+                  listaPrecioId={listaActiva?.id ?? null}
+                  onCambiar={cambiarListaDesdeElChip}
+                  deshabilitado={isPending}
+                />
               }
+              pieDeLineas={<VentaLibreInline />}
+            />
+          ) : (
+            <CartStepCheckout
+              isPOSMode={isPOSMode}
+              metodosPagoDB={metodosPagoDB}
+              pagos={pagos}
+              onPagosChange={setPagos}
+              // Lo que tienen que cubrir los pagos: el ticket menos el saldo a
+              // favor aplicado, que ya está pagado.
+              totalFinal={totalACubrir}
+              saldoAFavorDisponible={isReserva ? 0 : saldoAFavorDisponible}
+              saldoAFavorAplicado={saldoAFavorAplicado}
+              usarSaldoAFavor={usarSaldoAFavor}
+              onUsarSaldoAFavorChange={(usar) =>
+                setSaldoAFavorClienteId(
+                  usar ? (clienteSeleccionado?.id ?? null) : null,
+                )
+              }
+              isCuentaCorriente={isCuentaCorriente}
+              onCuentaCorrienteChange={handleCuentaCorrienteChange}
+              isReserva={usaReservas && isReserva}
+              // Sin `onReservaChange` el paso de pago no dibuja el botón
+              // "Reservado" y la fila queda en dos columnas. Es el mismo mecanismo
+              // que ya usaba el carrito público, donde reservar tampoco existe.
+              onReservaChange={usaReservas ? handleReservaChange : undefined}
+              modoMixto={modoMixto}
+              onModoMixtoChange={setModoMixto}
               anticipoMinimo={anticipoMinimo}
               clienteSeleccionado={clienteSeleccionado}
-              descuentoDetalle={descuentoDetalle}
-              whatsappHref={generarLinkWhatsApp({
-                numeroWhatsApp,
-                nombreComercio: branding?.posName,
-                items,
-                total: totalCarrito,
-              })}
-              metodosPagoDB={metodosPagoDB}
-              pagos={pagosSincronizados}
-              modoMixto={modoMixto}
-              onConfirmarVentaPOS={handleConfirmarVentaPOS}
-              onEnviarPedidoWhatsApp={handleEnviarPedidoWhatsApp}
-              onClearCart={clearCartAndResetStep}
-              onEnviarACaja={
-                pedidosACaja && !puedeCobrar ? handleEnviarACaja : undefined
-              }
-              puedeCobrar={puedeCobrar}
-            />
-          ) : null}
-        </CartStepCheckout>
-      )}
+              onClienteChange={setClienteSeleccionado}
+              selectorClienteAbierto={selectorClienteAbierto}
+              onSelectorClienteAbiertoChange={setSelectorClienteAbierto}
+              promocionesElegibles={promocionesElegibles}
+              promocionActivaId={promocionActivaId}
+              onPromocionChange={setPromocionId}
+            >
+              {items.length > 0 ? (
+                <CartSidebarFooter
+                  isPOSMode={isPOSMode}
+                  isPending={isPending}
+                  totalCarrito={totalCarrito}
+                  recargoCuentaCorriente={recargoCuentaCorriente}
+                  recargoCuentaCorrientePotencial={
+                    recargoCuentaCorrientePotencial
+                  }
+                  ccSinRecargo={ccSinRecargo}
+                  onCcSinRecargoChange={setCcSinRecargo}
+                  recargoMetodoMonto={recargoMetodo.totalRecargo}
+                  recargoMetodoEtiqueta={recargoMetodoEtiqueta}
+                  totalFinal={totalACubrir}
+                  saldoAFavorAplicado={saldoAFavorAplicado}
+                  totalACobrar={totalACobrar}
+                  sumaPagos={sumaPagos}
+                  isCuentaCorriente={isCuentaCorriente}
+                  isReserva={usaReservas && isReserva}
+                  onConfirmarReserva={
+                    usaReservas ? handleConfirmarReserva : undefined
+                  }
+                  anticipoMinimo={anticipoMinimo}
+                  clienteSeleccionado={clienteSeleccionado}
+                  descuentoDetalle={descuentoDetalle}
+                  whatsappHref={generarLinkWhatsApp({
+                    numeroWhatsApp,
+                    nombreComercio: branding?.posName,
+                    items,
+                    total: totalCarrito,
+                  })}
+                  metodosPagoDB={metodosPagoDB}
+                  pagos={pagosSincronizados}
+                  modoMixto={modoMixto}
+                  onConfirmarVentaPOS={handleConfirmarVentaPOS}
+                  onEnviarPedidoWhatsApp={handleEnviarPedidoWhatsApp}
+                  onClearCart={clearCartAndResetStep}
+                  onEnviarACaja={
+                    pedidosACaja && !puedeCobrar ? handleEnviarACaja : undefined
+                  }
+                  puedeCobrar={puedeCobrar}
+                />
+              ) : null}
+            </CartStepCheckout>
+          )}
         </>
       )}
     </>
@@ -2209,7 +2218,9 @@ export function CartPanelAdmin({
       {/* Tablet (640-1023px): sin cambios — sheet lateral derecho, se sigue
           abriendo solo por `isOpen` del store (auto-apertura al agregar). */}
       <Sheet
-        open={isMobileLayout && !isPhoneLayout && (isOpen || ventaExitosa !== null)}
+        open={
+          isMobileLayout && !isPhoneLayout && (isOpen || ventaExitosa !== null)
+        }
         onOpenChange={(open) => {
           setIsOpen(open);
           if (!open) setVentaExitosa(null);
@@ -2231,29 +2242,29 @@ export function CartPanelAdmin({
       {isMobileLayout &&
         esCajaCentral &&
         (isPhoneLayout ? !phoneCartOpen : !isOpen) && (
-        <button
-          type="button"
-          onClick={() => {
-            setVistaTicket("POR_COBRAR");
-            if (isPhoneLayout) setPhoneCartOpen(true);
-            else setIsOpen(true);
-          }}
-          className={`fixed right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold shadow-lg transition-colors cursor-pointer ${
-            colaPedidos.pedidos.length > 0
-              ? "bg-primary text-white hover:bg-primary/90"
-              : "bg-sidebar text-muted-foreground hover:text-foreground"
-          } bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6`}
-          aria-label={`Abrir Ticket: ${colaPedidos.pedidos.length} pedidos por cobrar`}
-        >
-          <ClipboardList className="h-5 w-5" />
-          Por cobrar
-          {colaPedidos.pedidos.length > 0 && (
-            <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[11px] font-bold text-primary">
-              {colaPedidos.pedidos.length}
-            </span>
-          )}
-        </button>
-      )}
+          <button
+            type="button"
+            onClick={() => {
+              setVistaTicket("POR_COBRAR");
+              if (isPhoneLayout) setPhoneCartOpen(true);
+              else setIsOpen(true);
+            }}
+            className={`fixed right-4 z-40 inline-flex h-12 items-center gap-2 rounded-full border border-border px-4 text-sm font-semibold shadow-lg transition-colors cursor-pointer ${
+              colaPedidos.pedidos.length > 0
+                ? "bg-primary text-white hover:bg-primary/90"
+                : "bg-sidebar text-muted-foreground hover:text-foreground"
+            } bottom-[calc(5.5rem+env(safe-area-inset-bottom))] sm:bottom-6`}
+            aria-label={`Abrir Ticket: ${colaPedidos.pedidos.length} pedidos por cobrar`}
+          >
+            <ClipboardList className="h-5 w-5" />
+            Por cobrar
+            {colaPedidos.pedidos.length > 0 && (
+              <span className="ml-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1.5 text-[11px] font-bold text-primary">
+                {colaPedidos.pedidos.length}
+              </span>
+            )}
+          </button>
+        )}
 
       {/* Celular (<640px): barra fija inferior con total + contador —
           agregar un producto solo actualiza esta barra, nunca abre el
@@ -2314,7 +2325,6 @@ export function CartPanelAdmin({
           }}
         />
       )}
-
     </>
   );
 }

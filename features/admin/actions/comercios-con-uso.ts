@@ -47,6 +47,9 @@ export interface ComercioConUso {
   /** WhatsApp del comercio (`configuracion_pos.whatsapp`). Es el número del
    * local: no hay teléfono personal del dueño en ningún lado. */
   whatsapp: string | null;
+  /** `negocios.modulo_presupuestos`: si tiene el módulo de presupuestos y
+   * planes en cuotas. Lo prende solo el super admin. */
+  moduloPresupuestos: boolean;
 }
 
 /**
@@ -65,12 +68,24 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const { data, error } = await supabase.rpc("comercios_con_uso");
+  // Los módulos van en una consulta aparte y no dentro de la RPC: sumarle una
+  // columna a `comercios_con_uso` obliga a dropearla y recrearla entera (cambia
+  // el tipo de retorno) por un booleano que ya se lee directo de `negocios`.
+  const [{ data, error }, { data: modulos }] = await Promise.all([
+    supabase.rpc("comercios_con_uso"),
+    supabase.from("negocios").select("id, modulo_presupuestos"),
+  ]);
 
   if (error) {
     console.error("[COMERCIOS CON USO]", error);
     return [];
   }
+
+  const conPresupuestos = new Set(
+    (modulos ?? [])
+      .filter((m) => m.modulo_presupuestos === true)
+      .map((m) => m.id as string),
+  );
 
   const ahora = Date.now();
 
@@ -121,6 +136,7 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
           })()
         : null,
       whatsapp: (fila.whatsapp as string | null) ?? null,
+      moduloPresupuestos: conPresupuestos.has(fila.id as string),
     };
   });
 }

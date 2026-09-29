@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Search } from "lucide-react";
 import { Input } from "@/shared/ui/input";
 import {
@@ -39,6 +40,7 @@ export function CabeceraMovimientos({
   onBusquedaChange,
   placeholder = "Buscar movimiento…",
   filtros,
+  filtroFecha,
 }: Readonly<{
   titulo: string;
   cantidad: number;
@@ -48,6 +50,9 @@ export function CabeceraMovimientos({
   onBusquedaChange: (valor: string) => void;
   placeholder?: string;
   filtros: FiltroCabeceraMovimientos[];
+  /** Selector de fecha, entre la búsqueda y los desplegables. Es un nodo y
+   * no un filtro más porque no es un `Select`. */
+  filtroFecha?: ReactNode;
 }>) {
   return (
     <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -77,6 +82,8 @@ export function CabeceraMovimientos({
             className="h-11 pl-8 text-xs"
           />
         </div>
+
+        {filtroFecha}
 
         {filtros
           .filter((filtro) => filtro.visible !== false)

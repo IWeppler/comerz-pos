@@ -34,6 +34,28 @@ export function diaComercial(fecha: Date | string): string {
   return formatoDia.format(typeof fecha === "string" ? new Date(fecha) : fecha);
 }
 
+/**
+ * El día comercial "2026-09-24" como rango de instantes: [desde, hasta), con
+ * `hasta` EXCLUSIVO (las 00:00 argentinas del día siguiente), que es como lo
+ * toman `p_desde` / `p_hasta` en `movimientos_financieros_negocio`.
+ *
+ * El offset va fijo en −03:00 porque Argentina no tiene horario de verano
+ * desde 2009. Armarlo con la zona del NAVEGADOR dejaría afuera la última
+ * hora de la noche a quien mira desde otro huso.
+ *
+ * Devuelve null si el texto no es un día real (formato roto o 30/02): viaja
+ * desde el navegador y no se le manda a la base algo que no es una fecha.
+ */
+export function rangoDiaComercial(
+  dia: string,
+): { desde: string; hasta: string } | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null;
+  const inicio = new Date(`${dia}T00:00:00-03:00`);
+  if (Number.isNaN(inicio.getTime()) || diaComercial(inicio) !== dia) return null;
+  const fin = new Date(inicio.getTime() + 24 * 60 * 60 * 1000);
+  return { desde: inicio.toISOString(), hasta: fin.toISOString() };
+}
+
 /** true si el turno se abrió un día comercial anterior al de `ahora`. */
 export function esTurnoDeOtroDia(
   fechaApertura: Date | string | null | undefined,

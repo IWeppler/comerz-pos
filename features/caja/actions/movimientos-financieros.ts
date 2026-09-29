@@ -7,6 +7,7 @@ import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { formatearNumeroComprobante } from "@/shared/lib/facturacion";
 import { etiquetaMovimiento } from "../lib/movimiento-financiero";
 import { esMovimientoDeCuentas } from "../lib/movimiento-de-cuentas";
+import { rangoDiaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 
 /**
  * La tabla general de movimientos (`movimientos_financieros_negocio`,
@@ -320,6 +321,8 @@ export type FiltrosActividadCuentas = {
   busqueda?: string | null;
   origenTipo?: Extract<OrigenMovimiento, "INGRESO" | "EGRESO" | "TRANSFERENCIA"> | null;
   cuentaId?: string | null;
+  /** Día comercial "YYYY-MM-DD" (hora de Argentina). null = todos. */
+  dia?: string | null;
   limite?: number;
   offset?: number;
 };
@@ -327,7 +330,9 @@ export type FiltrosActividadCuentas = {
 /**
  * La tabla "Actividad de cuentas" de la pestaña Dinero. Usa la MISMA vista
  * consolidada que la tabla completa, pero ofrece solo los filtros cotidianos
- * de este contexto: texto y clase de operación.
+ * de este contexto: texto, clase de operación, cuenta y un DÍA ("¿qué
+ * transferencia se hizo el jueves?"). Un día y no un rango: la pregunta que
+ * se hace desde acá es por un día puntual, y un rango es la tabla completa.
  *
  * `esMovimientoDeCuentas` sigue como espejo defensivo para el intervalo de
  * despliegue en que el código puede salir antes que la RPC con `p_vista`.
@@ -336,11 +341,18 @@ export async function getActividadDeCuentasAction(
   filtros: FiltrosActividadCuentas = {},
 ): Promise<{ data: PaginaMovimientos | null; error: string | null }> {
   const limite = filtros.limite ?? 10;
+  let rango: { desde: string; hasta: string } | null = null;
+  if (filtros.dia) {
+    rango = rangoDiaComercial(filtros.dia);
+    if (!rango) return { data: null, error: "La fecha no es válida." };
+  }
   const { data, error } = await getMovimientosFinancierosAction({
     vista: "CUENTAS",
     busqueda: filtros.busqueda,
     origenTipos: filtros.origenTipo ? [filtros.origenTipo] : null,
     cuentaId: filtros.cuentaId,
+    desde: rango?.desde ?? null,
+    hasta: rango?.hasta ?? null,
     limite,
     offset: filtros.offset ?? 0,
   });

@@ -13,6 +13,13 @@ interface CartStepItemsProps {
     cantidad: number,
     presentacionId?: string | null,
   ) => void;
+  /** Venta por importe exacto en productos por peso (`fijarImporte`). */
+  onFijarImporte?: (
+    productoId: string,
+    variante: string,
+    importe: number,
+    presentacionId?: string | null,
+  ) => void;
   onRemoveItem: (
     productoId: string,
     variante: string,
@@ -66,6 +73,7 @@ interface CartStepItemsProps {
 export function CartStepItems({
   items,
   onUpdateQuantity,
+  onFijarImporte,
   onRemoveItem,
   onCambiarForma,
   totalCarrito,
@@ -136,6 +144,17 @@ export function CartStepItems({
                     cantidad,
                     item.presentacionId ?? null,
                   )
+                }
+                onFijarImporte={
+                  onFijarImporte
+                    ? (importe) =>
+                        onFijarImporte(
+                          item.productoId,
+                          item.variante,
+                          importe,
+                          item.presentacionId ?? null,
+                        )
+                    : undefined
                 }
                 onRemove={() =>
                   onRemoveItem(

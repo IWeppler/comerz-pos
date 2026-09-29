@@ -283,7 +283,7 @@ export function CajaDetailSheet({
         className="ticket-sheet-print-scope w-full sm:max-w-4xl p-0 flex flex-col h-dvh overflow-hidden bg-card"
       >
         <div className="ticket-screen-only flex min-h-0 flex-1 flex-col">
-          <SheetHeader className="p-6 border-b border-border z-10 shrink-0">
+          <SheetHeader className="p-2 border-b border-border z-10 shrink-0">
             <SheetTitle className="flex items-center gap-3 text-xl font-semi text-foreground">
               <div className="p-2 bg-muted rounded-full">
                 <FileText className="w-5 h-5 text-muted-foreground" />
