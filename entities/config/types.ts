@@ -140,4 +140,11 @@ export interface ConfiguracionPOS {
   arca_recargos_iva?: string;
   arca_ri_a_monotributo?: "FACTURA_A" | "FACTURA_B";
   arca_tope_consumidor_final?: number | null;
+
+  // Presupuestos y planes (docs/presupuestos.md). Se COPIAN a cada
+  // cotización al emitirla: cambiarlos no toca lo ya cotizado.
+  /** `[{cuotas: 3, pct: 10}]`, recargo sobre lo financiado. */
+  plan_tasas_financiacion?: unknown;
+  plan_frecuencia_default?: "SEMANAL" | "QUINCENAL" | "MENSUAL";
+  presupuesto_vigencia_dias?: number;
 }

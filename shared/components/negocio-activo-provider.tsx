@@ -6,6 +6,8 @@ export interface NegocioActivo {
   id: string;
   slug: string;
   nombre: string;
+  /** Llave del módulo de presupuestos (solo la prende el super admin). */
+  moduloPresupuestos: boolean;
 }
 
 const NegocioActivoContext = createContext<NegocioActivo | null>(null);
@@ -34,4 +36,11 @@ export function useNegocioActivo(): NegocioActivo | null {
 /** Slug del negocio activo, o null si todavía no se resolvió. */
 export function useSlugNegocioActivo(): string | null {
   return useContext(NegocioActivoContext)?.slug ?? null;
+}
+
+/** ¿Se muestra el módulo de presupuestos? Fail-closed: sin negocio, no. Solo
+ * esconde links y botones: la base lo exige por su cuenta
+ * (`modulo_presupuestos_habilitado()` en la RPC). */
+export function useModuloPresupuestos(): boolean {
+  return useContext(NegocioActivoContext)?.moduloPresupuestos === true;
 }

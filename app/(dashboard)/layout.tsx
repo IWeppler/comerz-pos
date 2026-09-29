@@ -120,14 +120,26 @@ export default async function DashboardLayout({
   // negocio, los links al catálogo) quedaba apagado justo cuando se está
   // revisando el negocio de un cliente. Se resuelve desde `negocios` por el
   // id de la cookie; `current_negocio_id()` ya lo honra por su cuenta.
-  let negocioImpersonado: { id: string; slug: string; nombre: string } | null = null;
+  let negocioImpersonado: {
+    id: string;
+    slug: string;
+    nombre: string;
+    moduloPresupuestos: boolean;
+  } | null = null;
   if (impersonadoId && !membresiaActiva) {
     const { data } = await supabase
       .from("negocios")
-      .select("id, slug, nombre")
+      .select("id, slug, nombre, modulo_presupuestos")
       .eq("id", impersonadoId)
       .maybeSingle();
-    negocioImpersonado = data ?? null;
+    negocioImpersonado = data
+      ? {
+          id: data.id,
+          slug: data.slug,
+          nombre: data.nombre,
+          moduloPresupuestos: data.modulo_presupuestos === true,
+        }
+      : null;
   }
 
   const negocioActivo = membresiaActiva
@@ -135,6 +147,7 @@ export default async function DashboardLayout({
         id: membresiaActiva.negocio_id,
         slug: membresiaActiva.slug,
         nombre: membresiaActiva.nombre,
+        moduloPresupuestos: membresiaActiva.modulo_presupuestos,
       }
     : negocioImpersonado;
 

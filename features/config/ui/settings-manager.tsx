@@ -23,6 +23,7 @@ import {
   Tags,
   UserCog,
   Calculator,
+  FileText,
 } from "lucide-react";
 import {
   Select,
@@ -45,6 +46,8 @@ import { EmpleadosPanel } from "./empleados-panel";
 import type { InvitacionPendiente } from "./invitaciones-panel";
 import type { UsoDelPlan } from "@/features/planes/actions/uso-del-plan";
 import { TicketPanel } from "@/features/ticket/TicketPanel";
+import { ConfigPresupuestosPanel } from "@/features/presupuestos/ui/config-presupuestos-panel";
+import { useModuloPresupuestos } from "@/shared/components/negocio-activo-provider";
 
 const SECTIONS = [
   {
@@ -94,6 +97,13 @@ const SECTIONS = [
     label: "Métodos de Pago",
     icon: CreditCard,
     description: "Efectivo, transferencias, recargos",
+  },
+  // Solo con el módulo prendido (ver `visibleSections`).
+  {
+    id: "presupuestos",
+    label: "Presupuestos",
+    icon: FileText,
+    description: "Cuotas, recargos y vigencia",
   },
   {
     id: "ticketConfig",
@@ -182,11 +192,17 @@ export function SettingsManager({
   // Mismo criterio para Listas de Precios que para Empleados: la RLS exige
   // ADMIN para escribirlas, así que mostrarle la sección a un ENCARGADO sería
   // ofrecerle botones que no funcionan. Además la página ni las consulta.
-  const soloAdmin = new Set(["empleados", "listasPrecios"]);
+  const soloAdmin = new Set(["empleados", "listasPrecios", "presupuestos"]);
+  const moduloPresupuestos = useModuloPresupuestos();
   const visibleSections = useMemo(
-    () => SECTIONS.filter((s) => !soloAdmin.has(s.id) || isAdmin),
+    () =>
+      SECTIONS.filter(
+        (s) =>
+          (!soloAdmin.has(s.id) || isAdmin) &&
+          (s.id !== "presupuestos" || moduloPresupuestos),
+      ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isAdmin],
+    [isAdmin, moduloPresupuestos],
   );
 
   // Qué secciones necesitan un plan que este comercio no tiene. El candado va
@@ -212,6 +228,10 @@ export function SettingsManager({
         return <PromotionsPanel promociones={promociones} />;
       case "pagos":
         return <PaymentsPanel pagos={pagos} />;
+      case "presupuestos":
+        return isAdmin && moduloPresupuestos ? (
+          <ConfigPresupuestosPanel config={config} />
+        ) : null;
       case "ticketConfig":
         // El ticket se configura sobre la misma configuracion_pos del
         // comercio: no hay una fuente de datos aparte que pasarle.

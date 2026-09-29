@@ -1,6 +1,6 @@
 -- Módulo de presupuestos — etapa 2: cotizaciones.
 --
--- Spec: AGENTS.md ("Módulo de presupuestos"). Una cotización es un carrito con
+-- Spec: docs/presupuestos.md. Una cotización es un carrito con
 -- precio CONGELADO y fecha de vencimiento, que se le manda al cliente. No toca
 -- stock, ni caja, ni factura: misma naturaleza que `pedidos`. Lo que la
 -- diferencia de un pedido es que el precio es una PROMESA, así que:
@@ -16,11 +16,19 @@
 --     estado. Si cambió algo, es una cotización nueva — igual que una factura.
 --     Los renglones no tienen policy de UPDATE ni de DELETE.
 --
+--   * La ÚNICA puerta para crear es la RPC: ninguna de las tres tablas tiene
+--     policy ni privilegio de INSERT para `authenticated`. Con una policy de
+--     INSERT, supabase-js desde la consola crea una cotización con cualquier
+--     total, cualquier vencimiento y cualquier número (el ensayo en seco lo
+--     hizo: total $1, vigencia 10 años, número 999 que después choca con la
+--     numeración). Por eso la RPC es SECURITY DEFINER y filtra `negocio_id` a
+--     mano en cada consulta.
+--
 --   * Las condiciones de financiación se CONGELAN en la cotización
 --     (`tasas_financiacion`, `frecuencia`): mientras esté vigente, lo que se le
 --     prometió al cliente no cambia porque el comercio toque la configuración.
 --
--- Lo que NO hace todavía, y está en AGENTS.md:
+-- Lo que NO hace todavía, y está en docs/presupuestos.md:
 --   * Listas de precios y promociones: la cotización sale a precio de lista
 --     base. Con lista, el cliente vería un precio más alto que el que pagaría;
 --     nunca uno más bajo.
@@ -57,11 +65,11 @@ create policy aislamiento_negocio on public.presupuesto_numeracion
   using (negocio_id = (select security.current_negocio_id()))
   with check (negocio_id = (select security.current_negocio_id()));
 
+-- Sin policy permisiva: el contador lo escribe solo la RPC (DEFINER). Con una
+-- policy `for all`, cualquiera que cotiza lo podía pisar desde la consola y
+-- trabar la numeración del negocio.
 drop policy if exists presupuesto_numeracion_quien_cotiza on public.presupuesto_numeracion;
-create policy presupuesto_numeracion_quien_cotiza on public.presupuesto_numeracion
-  for all to authenticated
-  using ((select public.tiene_permiso('presupuestos.crear')))
-  with check ((select public.tiene_permiso('presupuestos.crear')));
+revoke all on table public.presupuesto_numeracion from anon, authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- 2. COTIZACIONES
@@ -106,7 +114,7 @@ create table if not exists public.presupuestos (
 );
 
 comment on table public.presupuestos is
-  'Cotizaciones: carrito con precio congelado y vencimiento. No toca stock ni caja. Inmutable salvo el estado (trigger presupuestos_solo_estado_editable). Ver AGENTS.md ("Módulo de presupuestos").';
+  'Cotizaciones: carrito con precio congelado y vencimiento. No toca stock ni caja. Inmutable salvo el estado (trigger presupuestos_solo_estado_editable). Ver docs/presupuestos.md.';
 comment on column public.presupuestos.estado is
   'VIGENTE | ACEPTADO | RECHAZADO | ANULADO. VENCIDO no se guarda: es VIGENTE con vigencia_hasta pasada (estadoVisiblePresupuesto en TS). RECHAZADO = el cliente dijo que no; ANULADO = error de carga.';
 comment on column public.presupuestos.tasas_financiacion is
@@ -132,16 +140,10 @@ create policy presupuestos_select on public.presupuestos
   for select to authenticated
   using ((select public.tiene_permiso('presupuestos.crear')));
 
--- El módulo apagado corta también acá, no solo en la RPC: con supabase-js en
--- el navegador, un INSERT directo es una llamada de consola.
+-- Sin INSERT: se crea solo por `crear_presupuesto` (ver el encabezado).
 drop policy if exists presupuestos_insert on public.presupuestos;
-create policy presupuestos_insert on public.presupuestos
-  for insert to authenticated
-  with check (
-    vendedor_id = auth.uid()
-    and (select public.tiene_permiso('presupuestos.crear'))
-    and (select public.modulo_presupuestos_habilitado())
-  );
+revoke all on table public.presupuestos from anon;
+revoke insert, delete, truncate on table public.presupuestos from authenticated;
 
 -- Cerrar (rechazar / anular) lo puede quien la hizo o un ADMIN. QUÉ se puede
 -- cambiar lo decide la trigger de abajo, no esta policy.
@@ -205,6 +207,10 @@ begin
     end if;
     new.resuelto_en := now();
     new.resuelto_por := auth.uid();
+  else
+    -- Quién cerró y cuándo es rastro: no se reescribe sin cambiar el estado.
+    new.resuelto_en := old.resuelto_en;
+    new.resuelto_por := old.resuelto_por;
   end if;
 
   new.actualizado_en := now();
@@ -271,26 +277,14 @@ create policy presupuestos_items_select on public.presupuestos_items
   for select to authenticated
   using (exists (select 1 from public.presupuestos p where p.id = presupuesto_id));
 
--- Escribir: SOLO en la misma transacción que creó el padre. `creado_en` es
--- `default now()`, y `now()` es la hora de inicio de la transacción, así que
--- `p.creado_en = now()` solo es cierto adentro de la RPC que la está creando.
--- Con "padre visible" a secas (la forma de las hijas de `ventas`), cualquiera
--- que ve una cotización le podría agregar renglones después desde la consola
--- y cambiarle el contenido a un papel que ya se mandó.
+-- Sin INSERT, UPDATE ni DELETE: los renglones los escribe solo la RPC, en la
+-- misma transacción que el padre, y después son inmutables. Con "padre
+-- visible" a secas (la forma de las hijas de `ventas`), cualquiera que ve una
+-- cotización le podría agregar renglones desde la consola y cambiarle el
+-- contenido a un papel que ya se mandó.
 drop policy if exists presupuestos_items_insert on public.presupuestos_items;
-create policy presupuestos_items_insert on public.presupuestos_items
-  for insert to authenticated
-  with check (
-    exists (
-      select 1 from public.presupuestos p
-       where p.id = presupuesto_id
-         and p.vendedor_id = auth.uid()
-         and p.creado_en = now()
-    )
-  );
-
--- Sin UPDATE ni DELETE: inmutables. (El DELETE en cascada del padre no pasa
--- nunca, porque el padre tampoco tiene policy de DELETE.)
+revoke all on table public.presupuestos_items from anon;
+revoke insert, update, delete, truncate on table public.presupuestos_items from authenticated;
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- 4. LA RPC
@@ -307,9 +301,11 @@ create or replace function public.crear_presupuesto(
 )
 returns jsonb
 language plpgsql
--- INVOKER a propósito: el aislamiento y el permiso los sigue decidiendo la
--- RLS de quien cotiza (mismo criterio que `registrar_venta`).
-security invoker
+-- DEFINER porque las tablas no tienen INSERT para `authenticated` (ver el
+-- encabezado). Consecuencia: la RLS no protege nada acá adentro. Cada
+-- consulta filtra `negocio_id = v_negocio` a mano, y el módulo y el permiso
+-- se chequean explícitamente antes de tocar nada.
+security definer
 set search_path = public, security, pg_temp
 as $$
 declare
@@ -548,14 +544,41 @@ begin
     raise exception 'GUARD: policy con same_negocio(columna)';
   end if;
 
-  -- Inmutables: ni DELETE en el padre, ni UPDATE/DELETE en los renglones.
+  -- La única puerta es la RPC: ninguna policy permisiva que escriba, salvo el
+  -- UPDATE de estado del padre (que la trigger acota).
   if exists (
     select 1 from pg_policies
      where schemaname = 'public'
-       and ((tablename = 'presupuestos' and cmd in ('DELETE', 'ALL') and permissive = 'PERMISSIVE')
-            or (tablename = 'presupuestos_items' and cmd in ('UPDATE', 'DELETE', 'ALL') and permissive = 'PERMISSIVE'))
+       and permissive = 'PERMISSIVE'
+       and ((tablename = 'presupuestos' and cmd not in ('SELECT', 'UPDATE'))
+            or (tablename = 'presupuestos_items' and cmd <> 'SELECT')
+            or tablename = 'presupuesto_numeracion')
   ) then
-    raise exception 'GUARD: una cotización o sus renglones quedaron editables';
+    raise exception 'GUARD: una tabla de presupuestos se puede escribir sin la RPC';
+  end if;
+
+  -- Y tampoco por privilegio (las policies no alcanzan si alguien agrega una).
+  if has_table_privilege('authenticated', 'public.presupuestos', 'insert')
+     or has_table_privilege('authenticated', 'public.presupuestos', 'delete')
+     or has_table_privilege('authenticated', 'public.presupuestos_items', 'insert')
+     or has_table_privilege('authenticated', 'public.presupuestos_items', 'update')
+     or has_table_privilege('authenticated', 'public.presupuestos_items', 'delete')
+     or has_table_privilege('authenticated', 'public.presupuesto_numeracion', 'select')
+     or has_table_privilege('authenticated', 'public.presupuesto_numeracion', 'update')
+     or has_table_privilege('anon', 'public.presupuestos', 'select')
+     or has_table_privilege('anon', 'public.presupuestos_items', 'select') then
+    raise exception 'GUARD: quedó un privilegio de escritura (o de anon) en presupuestos';
+  end if;
+
+  -- DEFINER con search_path fijo, y filtrando por negocio a mano.
+  if not (select prosecdef from pg_proc
+           where oid = 'public.crear_presupuesto(uuid, jsonb, text, uuid, text, integer, text)'::regprocedure)
+     or pg_get_functiondef('public.crear_presupuesto(uuid, jsonb, text, uuid, text, integer, text)'::regprocedure)
+        not like '%SET search_path%'
+     or (select count(*) from regexp_matches(
+           pg_get_functiondef('public.crear_presupuesto(uuid, jsonb, text, uuid, text, integer, text)'::regprocedure),
+           'negocio_id = v_negocio', 'g')) < 5 then
+    raise exception 'GUARD: crear_presupuesto no es DEFINER o no filtra por negocio en cada consulta';
   end if;
 
   -- anon no ejecuta la RPC (Supabase le da EXECUTE por default privileges).

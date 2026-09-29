@@ -25,6 +25,9 @@ export interface MembresiaNegocio {
   nombre: string;
   slug: string;
   estado: string;
+  /** `negocios.modulo_presupuestos`: viaja en esta consulta, que ya corre en
+   * cada navegación, para que el link y el botón del POS no cuesten otra. */
+  modulo_presupuestos: boolean;
 }
 
 /**
@@ -42,7 +45,9 @@ export async function listarMisNegociosAction(): Promise<MembresiaNegocio[]> {
 
   const { data, error } = await supabase
     .from("usuarios_negocios")
-    .select("negocio_id, rol, es_owner, negocios(nombre, slug, estado)")
+    .select(
+      "negocio_id, rol, es_owner, negocios(nombre, slug, estado, modulo_presupuestos)",
+    )
     .eq("usuario_id", user.id);
 
   if (error) {
@@ -63,6 +68,8 @@ export async function listarMisNegociosAction(): Promise<MembresiaNegocio[]> {
         nombre: negocio?.nombre ?? "Negocio",
         slug: negocio?.slug ?? "",
         estado: negocio?.estado ?? "activo",
+        // Fail-closed: sin dato, el módulo no aparece.
+        modulo_presupuestos: negocio?.modulo_presupuestos === true,
       };
     })
     // Incluye los de prueba: si no, el dueño de un comercio recién dado de

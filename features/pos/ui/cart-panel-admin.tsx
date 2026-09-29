@@ -75,7 +75,11 @@ import {
   calcularPagosConRecargo,
   etiquetaRecargo,
 } from "@/shared/lib/recargo-metodo";
-import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
+import {
+  useModuloPresupuestos,
+  useNegocioActivo,
+} from "@/shared/components/negocio-activo-provider";
+import { CotizarDialog } from "@/features/presupuestos/ui/cotizar-dialog";
 import { saldoAFavorDe } from "@/features/clients/lib/saldo-a-favor";
 import {
   baseRecargoCuentaCorriente,
@@ -158,6 +162,7 @@ export function CartPanelAdmin({
   // una navegación blanda: sin esta dependencia los datos del comercio
   // anterior sobreviven al cambio. Ver el comentario del efecto de abajo.
   const negocioId = useNegocioActivo()?.id ?? null;
+  const moduloPresupuestos = useModuloPresupuestos();
   const refrescarPendientes = useVentasPendientesStore((s) => s.refrescar);
 
   useEffect(() => {
@@ -2165,6 +2170,16 @@ export function CartPanelAdmin({
                     pedidosACaja && !puedeCobrar ? handleEnviarACaja : undefined
                   }
                   puedeCobrar={puedeCobrar}
+                  accionSecundaria={
+                    moduloPresupuestos ? (
+                      <CotizarDialog
+                        items={items}
+                        cliente={clienteSeleccionado}
+                        totalCarrito={totalCarrito}
+                        disabled={isPending}
+                      />
+                    ) : undefined
+                  }
                 />
               ) : null}
             </CartStepCheckout>

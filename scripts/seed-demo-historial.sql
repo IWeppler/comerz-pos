@@ -19,7 +19,7 @@
 --   monto_pendiente   = total_ticket − Σ bases   (la deuda NO incluye el
 --                       recargo del método: ese es plata del cobro)
 --
--- Y las dos trampas de unidades que están documentadas en AGENTS.md:
+-- Y las dos trampas de unidades que están documentadas en docs/ventas.md:
 --   * `ventas.cantidad` son UNIDADES (Σ cantidades), no renglones;
 --   * `ventas.precio_costo` es el costo TOTAL, mientras que las columnas de
 --     `ventas_items` son UNITARIAS.

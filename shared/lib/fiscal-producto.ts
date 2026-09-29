@@ -173,7 +173,7 @@ export interface DefaultsFiscales {
  *   por unidad. Nacer en KG haría que cada producto envasado se cobre con el
  *   teclado de peso hasta que alguien lo corrija; nacer en UNIDAD deja el
  *   fiambre y lo suelto como la excepción que se elige en el alta
- *   (ver AGENTS.md, "Venta por peso").
+ *   (ver docs/stock-y-catalogo.md, "Venta por peso").
  *
  * - **La alícuota se queda en 21% por el mismo criterio fail-closed de
  *   `normalizarTratamientoIva`**: cobrar IVA de más se corrige, facturar sin el

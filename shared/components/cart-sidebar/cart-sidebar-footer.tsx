@@ -60,6 +60,9 @@ interface CartSidebarFooterProps {
    */
   onEnviarACaja?: () => void;
   puedeCobrar?: boolean;
+  /** Botón secundario debajo del principal, solo en el POS ("Cotizar", con
+   * el módulo de presupuestos prendido). El footer no sabe qué hace. */
+  accionSecundaria?: React.ReactNode;
 }
 
 const formatCurrency = (amount: number) =>
@@ -94,6 +97,7 @@ export function CartSidebarFooter({
   onClearCart,
   onEnviarACaja,
   puedeCobrar = true,
+  accionSecundaria,
 }: Readonly<CartSidebarFooterProps>) {
   const [modalAbierto, setModalAbierto] = useState(false);
 
@@ -275,6 +279,8 @@ export function CartSidebarFooter({
             Enviar Pedido
           </Link>
         )}
+
+        {isPOSMode && accionSecundaria}
       </div>
 
       {modalAbierto && (

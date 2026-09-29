@@ -20,6 +20,7 @@ import {
   UserIcon,
   Lock,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import { ConfiguracionPOS } from "@/entities/config/types";
@@ -37,9 +38,20 @@ import {
 } from "@/shared/ui/tooltip";
 import { InstallAppWidget } from "./install-widget";
 import { useContextoPlan } from "@/features/planes/ui/plan-provider";
+import { useModuloPresupuestos } from "./negocio-activo-provider";
+
+type NavItem = {
+  name: string;
+  href: string;
+  icon: typeof Store;
+  adminOnly: boolean;
+  feature?: string;
+  /** Solo con `negocios.modulo_presupuestos` prendido. */
+  moduloPresupuestos?: boolean;
+};
 
 // 1. Grupos con estructura compacta
-const NAV_GROUPS = [
+const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Operativa",
     items: [
@@ -54,6 +66,17 @@ const NAV_GROUPS = [
       { name: "Inventario", href: "/stock", icon: Package, adminOnly: false },
       { name: "Ventas", href: "/ventas", icon: ShoppingCart, adminOnly: false },
       { name: "Clientes", href: "/clientes", icon: Users, adminOnly: false },
+      // Solo con `negocios.modulo_presupuestos` prendido: al revés que
+      // Reportes, esto NO se muestra con candado. No es un módulo de plan que
+      // se vende en la pantalla: es crédito propio del comercio, y en un
+      // negocio que no lo usa no tiene que aparecer (docs/presupuestos.md).
+      {
+        name: "Presupuestos",
+        href: "/presupuestos",
+        icon: FileText,
+        adminOnly: false,
+        moduloPresupuestos: true,
+      },
     ],
   },
   {
@@ -113,6 +136,7 @@ export function Sidebar({
 }: Readonly<SidebarProps>) {
   const pathname = usePathname();
   const contextoPlan = useContextoPlan();
+  const moduloPresupuestos = useModuloPresupuestos();
   const { isCollapsed, isOpenMobile, setIsOpenMobile } = useSidebarStore();
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const fetchCajaStatusStore = useCajaStatusStore(
@@ -126,10 +150,11 @@ export function Sidebar({
         if (item.adminOnly && userRole !== "ADMIN") return false;
         // Caja solo para quien la opera. El corte real está en la página.
         if (item.href === "/caja" && !puedeOperarCaja && userRole !== "ADMIN") return false;
+        if (item.moduloPresupuestos && !moduloPresupuestos) return false;
         return true;
       }),
     })).filter((group) => group.items.length > 0);
-  }, [userRole, puedeOperarCaja]);
+  }, [userRole, puedeOperarCaja, moduloPresupuestos]);
 
   // En móvil el menú tapa la pantalla: al entrar a un módulo tiene que cerrarse
   // solo. Se hace por cambio de ruta y no con un onClick por link para que

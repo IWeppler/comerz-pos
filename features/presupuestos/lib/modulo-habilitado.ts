@@ -5,7 +5,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
  *
  * Envoltorio de `modulo_presupuestos_habilitado()`. La llave es
  * `negocios.modulo_presupuestos`, que solo escribe el super admin: el módulo
- * NO va en todos los negocios (ver AGENTS.md, "Módulo de presupuestos").
+ * NO va en todos los negocios (ver docs/presupuestos.md).
  *
  * Fail-CLOSED, al revés que `tieneFeatureServer`: una feature protege
  * facturación propia y ante la duda se deja pasar, pero esto es un módulo que

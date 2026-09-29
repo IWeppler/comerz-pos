@@ -96,7 +96,8 @@ el stock se mueve con UPDATE atómico condicional, y todos los comercios compart
 base, aislados por `negocio_id` con Row Level Security.
 
 Las decisiones de arquitectura, los invariantes y los incidentes que las motivaron
-están en [`AGENTS.md`](AGENTS.md), que es la única fuente de verdad del proyecto.
+empiezan en [`AGENTS.md`](AGENTS.md): las reglas generales y un índice que dice qué
+documento de [`docs/`](docs/) leer antes de tocar cada tema.
 
 ---
 

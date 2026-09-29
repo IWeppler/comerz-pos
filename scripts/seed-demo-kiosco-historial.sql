@@ -10,7 +10,7 @@
 -- historial no tiene `cliente_id`.
 --
 -- Ese detalle no es decorativo: es exactamente el sesgo que documenta
--- AGENTS.md ("al cliente solo se lo identifica cuando se le fía"), y una demo
+-- docs/insights.md ("al cliente solo se lo identifica cuando se le fía"), y una demo
 -- que muestre 100% de ventas identificadas enseñaría un dato que el POS no
 -- produce en la realidad.
 --
