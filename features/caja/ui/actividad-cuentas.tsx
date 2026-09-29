@@ -70,9 +70,11 @@ export function ActividadCuentas({
   const [busquedaAplicada, setBusquedaAplicada] = useState("");
   const [tipo, setTipo] = useState<FiltroTipo>("TODOS");
   const [cuentaId, setCuentaId] = useState(TODAS_LAS_CUENTAS);
-  // Día comercial "YYYY-MM-DD", o "" para todos. Uno solo y no un rango: la
-  // pregunta de esta pantalla es "¿qué pasó el jueves?".
-  const [dia, setDia] = useState("");
+  // Días comerciales "YYYY-MM-DD", o "" para sin límite. Un solo día es el
+  // mismo en los dos.
+  const [desdeDia, setDesdeDia] = useState("");
+  const [hastaDia, setHastaDia] = useState("");
+  const hoy = diaComercial(new Date());
   const [cuentas, setCuentas] = useState<CuentaFinanciera[]>([]);
   const [pagina, setPagina] = useState(0);
   const [cargando, setCargando] = useState(false);
@@ -104,7 +106,8 @@ export function ActividadCuentas({
       busqueda: busquedaAplicada || null,
       origenTipo: tipo === "TODOS" ? null : tipo,
       cuentaId: cuentaId === TODAS_LAS_CUENTAS ? null : cuentaId,
-      dia: dia || null,
+      desdeDia: desdeDia || null,
+      hastaDia: hastaDia || null,
       limite: TAMANO_PAGINA,
       offset: pagina * TAMANO_PAGINA,
     }).then((respuesta) => {
@@ -125,7 +128,7 @@ export function ActividadCuentas({
     return () => {
       vigente = false;
     };
-  }, [busquedaAplicada, cuentaId, dia, pagina, tipo]);
+  }, [busquedaAplicada, cuentaId, desdeDia, hastaDia, pagina, tipo]);
 
   const paginas = Math.max(1, Math.ceil(total / TAMANO_PAGINA));
   const desde = total === 0 ? 0 : pagina * TAMANO_PAGINA + 1;
@@ -141,29 +144,44 @@ export function ActividadCuentas({
         onBusquedaChange={setBusqueda}
         filtroFecha={
           <div className="col-span-2 flex items-center gap-1 sm:col-span-1">
+            {/* Elegir solo "Desde" deja "Hasta" en el mismo día: la consulta
+                más común es un día puntual, y así sale con un solo clic. */}
             <DatePickerAR
-              value={dia}
-              max={diaComercial(new Date())}
+              value={desdeDia}
+              max={hastaDia || hoy}
               onChange={(valor) => {
                 setPagina(0);
-                setDia(valor);
+                setDesdeDia(valor);
+                if (!hastaDia) setHastaDia(valor);
               }}
-              placeholder="Día"
+              placeholder="Desde"
+              className="w-full sm:w-36"
+            />
+            <DatePickerAR
+              value={hastaDia}
+              min={desdeDia || undefined}
+              max={hoy}
+              onChange={(valor) => {
+                setPagina(0);
+                setHastaDia(valor);
+              }}
+              placeholder="Hasta"
               className="w-full sm:w-36"
             />
             {/* El picker no se puede vaciar tipeando (descarta lo que no es
-                una fecha completa), así que volver a "todos los días" tiene
+                una fecha completa), así que volver a "todas las fechas" tiene
                 su propio botón. */}
-            {dia && (
+            {(desdeDia || hastaDia) && (
               <Button
                 type="button"
                 variant="ghost"
                 size="icon"
-                aria-label="Ver todos los días"
+                aria-label="Ver todas las fechas"
                 className="h-9 w-9 shrink-0"
                 onClick={() => {
                   setPagina(0);
-                  setDia("");
+                  setDesdeDia("");
+                  setHastaDia("");
                 }}
               >
                 <X className="h-4 w-4" />

@@ -23,12 +23,18 @@ import {
 } from "@/shared/ui/select";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { numeroTicketVenta } from "@/features/sales/lib/numero-ticket";
+import { rangoDiaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import { anularEgresoAction } from "../actions/caja-action";
 import { anularIngresoAction } from "../actions/ingresos-financieros";
 import {
   etiquetaMovimiento,
   mueveElResultado,
 } from "../lib/movimiento-financiero";
+import {
+  hayQueDesglosar,
+  sumasDe,
+  type SumasMovimientos,
+} from "../lib/sumas-movimientos";
 import {
   exportarMovimientosAction,
   getMetodosPagoParaFiltroAction,
@@ -90,19 +96,16 @@ const FILTROS_VACIOS: FiltrosUI = {
   usuarioId: "",
 };
 
-/** yyyy-mm-dd → inicio del día en ISO, interpretado en hora local (Argentina
- * no tiene DST, así que la hora del navegador de un usuario real coincide con
- * la de la base). */
-function inicioDeDiaISO(fecha: string): string {
-  return new Date(`${fecha}T00:00:00`).toISOString();
+/** yyyy-mm-dd → 00:00 de ese día en hora de Argentina, no del navegador:
+ * mismo corte que "Actividad de cuentas" en Dinero. */
+function inicioDeDiaISO(fecha: string): string | null {
+  return rangoDiaComercial(fecha)?.desde ?? null;
 }
 
-/** yyyy-mm-dd → el día SIGUIENTE a las 00:00, porque `hasta` es EXCLUSIVO en
- * la RPC: sin este +1 el propio día elegido quedaría afuera. */
-function finDeDiaISO(fecha: string): string {
-  const d = new Date(`${fecha}T00:00:00`);
-  d.setDate(d.getDate() + 1);
-  return d.toISOString();
+/** yyyy-mm-dd → 00:00 del día SIGUIENTE, porque `hasta` es EXCLUSIVO en la
+ * RPC: sin eso el propio día elegido quedaría afuera. */
+function finDeDiaISO(fecha: string): string | null {
+  return rangoDiaComercial(fecha)?.hasta ?? null;
 }
 
 /**
@@ -142,6 +145,8 @@ export function MovimientosFinancierosTable({
 
   const [filas, setFilas] = useState<MovimientoFinancieroFila[]>([]);
   const [total, setTotal] = useState(0);
+  // Sumas de TODO lo filtrado (no de la página): las devuelve la base.
+  const [sumas, setSumas] = useState<SumasMovimientos | null>(null);
   const [cargando, setCargando] = useState(true);
   const [cargandoMas, setCargandoMas] = useState(false);
   const [exportando, setExportando] = useState(false);
@@ -170,11 +175,11 @@ export function MovimientosFinancierosTable({
 
   const filtrosApi: FiltrosMovimientos = useMemo(
     () => ({
-      // Esta es la tabla de la pestaña Dinero, no la del turno: los cobros de
-      // venta entran consolidados por cuenta y por día, y el detalle del
-      // cajón queda afuera porque ya se ve —renglón por renglón— en Hoy. El
-      // corte lo hace la base; ver `movimiento-de-cuentas.ts`.
-      vista: "CUENTAS" as const,
+      // Vista COMPLETA: una fila por movimiento, sin consolidar los cobros por
+      // día ni esconder los gastos del cajón. Es la tabla de TRAZABILIDAD
+      // ("todas las transferencias del sábado", cada una con su hora y su
+      // cliente); la versión consolidada es "Actividad de cuentas" en Dinero.
+      vista: "COMPLETA" as const,
       desde: filtros.desde ? inicioDeDiaISO(filtros.desde) : null,
       hasta: filtros.hasta ? finDeDiaISO(filtros.hasta) : null,
       cuentaId: filtros.cuentaId || null,
@@ -206,6 +211,7 @@ export function MovimientosFinancierosTable({
       if (res.error) toast.error(res.error);
       setFilas(res.data?.filas ?? []);
       setTotal(res.data?.total ?? 0);
+      setSumas(sumasDe(res.data));
       setCargando(false);
     });
     return () => {
@@ -238,6 +244,7 @@ export function MovimientosFinancierosTable({
     if (res.data) {
       setFilas((actual) => [...actual, ...res.data!.filas]);
       setTotal(res.data.total);
+      setSumas(sumasDe(res.data));
     }
     setCargandoMas(false);
   };
@@ -270,6 +277,15 @@ export function MovimientosFinancierosTable({
     // posición de scroll y el resto de las páginas ya cargadas.
     setFilas((actual) => actual.filter((f) => f.id !== aAnular.id));
     setTotal((t) => Math.max(0, t - 1));
+    // Un gasto es una salida: sacarlo sube el neto y achica las salidas.
+    const importeAnulado = Number(aAnular.importe);
+    setSumas((s) =>
+      s && {
+        neto: s.neto - importeAnulado,
+        entradas: s.entradas,
+        salidas: s.salidas - importeAnulado,
+      },
+    );
     setAAnular(null);
     setMotivoAnular("");
   };
@@ -314,11 +330,19 @@ export function MovimientosFinancierosTable({
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Movimientos</h2>
+          <div className="flex flex-wrap items-baseline gap-x-2">
+            <h2 className="text-lg font-semibold">Movimientos</h2>
+            {!cargando && (
+              <span className="font-mono text-lg font-medium text-foreground">
+                ({total})
+              </span>
+            )}
+          </div>
           <p className="text-xs text-muted-foreground">
             Todo lo que movió plata: cobros, gastos, transferencias y ajustes,
             de todas las cuentas.
           </p>
+          <ResumenSumas sumas={cargando ? null : sumas} />
         </div>
         <Button
           variant="outline"
@@ -361,7 +385,7 @@ export function MovimientosFinancierosTable({
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
           <div className="col-span-2 flex gap-1 sm:col-span-3 lg:col-span-2">
             <div className="min-w-0 flex-1">
               <Label htmlFor="movimientos-desde" className="sr-only">
@@ -467,6 +491,28 @@ export function MovimientosFinancierosTable({
               {(metodos ?? []).map((m) => (
                 <SelectItem key={m.id} value={m.id}>
                   {m.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* Quién registró el movimiento: "lo que cobró Mara el sábado". La
+              lista completa la ve un ADMIN; otro rol se ve solo a sí mismo
+              (límite de `usuarios_negocios`, ver getUsuariosDelNegocioAction). */}
+          <Select
+            value={filtros.usuarioId || TODOS}
+            onValueChange={(v) =>
+              setFiltros((f) => ({ ...f, usuarioId: v === TODOS ? "" : v }))
+            }
+          >
+            <SelectTrigger className="text-xs">
+              <SelectValue placeholder="Usuario" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TODOS}>Todos los usuarios</SelectItem>
+              {(usuarios ?? []).map((u) => (
+                <SelectItem key={u.id} value={u.id}>
+                  {u.nombre}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -587,6 +633,32 @@ export function MovimientosFinancierosTable({
         </DialogContent>
       </Dialog>
     </section>
+  );
+}
+
+/** "Total $412.500" o, si hay plata para los dos lados, "Entradas · Salidas ·
+ * Neto". Criterio en `sumas-movimientos.ts`. */
+function ResumenSumas({ sumas }: Readonly<{ sumas: SumasMovimientos | null }>) {
+  if (!sumas) return null;
+  const monto = (valor: number) => (
+    <span
+      className={`font-mono font-semibold tabular-nums ${
+        valor < 0 ? "text-danger" : "text-success"
+      }`}
+    >
+      {formatearMoneda(valor)}
+    </span>
+  );
+
+  if (!hayQueDesglosar(sumas)) {
+    return <p className="mt-1 text-sm">Total: {monto(sumas.neto)}</p>;
+  }
+  return (
+    <p className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-sm">
+      <span>Entradas: {monto(sumas.entradas)}</span>
+      <span>Salidas: {monto(sumas.salidas)}</span>
+      <span>Neto: {monto(sumas.neto)}</span>
+    </p>
   );
 }
 

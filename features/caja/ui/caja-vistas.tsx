@@ -3,17 +3,12 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
-import { ArrowLeft, History, List, PiggyBank, ShieldAlert, Wallet } from "lucide-react";
-import { useAlertasCajaStore } from "@/shared/store/alertas-caja-store";
+import { History, List, PiggyBank, Wallet } from "lucide-react";
 
-/** Las pestañas. "Movimientos" NO está acá: es una vista de pantalla
- * completa a la que se entra desde Dinero. "Auditoría" sí es una pregunta
- * propia —¿qué pasó que alguien tendría que mirar?— y solo la ve quien tiene
- * `caja.ver_movimientos` o `caja.ver_gerencial`. */
-type Vista = "hoy" | "dinero" | "cierres" | "auditoria";
+type Vista = "hoy" | "dinero" | "movimientos" | "cierres";
 
 /** A dónde se puede navegar desde adentro del contenido de una vista. */
-export type DestinoCaja = Vista | "movimientos";
+export type DestinoCaja = Vista;
 
 const NavegacionCaja = createContext<((destino: DestinoCaja) => void) | null>(
   null,
@@ -21,7 +16,7 @@ const NavegacionCaja = createContext<((destino: DestinoCaja) => void) | null>(
 
 /**
  * Para que un componente de adentro de una vista mande a otra: el saldo de
- * "Cajas abiertas" salta a Hoy, "Ver todos" abre Movimientos.
+ * "Cajas abiertas" salta a Hoy.
  *
  * Fuera del shell devuelve null en vez de explotar — así un bloque de Dinero
  * se puede montar suelto (en un test, o en otra pantalla) y simplemente no
@@ -40,18 +35,13 @@ interface CajaVistasProps {
   /** Dónde está la plata: cuentas, saldos y lo que está por caer. Misma
    * condición de permiso que `resumenHoy`. */
   dinero?: ReactNode;
-  /** Qué pasó con cada cuenta, una fila por movimiento. Ausente = el usuario
-   * no tiene `caja.ver_movimientos`. Es OTRA pregunta que "Dinero" (dónde
-   * está ahora) — Dinero es la foto, esto es el detalle de cada paso que
-   * llevó a esa foto, y por eso se entra DESDE Dinero en vez de competir con
-   * él en la barra de pestañas. */
+  /** Qué pasó con la plata, una fila por movimiento y sin separar por turno.
+   * Ausente = el usuario no tiene `caja.ver_movimientos`. Dinero es la foto;
+   * esto es cada paso que llevó a esa foto. */
   movimientos?: ReactNode;
   /** Turnos pasados y cierres firmados. Lo ve cualquiera: son los turnos que
    * esa persona ya podía ver. */
   historial: ReactNode;
-  /** Alertas de lo que pasa con la plata (`alertas_caja`). Ausente = sin
-   * `caja.ver_movimientos` ni `caja.ver_gerencial`. */
-  auditoria?: ReactNode;
   /** false para la dueña que nunca abre caja: no se le muestra el bloque de
    * turno. Siempre puede abrir uno desde el botón de caja del navbar. */
   esCajera: boolean;
@@ -61,9 +51,10 @@ interface CajaVistasProps {
 /**
  * Las vistas de /caja, separadas por PREGUNTA y no por de dónde sale el dato:
  *
- *   Hoy       ¿qué tengo que hacer ahora y cómo viene el día?
- *   Dinero    ¿cuánto tengo y dónde?
- *   Cierres   ¿qué turnos se cerraron y con qué diferencia?
+ *   Hoy          ¿qué tengo que hacer ahora y cómo viene el día?
+ *   Dinero       ¿cuánto tengo y dónde?
+ *   Movimientos  ¿qué pasó, uno por uno, entre tal día y tal otro?
+ *   Cierres      ¿qué turnos se cerraron y con qué diferencia?
  *
  * "Mi turno" y el resumen del día son la misma pregunta con dos niveles de
  * zoom —lo que estoy operando y cómo va la jornada—, así que van juntos en
@@ -71,23 +62,13 @@ interface CajaVistasProps {
  * es otra pregunta es "cuánto tengo", que es una foto del momento y no del
  * día; mezclarlas fue el problema original.
  *
- * ─────────────────────────────────────────────────────────────────────────
- * POR QUÉ MOVIMIENTOS NO ES UNA PESTAÑA
- *
- * Dinero y Movimientos son la misma confianza: los dos le pertenecen al dueño
- * y se tienen enteros o no se tienen. Verificado sobre los 11 negocios: los
- * roles que tienen `caja.ver_movimientos` son exactamente los que tienen
- * `caja.ver_gerencial` (11 ADMIN + 1 ENCARGADO), cero con uno solo. Una
- * cuarta pestaña estaba cobrando espacio permanente en la barra —en un
- * celular, el ancho de una de cada cuatro— por una vista a la que se entra a
- * mirar algo puntual y de la que se vuelve.
- *
- * El resguardo: si algún día alguien tiene `ver_movimientos` SIN
- * `ver_gerencial`, no hay Dinero desde donde entrar, así que Movimientos se
- * muestra igual (debajo de Dinero cuando existe, como pestaña cuando no). Es
- * lo que evita que separar dos permisos deje a una persona mirando una puerta
- * que no existe.
- * ─────────────────────────────────────────────────────────────────────────
+ * Movimientos es pestaña propia (29/9/2026). Estuvo escondida detrás de un
+ * botón de Dinero para ahorrar lugar en la barra, el botón se perdió en un
+ * rediseño y la tabla quedó sin puerta. Mientras tanto la pregunta real de
+ * los dueños era de trazabilidad —"todas las transferencias del sábado"—, y
+ * sin esta tabla había que abrir el detalle de cada turno y buscarlas a mano.
+ * Dinero y Cierres no la reemplazan: Dinero suma los cobros por cuenta y día,
+ * y Cierres los separa por turno.
  *
  * Cada vista se monta sola: traen tablas, formularios y fetch propios, y
  * tenerlas ocultas con CSS duplicaría estado sin motivo.
@@ -98,16 +79,10 @@ export function CajaVistas({
   dinero,
   movimientos,
   historial,
-  auditoria,
   esCajera,
   vistaInicial,
 }: Readonly<CajaVistasProps>) {
   const searchParams = useSearchParams();
-  const pendientesAuditoria = useAlertasCajaStore((s) => s.pendientes);
-
-  // Movimientos vive adentro de Dinero. Sin Dinero no hay puerta, así que
-  // vuelve a ser pestaña propia (ver el comentario de arriba).
-  const movimientosSonPestania = Boolean(movimientos) && !dinero;
 
   const opciones: { valor: DestinoCaja; label: string; Icono: typeof Wallet }[] = [
     // Hoy existe si hay ALGO que mostrar: el turno propio, el resumen, o los
@@ -119,13 +94,10 @@ export function CajaVistas({
     ...(dinero
       ? [{ valor: "dinero" as const, label: "Dinero", Icono: PiggyBank }]
       : []),
-    ...(movimientosSonPestania
+    ...(movimientos
       ? [{ valor: "movimientos" as const, label: "Movimientos", Icono: List }]
       : []),
     { valor: "cierres" as const, label: "Cierres", Icono: History },
-    ...(auditoria
-      ? [{ valor: "auditoria" as const, label: "Auditoría", Icono: ShieldAlert }]
-      : []),
   ];
 
   // `?vista=` sigue aceptando `historial`, que es como se llamaba Cierres:
@@ -143,34 +115,22 @@ export function CajaVistas({
       : opciones[0].valor;
 
   const [vista, setVista] = useState<DestinoCaja>(inicial);
-  // Se entra con `?vista=movimientos` o desde el botón de Dinero. Si no hay
-  // nada que mostrar, la bandera queda en false y se cae en la pestaña.
-  const [enMovimientos, setEnMovimientos] = useState(
-    vistaPedida === "movimientos" && Boolean(movimientos) && !movimientosSonPestania,
-  );
 
   // Las pestañas disponibles como clave primitiva: `opciones` se rearma en
   // cada render, así que no sirve como dependencia de un memo.
   const disponibles = opciones.map((o) => o.valor).join(",");
-  const hayMovimientos = Boolean(movimientos);
 
   const navegar = useMemo(
     () => (destino: DestinoCaja) => {
-      if (destino === "movimientos" && !movimientosSonPestania) {
-        if (!hayMovimientos) return;
-        setEnMovimientos(true);
-      } else {
-        // Un salto a una pestaña que esta persona no tiene se ignora, en vez
-        // de dejar `vista` apuntando a algo que no está en la barra.
-        if (!disponibles.split(",").includes(destino)) return;
-        setEnMovimientos(false);
-        setVista(destino);
-      }
+      // Un salto a una pestaña que esta persona no tiene se ignora, en vez
+      // de dejar `vista` apuntando a algo que no está en la barra.
+      if (!disponibles.split(",").includes(destino)) return;
+      setVista(destino);
       // Volver a la vista anterior dejaría el scroll donde estaba la tabla,
       // que en una pantalla larga es el medio de la nada.
       window.scrollTo({ top: 0, behavior: "smooth" });
     },
-    [hayMovimientos, movimientosSonPestania, disponibles],
+    [disponibles],
   );
 
   const activa = opciones.some((o) => o.valor === vista) ? vista : inicial;
@@ -185,26 +145,7 @@ export function CajaVistas({
     dinero,
     movimientos,
     cierres: historial,
-    auditoria,
   };
-
-  if (enMovimientos && movimientos) {
-    return (
-      <NavegacionCaja.Provider value={navegar}>
-        <div className="space-y-6">
-          <button
-            type="button"
-            onClick={() => navegar("dinero")}
-            className="-ml-1 inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-xl px-2 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 shrink-0" />
-            Volver a Dinero
-          </button>
-          {movimientos}
-        </div>
-      </NavegacionCaja.Provider>
-    );
-  }
 
   return (
     <NavegacionCaja.Provider value={navegar}>
@@ -233,14 +174,6 @@ export function CajaVistas({
               >
                 <Icono className="h-3.5 w-3.5 shrink-0" />
                 {label}
-                {valor === "auditoria" && pendientesAuditoria > 0 && (
-                  <span
-                    aria-label={`${pendientesAuditoria} sin revisar`}
-                    className="ml-0.5 rounded-full bg-destructive px-1.5 text-[10px] font-bold leading-4 text-white"
-                  >
-                    {pendientesAuditoria}
-                  </span>
-                )}
               </button>
             );
           })}

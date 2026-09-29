@@ -1018,24 +1018,20 @@ tiene 11.
   Cacho cerró el 24 y el 25/9 a la mañana siguiente con ventas del otro día
   adentro, y separarlos llevó `20260928130000`. El chip de caja del navbar se
   pone ámbar ("Caja de otro día: cerrala") y el POS ofrece cerrarla.
-- **/caja → Auditoría** (`20260928200000`, `alertas_caja(p_dias)`). Cuarta
-  pestaña, para quien tiene `caja.ver_movimientos` o `caja.ver_gerencial`.
-  La base DEVUELVE HECHOS con severidad (ALTA / MEDIA / BAJA) y no corrige
-  nada: caja de otro día, cierre al día siguiente, diferencia de arqueo
-  ≥ $5.000, fondo de apertura igual al cierre de otro día (el 254.700 del
-  25/9), plata movida entre turnos del mismo día, cambio cargado como gasto,
-  gasto ≥ $50.000 de la caja chica, salida ≥ $100.000 de la Caja Grande,
-  devolución en efectivo, cobro corregido a mano, ajuste de saldo y Caja
-  Grande negativa. Cada alerta tiene una `clave` estable (tipo + id) y
-  `alertas_caja_revisadas` guarda quién la revisó y con qué nota; la revisión
-  es del NEGOCIO, no de la persona. `alertas_caja_pendientes()` (ALTA + MEDIA
-  sin revisar, 30 días) alimenta el número del link de Caja en el menú (solo
-  ADMIN, cada 5 minutos) y de la pestaña; sin permiso devuelve 0 en vez de
-  lanzar, porque la llama un polling. Los montos del texto salen de
-  `pesos_ar()`: `to_char` usa el locale de la base y ponía comas. Un tipo de
-  alerta nuevo se agrega en la RPC y su "qué hacer" en
-  `features/caja/lib/alerta-caja.ts` (fail-closed: sin entrada, no inventa un
-  consejo).
+- **/caja → Auditoría: la PANTALLA se sacó el 29/9/2026; la base quedó.**
+  Fue una cuarta pestaña con alertas de caja (`20260928200000`,
+  `alertas_caja(p_dias)`) y un número en el link de Caja del menú. Se sacaron
+  la pestaña, el badge del sidebar y su polling cada 5 minutos, el store y las
+  actions; /caja quedó en Hoy · Dinero · Cierres. En la base siguen
+  `alertas_caja`, `alertas_caja_pendientes`, `marcar_alerta_caja_revisada`,
+  `pesos_ar` (solo la usa `alertas_caja`) y la tabla `alertas_caja_revisadas`
+  (0 filas al sacarla): nadie las llama. Si se retoma, la pantalla está en el
+  commit anterior al 29/9. Lo que la RPC detectaba, por si sirve de lista:
+  caja de otro día, cierre al día siguiente, diferencia de arqueo ≥ $5.000,
+  fondo de apertura igual al cierre de otro día, plata movida entre turnos
+  del mismo día, cambio cargado como gasto, gasto ≥ $50.000 de la caja chica,
+  salida ≥ $100.000 de la Caja Grande, devolución en efectivo, cobro
+  corregido a mano, ajuste de saldo y Caja Grande negativa.
 - **La auditoría de El Nono Cacho (17–28/9/2026), cerrada.** La dueña reportó
   primero "demasiado sobrante" y después un faltante de ~$270.800. El sistema
   sumaba bien (563 cobros, ledger en cero por turno); el problema era lo
@@ -1047,8 +1043,8 @@ tiene 11.
   sábado con el conteo del lunes 21): la diferencia real fue **$7.399,30**. No
   hay señal de robo; hay desorganización del circuito de efectivo.
   De ahí salieron las reglas generales de arriba (saldo no negativo en caja
-  arqueada, egreso sin default de origen, turno de otro día, pestaña
-  Auditoría). Las correcciones, solo de ese negocio, son las migraciones
+  arqueada, egreso sin default de origen, turno de otro día; la pestaña
+  Auditoría también salió de ahí y después se sacó). Las correcciones, solo de ese negocio, son las migraciones
   `20260928130000` (horarios de cierre), `140000` a `170000` (reimputar gastos
   a la Caja Grande, el jueves 17 con fondo real de $183.452 y los seis cambios
   pasados a transferencias) y `180000`: un AJUSTE de **−$1.066.012** con
@@ -1473,9 +1469,27 @@ tiene 11.
   pago al remito, con CHECK de que solo COMPRA_MERCADERIA puede tenerlo y
   ON DELETE SET NULL (borrar el remito no puede borrar el egreso: la plata
   salió igual y el arqueo tiene que seguir cerrando).
-- /caja son 3 vistas separadas por PREGUNTA, no por origen del dato: Hoy (el
+- /caja son 4 vistas separadas por PREGUNTA, no por origen del dato: Hoy (el
   turno propio arriba, si opera caja, y abajo el resumen del día: mismo tema
-  con dos niveles de zoom) / Dinero / Historial. El período de calendario
+  con dos niveles de zoom) / Dinero / Movimientos / Cierres. **Movimientos**
+  (`movimientos-financieros-table.tsx`, gate `caja.ver_movimientos`) es la
+  trazabilidad: una fila por movimiento SIN consolidar ni separar por turno,
+  con Desde/Hasta en día comercial argentino, método, cuenta, tipo, usuario y
+  Excel. "Usuario" es quien REGISTRÓ el movimiento (`registrado_por`): en un
+  cobro es la vendedora, pero la anulación de su venta queda a nombre de quien
+  anuló. Un ADMIN ve a todo el equipo en ese filtro; otro rol, solo a sí mismo.
+  Existe porque "todas las transferencias del sábado" obligaba a abrir el
+  detalle de cada turno; Dinero suma los cobros por cuenta y día y no la
+  reemplaza. Estuvo escondida detrás de un botón de Dinero que se perdió en un
+  rediseño: la tabla quedó sin puerta sin que nadie lo notara. Y además pedía
+  `p_vista = 'CUENTAS'` (consolidada), herencia de cuando vivía en Dinero, así
+  que tampoco mostraba los cobros uno por uno: va con `COMPLETA`.
+  El encabezado muestra la cantidad y las sumas de TODO lo filtrado
+  (`importe_total` / `_entradas` / `_salidas`, `20260929140000`): las calcula
+  la base antes de paginar, nunca el navegador sobre la página cargada. Con
+  plata para los dos lados se desglosa (entradas · salidas · neto), porque
+  una transferencia entre cuentas propias son dos filas que se anulan
+  (`features/caja/lib/sumas-movimientos.ts`). El período de calendario
   (`shared/lib/periodo-ranges.ts` + `shared/components/periodo-selector.tsx`,
   movidos ahí desde features/dashboard cuando pasaron a tener dos consumidores)
   gobierna SOLO lo acreditado; el efectivo y lo pendiente son fotos de ahora y

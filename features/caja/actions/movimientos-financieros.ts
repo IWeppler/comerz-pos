@@ -113,6 +113,11 @@ export type FiltrosMovimientos = {
 
 export type PaginaMovimientos = {
   total: number;
+  /** Sumas sobre TODO lo filtrado, no sobre la página (las calcula la base,
+   * `20260929140000`). Opcionales: sin la migración no vienen. */
+  importe_total?: number;
+  importe_entradas?: number;
+  importe_salidas?: number;
   filas: MovimientoFinancieroFila[];
 };
 
@@ -321,8 +326,10 @@ export type FiltrosActividadCuentas = {
   busqueda?: string | null;
   origenTipo?: Extract<OrigenMovimiento, "INGRESO" | "EGRESO" | "TRANSFERENCIA"> | null;
   cuentaId?: string | null;
-  /** Día comercial "YYYY-MM-DD" (hora de Argentina). null = todos. */
-  dia?: string | null;
+  /** Días comerciales "YYYY-MM-DD" (hora de Argentina), los dos INCLUSIVE.
+   * null = sin límite de ese lado. Un solo día es desde = hasta. */
+  desdeDia?: string | null;
+  hastaDia?: string | null;
   limite?: number;
   offset?: number;
 };
@@ -330,9 +337,9 @@ export type FiltrosActividadCuentas = {
 /**
  * La tabla "Actividad de cuentas" de la pestaña Dinero. Usa la MISMA vista
  * consolidada que la tabla completa, pero ofrece solo los filtros cotidianos
- * de este contexto: texto, clase de operación, cuenta y un DÍA ("¿qué
- * transferencia se hizo el jueves?"). Un día y no un rango: la pregunta que
- * se hace desde acá es por un día puntual, y un rango es la tabla completa.
+ * de este contexto: texto, clase de operación, cuenta y un rango de días
+ * ("todas las transferencias del 1 al 15", "lo que entró a Mercado Pago esta
+ * semana").
  *
  * `esMovimientoDeCuentas` sigue como espejo defensivo para el intervalo de
  * despliegue en que el código puede salir antes que la RPC con `p_vista`.
@@ -341,18 +348,24 @@ export async function getActividadDeCuentasAction(
   filtros: FiltrosActividadCuentas = {},
 ): Promise<{ data: PaginaMovimientos | null; error: string | null }> {
   const limite = filtros.limite ?? 10;
-  let rango: { desde: string; hasta: string } | null = null;
-  if (filtros.dia) {
-    rango = rangoDiaComercial(filtros.dia);
-    if (!rango) return { data: null, error: "La fecha no es válida." };
+  // Los días viajan desde el navegador: se validan antes de mandarlos a la
+  // base. `desde` es el comienzo de su día y `hasta` el FIN del suyo (00:00
+  // del día siguiente, exclusivo en la RPC), así el último día entra entero.
+  const desde = filtros.desdeDia ? rangoDiaComercial(filtros.desdeDia) : null;
+  const hasta = filtros.hastaDia ? rangoDiaComercial(filtros.hastaDia) : null;
+  if ((filtros.desdeDia && !desde) || (filtros.hastaDia && !hasta)) {
+    return { data: null, error: "La fecha no es válida." };
+  }
+  if (desde && hasta && desde.desde > hasta.desde) {
+    return { data: null, error: "La fecha Desde es posterior a Hasta." };
   }
   const { data, error } = await getMovimientosFinancierosAction({
     vista: "CUENTAS",
     busqueda: filtros.busqueda,
     origenTipos: filtros.origenTipo ? [filtros.origenTipo] : null,
     cuentaId: filtros.cuentaId,
-    desde: rango?.desde ?? null,
-    hasta: rango?.hasta ?? null,
+    desde: desde?.desde ?? null,
+    hasta: hasta?.hasta ?? null,
     limite,
     offset: filtros.offset ?? 0,
   });
