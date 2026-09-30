@@ -14,6 +14,7 @@ import {
   CardFooter,
 } from "@/shared/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
+import { AvatarUsuario } from "@/shared/components/avatar-usuario";
 import { Save, Loader2, User, Mail, Lock, ShieldCheck } from "lucide-react";
 import {
   updateProfileAction,
@@ -31,11 +32,14 @@ interface CuentaFormProps {
   plan: PlanDelNegocio | null;
   /** El centro de suscripción se arma en el server y entra ya renderizado. */
   suscripcion: React.ReactNode;
+  /** Pestaña con la que abre (`/perfil?tab=plan`). */
+  tabInicial?: "perfil" | "seguridad" | "plan";
 }
 
 export function ProfileDashboard({
   usuario,
   suscripcion,
+  tabInicial = "perfil",
 }: Readonly<CuentaFormProps>) {
   const [isPending, startTransition] = useTransition();
   const handleSaveProfile = (e: React.FormEvent<HTMLFormElement>) => {
@@ -76,16 +80,31 @@ export function ProfileDashboard({
     // de suscripción sí. `min-h-0` es lo que permite que un hijo de flex column
     // se achique en vez de desbordar al padre.
     <div className="min-h-0 flex-1 overflow-y-auto max-w-7xl mx-auto px-4 w-full space-y-8 pb-12">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight text-foreground">
-          Mi Cuenta
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Gestiona tu información personal, seguridad y suscripción.
-        </p>
+      <div className="flex items-center gap-4">
+        {/* El mismo avatar del sidebar (semilla = id del usuario), más
+            grande. Se mueve al pasar el mouse. */}
+        <AvatarUsuario
+          userId={usuario.id}
+          nombre={usuario.nombre}
+          size={64}
+          animado
+        />
+        <div className="min-w-0">
+          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+            Mi Cuenta
+          </h1>
+          <p className="text-muted-foreground mt-1 truncate">
+            {usuario.nombre || usuario.email}
+            {usuario.nombre && usuario.email && (
+              <span className="text-muted-foreground/60"> · {usuario.email}</span>
+            )}
+          </p>
+        </div>
       </div>
 
-      <Tabs defaultValue="perfil" className="w-full">
+      {/* La key hace que "Mejorar plan" cambie de pestaña también cuando ya
+          se está en /perfil: `defaultValue` solo vale al montar. */}
+      <Tabs key={tabInicial} defaultValue={tabInicial} className="w-full">
         {/* Navegación de las pestañas */}
         <TabsList className="grid w-full grid-cols-3 max-w-md bg-muted/50 p-1">
           <TabsTrigger

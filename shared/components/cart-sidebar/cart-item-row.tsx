@@ -193,6 +193,7 @@ export function CartItemRow({
             onChange={onUpdateQuantity}
             onImporte={onFijarImporte}
             presentacion={presentacion ? { factor: presentacion.factor } : null}
+            productoNombre={item.nombre}
           />
 
           <div className="text-right">

@@ -1,11 +1,9 @@
 "use client";
 
-import { Search, SidebarIcon } from "lucide-react";
-import { useSyncExternalStore } from "react";
+import { SidebarIcon } from "lucide-react";
 import { useSidebarStore } from "@/shared/store/sidebar-store";
 import { usePathname } from "next/navigation";
 import { CajaStatusButton } from "@/features/caja/ui/caja-status-button";
-import { usePaletaStore } from "@/shared/store/paleta-store";
 
 interface DashboardNavbarProps {
   modoCaja: string;
@@ -27,20 +25,6 @@ export function DashboardNavbar({
 }: Readonly<DashboardNavbarProps>) {
   const { toggleSidebar } = useSidebarStore();
   const pathname = usePathname();
-  const abrirPaleta = usePaletaStore((estado) => estado.abrir);
-
-  // El símbolo del atajo lo sabe el navegador y no el server, así que el
-  // snapshot del server es "Ctrl" —lo mayoritario acá— y el cliente corrige
-  // en la hidratación. Con `useState` + `useEffect` sería un render en
-  // cascada; el teclado no cambia durante la sesión, así que no hay a qué
-  // suscribirse.
-  const esMac = useSyncExternalStore(
-    () => () => {},
-    () =>
-      /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent),
-    () => false,
-  );
-
   const getPageInfo = () => {
     // El panel saluda en vez de titularse: es la pantalla a la que la dueña
     // entra a la mañana, no una sección. Solo el primer nombre — "Hola,
@@ -125,19 +109,7 @@ export function DashboardNavbar({
         </div>
       </div>
 
-      {/* Buscador global: el mismo store que el atajo Ctrl+K, no una segunda
-          paleta. Ver paleta-store. */}
-      <button
-        type="button"
-        onClick={abrirPaleta}
-        aria-label="Buscar"
-        className="flex items-center gap-2 rounded-md border border-border px-2.5 py-1.5 mr-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-      >
-        <Search className="w-4 h-4 shrink-0 stroke-2" />
-        <kbd className="rounded border border-border/70 bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-          {esMac ? "⌘" : "Ctrl"} + K
-        </kbd>
-      </button>
+      {/* El buscador (Ctrl+K) vive en el sidebar, al lado del logo. */}
       {puedeOperarCaja && (
         <CajaStatusButton
           modoCaja={modoCaja}

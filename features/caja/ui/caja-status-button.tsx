@@ -49,7 +49,9 @@ export function CajaStatusButton({
   // Quedó abierta de noche: no se puede vender hasta cerrarla (ver
   // turno-de-otro-dia.ts). El chip lo dice en ámbar para que se vea antes
   // de que el POS rebote la primera venta.
-  const deOtroDia = Boolean(isCajaAbierta && esTurnoDeOtroDia(turno?.fecha_apertura));
+  const deOtroDia = Boolean(
+    isCajaAbierta && esTurnoDeOtroDia(turno?.fecha_apertura),
+  );
 
   const boton = (
     <button
@@ -70,11 +72,6 @@ export function CajaStatusButton({
             : "border-border bg-muted text-muted-foreground hover:bg-muted/70"
       } ${className}`}
     >
-      <span
-        className={`h-2 w-2 shrink-0 rounded-full ${
-          deOtroDia ? "bg-warning" : isCajaAbierta ? "bg-success" : "bg-muted-foreground/40"
-        }`}
-      />
       <Wallet className="h-3.5 w-3.5 shrink-0" />
       <span className="hidden sm:inline">
         {isCajaAbierta === null

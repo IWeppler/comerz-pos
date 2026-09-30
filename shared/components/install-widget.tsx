@@ -5,7 +5,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 import { Download, Sparkles } from "lucide-react";
 import { useInstalacionPwa } from "@/shared/lib/use-instalacion-pwa";
 import { InstruccionesInstalacion } from "./instrucciones-instalacion";
-import { Button } from "../ui/button";
 
 export function InstallAppWidget({
   isCollapsed,
@@ -44,43 +43,50 @@ export function InstallAppWidget({
   return (
     <>
       <div
-        className={`transition-all duration-300 ${isCollapsed ? "" : "bg-linear-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/30 dark:to-blue-900/20 border border-indigo-100 dark:border-indigo-800/30 rounded-xl p-3 shadow-sm"}`}
+        className={`transition-all duration-300 ${isCollapsed ? "" : "w-full rounded-xl border border-border bg-linear-to-b from-promo-from to-promo-to p-4 shadow-sm"}`}
       >
         {isCollapsed ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <button
+                type="button"
                 onClick={alTocar}
-                className="flex h-10 w-10 mx-auto items-center justify-center rounded-lg bg-indigo-100 text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400 hover:bg-indigo-200 transition-colors"
+                aria-label={titulo}
+                className="mx-auto flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-card text-primary shadow-sm transition-colors hover:bg-muted"
               >
-                <Download className="w-5 h-5" />
+                <Download className="h-5 w-5" strokeWidth={2.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">{titulo}</TooltipContent>
           </Tooltip>
         ) : (
-          <>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-full bg-white dark:bg-indigo-900 flex items-center justify-center shadow-sm shrink-0 border border-indigo-50 dark:border-indigo-800">
-                <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border bg-card shadow-sm">
+                <Sparkles
+                  className="h-4 w-4 text-primary"
+                  fill="currentColor"
+                />
               </div>
-              <div className="leading-tight">
-                <p className="text-[10px] text-indigo-600/80 dark:text-indigo-400/80 font-semibold uppercase tracking-wider">
-                  App Nativa
-                </p>
-                <p className="text-sm font-bold text-indigo-950 dark:text-indigo-100">
+              <div className="min-w-0 leading-tight">
+                <p className="text-xs text-muted-foreground">App nativa</p>
+                <p className="truncate text-sm font-bold text-foreground">
                   {titulo}
                 </p>
               </div>
             </div>
-            <p className="text-xs text-indigo-900/70 dark:text-indigo-200/70 mb-3 leading-snug">
+            <p className="text-xs leading-snug text-muted-foreground">
               {detalle}
             </p>
-            <Button onClick={alTocar} variant="secondary">
-              <Download className="w-4 h-4" />
+            <button
+              type="button"
+              onClick={alTocar}
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card text-sm font-medium text-foreground shadow-xs transition-all hover:bg-muted hover:shadow-sm cursor-pointer"
+            >
+              <Download className="h-4 w-4 text-primary" strokeWidth={2.5} />
               {textoBoton}
-            </Button>
-          </>
+            </button>
+          </div>
         )}
       </div>
 

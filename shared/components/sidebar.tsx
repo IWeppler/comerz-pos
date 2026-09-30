@@ -21,8 +21,23 @@ import {
   Lock,
   Sparkles,
   FileText,
+  Search,
+  ChevronsUpDown,
+  LifeBuoy,
+  Rocket,
 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@/shared/ui/dropdown-menu";
+import { usePaletaStore } from "@/shared/store/paleta-store";
+import { AvatarUsuario } from "./avatar-usuario";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { CartButton } from "@/shared/ui/cart-button";
 import { CajaStatusButton } from "@/features/caja/ui/caja-status-button";
@@ -149,7 +164,8 @@ export function Sidebar({
       items: group.items.filter((item) => {
         if (item.adminOnly && userRole !== "ADMIN") return false;
         // Caja solo para quien la opera. El corte real está en la página.
-        if (item.href === "/caja" && !puedeOperarCaja && userRole !== "ADMIN") return false;
+        if (item.href === "/caja" && !puedeOperarCaja && userRole !== "ADMIN")
+          return false;
         if (item.moduloPresupuestos && !moduloPresupuestos) return false;
         return true;
       }),
@@ -205,6 +221,24 @@ export function Sidebar({
   }, [branding.modo_caja, userId, fetchCajaStatusStore]);
 
   const initial = branding.posName?.substring(0, 1).toUpperCase() || "C";
+  const esAdmin = userRole === "ADMIN";
+  const abrirPaleta = usePaletaStore((estado) => estado.abrir);
+  // El cierre de sesión es un <form> con server action, y el item del menú
+  // se desmonta al cerrarse el dropdown: el form vive afuera y el item lo
+  // dispara.
+  const formLogoutRef = useRef<HTMLFormElement>(null);
+
+  // El símbolo del atajo lo sabe el navegador y no el server, así que el
+  // snapshot del server es "Ctrl" —lo mayoritario acá— y el cliente corrige
+  // en la hidratación. El teclado no cambia durante la sesión: no hay a qué
+  // suscribirse.
+  const esMac = useSyncExternalStore(
+    () => () => {},
+    () =>
+      /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent),
+    () => false,
+  );
+  const atajoBuscar = `${esMac ? "⌘" : "Ctrl"}+K`;
 
   return (
     <TooltipProvider>
@@ -287,7 +321,48 @@ export function Sidebar({
               Comerz
             </span>
           )}
+          {/* Buscador global: el mismo store que el atajo Ctrl+K, no una
+              segunda paleta (ver paleta-store). Antes vivía en el navbar. */}
+          {!isCollapsed && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={abrirPaleta}
+                  aria-label={`Buscar (${atajoBuscar})`}
+                  className="ml-auto flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                >
+                  <Search className="h-4 w-4 stroke-2" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                Buscar · {atajoBuscar}
+              </TooltipContent>
+            </Tooltip>
+          )}
         </div>
+
+        {/* Colapsado no hay lugar al lado del logo: el buscador va arriba de
+            la navegación, como un ítem más. */}
+        {isCollapsed && (
+          <div className="hidden md:flex justify-center pt-3">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={abrirPaleta}
+                  aria-label={`Buscar (${atajoBuscar})`}
+                  className="flex h-9 w-9 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
+                >
+                  <Search className="h-4.5 w-4.5 stroke-2" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                Buscar · {atajoBuscar}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
 
         {/* 2. STORE SWITCHER — solo desktop. En móvil vive en el header, para
             no repetirlo dentro del menú desplegable. */}
@@ -418,84 +493,116 @@ export function Sidebar({
           </div>
         </nav>
 
-        {/* 4. FOOTER (Soporte, Logout, Perfil con Plan) */}
-        <div className="border-t border-border/50 p-3 flex flex-col gap-1 bg-muted/5">
-          {/* <Link
-            href="/soporte"
-            className={`flex items-center gap-3 rounded-md px-2 py-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer ${isCollapsed ? "justify-center mx-auto w-9 h-9" : ""}`}
-          >
-            <LifeBuoy className="w-4.5 h-4.5 stroke-2" />
-            {!isCollapsed && (
-              <span className="text-sm font-medium">Soporte técnico</span>
-            )}
-          </Link> */}
-
+        {/* 4. FOOTER: el usuario. Todo lo que es "de la cuenta" (perfil,
+            plan, configuración, soporte, cerrar sesión) vive en su menú, no
+            suelto en el sidebar. */}
+        <div className="border-t border-border/50 p-3 bg-muted/5">
           {/* El catálogo guardado para trabajar sin señal se borra ACÁ, antes
               de que la sesión se vaya: en un celular compartido no puede
               quedar accesible después de que la vendedora se fue. Ver
-              shared/lib/cache-offline.ts. */}
+              shared/lib/cache-offline.ts. El form está afuera del menú porque
+              el menú se desmonta al cerrarse; el item lo dispara. */}
           <form
+            ref={formLogoutRef}
             action={logoutAction}
-            className="w-full"
+            className="hidden"
             onSubmit={() => {
               void borrarCacheOffline();
             }}
-          >
-            <button
-              type="submit"
-              className={`flex items-center gap-3 rounded-md px-2 py-2 w-full text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger cursor-pointer ${isCollapsed ? "justify-center mx-auto w-9 h-9" : ""}`}
-            >
-              <LogOut className="w-4.5 h-4.5 stroke-2" />
-              {!isCollapsed && (
-                <span className="text-sm font-medium">Cerrar sesión</span>
-              )}
-            </button>
-          </form>
-
-          <div
-            className={`${isCollapsed ? "my-1" : "my-2"} border-t border-border/50 mx-1`}
           />
 
-          {/* User Profile (Nombre + Plan) */}
-          {userRole === "ADMIN" ? (
-            <Link
-              href="/perfil"
-              prefetch={false}
-              className={`flex items-center gap-3 px-2 py-1.5 mt-1 rounded-md hover:bg-muted/80 transition-colors cursor-pointer group ${isCollapsed ? "justify-center" : ""}`}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className={`group flex w-full items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/80 data-[state=open]:bg-muted cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring ${isCollapsed ? "justify-center" : ""}`}
+                aria-label="Menú de la cuenta"
+              >
+                <AvatarUsuario
+                  userId={userId}
+                  nombre={userName}
+                  size={32}
+                  animado
+                />
+                {!isCollapsed && (
+                  <>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-sm font-medium truncate text-foreground leading-tight">
+                        {userName}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
+                        {planName}
+                      </p>
+                    </div>
+                    <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  </>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent
+              side={isCollapsed ? "right" : "top"}
+              align={isCollapsed ? "end" : "start"}
+              sideOffset={8}
+              className="w-60"
             >
-              <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-                <UserIcon className="w-4 h-4 text-primary" />
-              </div>
-              {!isCollapsed && (
-                <div className="flex-1 overflow-hidden">
-                  <p className="text-sm font-medium truncate text-foreground leading-tight group-hover:text-primary transition-colors">
+              <DropdownMenuLabel className="flex items-center gap-3 font-normal">
+                <AvatarUsuario userId={userId} nombre={userName} size={36} />
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
                     {userName}
                   </p>
-                  <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
+                  <p className="truncate text-xs text-muted-foreground">
                     {planName}
                   </p>
                 </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+
+              {/* Perfil, plan y configuración son del dueño: el sidebar ya
+                  solo le mostraba el perfil al ADMIN, y cambiar de plan o de
+                  configuración es decisión suya. El corte real está en cada
+                  página. */}
+              {esAdmin && (
+                <>
+                  <DropdownMenuItem asChild>
+                    <Link href="/perfil" prefetch={false}>
+                      <UserIcon />
+                      Perfil
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/configuracion" prefetch={false}>
+                      <Settings />
+                      Configuración
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/perfil?tab=plan" prefetch={false}>
+                      <Rocket />
+                      Mejorar plan
+                    </Link>
+                  </DropdownMenuItem>
+                </>
               )}
-            </Link>
-          ) : (
-            <div
-              className={`flex items-center gap-3 px-2 py-1.5 mt-1 ${isCollapsed ? "justify-center" : ""}`}
-            >
-              <div className="w-8 h-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
-                <UserIcon className="w-4 h-4 text-primary" />
-              </div>
-              {!isCollapsed && (
-                <div className="flex-1 overflow-hidden">
-                  <p className="text-sm font-medium truncate text-foreground leading-tight">
-                    {userName}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate leading-tight mt-0.5">
-                    {planName}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
+              {/* Todavía no existe: se muestra deshabilitado para que se
+                  sepa que viene, no escondido. */}
+              <DropdownMenuItem disabled>
+                <LifeBuoy />
+                Soporte
+                <DropdownMenuShortcut>Pronto</DropdownMenuShortcut>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => formLogoutRef.current?.requestSubmit()}
+              >
+                <LogOut />
+                Cerrar sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </aside>
     </TooltipProvider>

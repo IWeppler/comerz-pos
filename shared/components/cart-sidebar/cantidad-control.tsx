@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Minus, Plus } from "lucide-react";
+import { Minus, Pencil, Plus } from "lucide-react";
+import { useEsCelular } from "@/shared/hooks/use-es-celular";
+import { EditorPesoDialog } from "./editor-peso-dialog";
 import {
   ABREVIATURA_UNIDAD,
   normalizarUnidadMedida,
@@ -33,6 +35,8 @@ interface CantidadControlProps {
    * el stock. Va el stepper de unidad, no el teclado de peso.
    */
   presentacion?: { factor: number } | null;
+  /** Título del editor de peso en el celular. */
+  productoNombre?: string;
 }
 
 /**
@@ -79,7 +83,7 @@ function BotonPaso({
       onClick={onClick}
       disabled={deshabilitado}
       aria-label={etiqueta}
-      className={`flex h-full w-8 items-center justify-center transition-colors ${
+      className={`flex h-full w-11 items-center justify-center transition-colors sm:w-9 ${
         deshabilitado
           ? "cursor-not-allowed bg-muted/40 text-muted-foreground/35"
           : "cursor-pointer text-foreground hover:bg-muted active:bg-muted"
@@ -98,22 +102,25 @@ export function CantidadControl({
   onChange,
   onImporte,
   presentacion,
+  productoNombre,
 }: Readonly<CantidadControlProps>) {
   const unidad = normalizarUnidadMedida(unidadMedida);
   const fraccionable = esFraccionable(unidad) && !presentacion;
   const tope = topeCantidadEnForma(stockMaximo, presentacion ?? null);
+  const esCelular = useEsCelular();
 
   if (!fraccionable) {
+    // 44px en el celular (blanco táctil de un dedo), 36px en escritorio.
     return (
-      <div className="flex h-8 items-center overflow-hidden rounded-md border border-border">
+      <div className="flex h-11 items-center overflow-hidden rounded-md border border-border sm:h-9">
         <BotonPaso
           onClick={() => onChange(cantidad - 1)}
           deshabilitado={cantidad <= 1}
           etiqueta="Quitar una unidad"
         >
-          <Minus className="h-3.5 w-3.5" />
+          <Minus className="h-4 w-4" />
         </BotonPaso>
-        <span className="w-8 text-center font-mono text-xs font-medium text-foreground">
+        <span className="w-9 text-center font-mono text-sm font-medium text-foreground">
           {cantidad}
         </span>
         <BotonPaso
@@ -121,9 +128,25 @@ export function CantidadControl({
           deshabilitado={cantidad >= tope}
           etiqueta="Agregar una unidad"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-4 w-4" />
         </BotonPaso>
       </div>
+    );
+  }
+
+  // En el celular no hay inputs en la línea: un botón abre el editor. Los
+  // inputs adentro del drawer del ticket trababan la app al abrir el teclado
+  // (ver EditorPesoDialog).
+  if (esCelular) {
+    return (
+      <PesoEnCelular
+        cantidad={cantidad}
+        precio={precio}
+        abreviatura={ABREVIATURA_UNIDAD[unidad]}
+        productoNombre={productoNombre}
+        onChange={onChange}
+        onImporte={onImporte}
+      />
     );
   }
 
@@ -135,6 +158,48 @@ export function CantidadControl({
       onChange={onChange}
       onImporte={onImporte}
     />
+  );
+}
+
+function PesoEnCelular({
+  cantidad,
+  precio,
+  abreviatura,
+  productoNombre,
+  onChange,
+  onImporte,
+}: Readonly<{
+  cantidad: number;
+  precio: number;
+  abreviatura: string;
+  productoNombre?: string;
+  onChange: (cantidad: number) => void;
+  onImporte?: (importe: number) => void;
+}>) {
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        aria-label={`Cambiar peso o importe de ${productoNombre ?? "la línea"}`}
+        className="flex h-11 items-center gap-2 rounded-md border border-border px-3 font-mono text-sm font-medium text-foreground active:bg-muted"
+      >
+        {formatearParaInput(cantidad)} {abreviatura}
+        <Pencil className="h-3.5 w-3.5 text-muted-foreground" />
+      </button>
+      <EditorPesoDialog
+        open={abierto}
+        onOpenChange={setAbierto}
+        productoNombre={productoNombre}
+        cantidad={cantidad}
+        precio={precio}
+        abreviatura={abreviatura}
+        onCantidad={onChange}
+        onImporte={onImporte}
+      />
+    </>
   );
 }
 
@@ -199,10 +264,10 @@ function ControlPorPeso({
   return (
     <div className="flex items-end gap-2">
       <label className="flex flex-col gap-1">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           Peso
         </span>
-        <div className="flex h-8 items-center overflow-hidden rounded-md border border-border pr-2">
+        <div className="flex h-10 items-center overflow-hidden rounded-md border border-border pr-2">
           <input
             type="text"
             inputMode="decimal"
@@ -218,7 +283,7 @@ function ControlPorPeso({
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
             }}
-            className="h-full w-16 bg-transparent px-2 text-right font-mono text-xs font-medium text-foreground outline-none"
+            className="h-full w-20 bg-transparent px-2 text-right font-mono text-sm font-medium text-foreground outline-none"
           />
           <span className="font-mono text-[10px] text-muted-foreground">
             {abreviatura}
@@ -227,11 +292,11 @@ function ControlPorPeso({
       </label>
 
       <label className="flex flex-col gap-1">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           O por importe
         </span>
-        <div className="flex h-8 items-center overflow-hidden rounded-md border border-border pl-2">
-          <span className="font-mono text-[10px] text-muted-foreground">$</span>
+        <div className="flex h-10 items-center overflow-hidden rounded-md border border-border pl-2">
+          <span className="font-mono text-xs text-muted-foreground">$</span>
           <input
             type="text"
             inputMode="decimal"
@@ -247,7 +312,7 @@ function ControlPorPeso({
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
             }}
-            className="h-full w-20 bg-transparent px-1 text-right font-mono text-xs font-medium text-foreground outline-none"
+            className="h-full w-24 bg-transparent px-1 text-right font-mono text-sm font-medium text-foreground outline-none"
           />
         </div>
       </label>

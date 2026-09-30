@@ -14,7 +14,18 @@ import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 
 export const dynamic = "force-dynamic";
 
-const ProfilePage = async () => {
+const TABS = ["perfil", "seguridad", "plan"] as const;
+
+const ProfilePage = async ({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) => {
+  // `?tab=plan` lo usan "Mejorar plan" del menú de la cuenta y los paywalls.
+  // Un valor desconocido cae a la pestaña de siempre.
+  const { tab } = await searchParams;
+  const tabInicial = TABS.find((t) => t === tab) ?? "perfil";
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -50,6 +61,7 @@ const ProfilePage = async () => {
           email: perfil?.email ?? user.email ?? "",
         }}
         plan={plan}
+        tabInicial={tabInicial}
         suscripcion={
           <SuscripcionPanel
             plan={plan}

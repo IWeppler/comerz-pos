@@ -2356,6 +2356,15 @@ export function CartPanelAdmin({
         // de tocar un control. Cerrar sigue estando a mano: la agarradera,
         // tocar afuera y Esc.
         handleOnly
+        // vaul, con un input enfocado, le reescribe al drawer el alto y el
+        // `bottom` a mano cada vez que cambia el visualViewport, y adivina si
+        // el teclado está abierto por un salto de 60px. Con Enter/blur esa
+        // adivinanza se desincroniza y el drawer queda corrido y trabado: la
+        // vendedora tenía que cerrar la app (El Nono Cacho, 30/9/2026). Sin
+        // esto el teclado tapa el pie del drawer y el contenido scrollea,
+        // que es lo que hace cualquier pantalla. El peso/importe además ya
+        // no se edita acá en el celular (EditorPesoDialog).
+        repositionInputs={false}
         open={isPhoneLayout && (phoneCartOpen || ventaExitosa !== null)}
         onOpenChange={(open) => {
           if (open) setPhoneCartOpen(true);

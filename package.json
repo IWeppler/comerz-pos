@@ -17,6 +17,7 @@
     "reubicar:derivadas": "node --experimental-strip-types scripts/reubicar-derivadas-raiz.ts"
   },
   "dependencies": {
+    "@blobatar/react": "^2.7.0",
     "@react-pdf/renderer": "^4.5.1",
     "@supabase/ssr": "^0.10.2",
     "@supabase/supabase-js": "^2.103.1",
@@ -24,6 +25,7 @@
     "@types/d3": "^7.4.3",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
+    "blobatar": "^2.7.0",
     "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
