@@ -121,6 +121,24 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   rechaza la promesa del cliente y el server sigue. 8 reintentos = stock ×8 en Estilo
   Bonito (27/7).
 
+## IMEI / números de serie (`unidades_serie`, `productos.lleva_serie`)
+
+- Una unidad nace por remito/planilla con columna IMEI, a mano desde la edición
+  del producto (`features/stock/actions/unidades-serie.ts`) o tipeada en el POS al
+  vender. Nace `disponible` y NO mueve stock: el aparato ya está contado en la
+  variante. Solo se borra si está disponible y nunca se vendió.
+- **Qué exige el server no cambió**: `create-sale` pide unidad solo si la variante
+  tiene disponibles. `productos.lleva_serie` (`20260930120000`) alimenta una
+  ADVERTENCIA en el POS cuando una línea de un producto marcado no tiene ninguna
+  unidad: se tipea el IMEI ahí o se vende "sin IMEI" a sabiendas. Por producto y
+  no por rubro (un electro vende fundas). El trigger `unidades_serie_marca_producto`
+  lo prende al cargar cualquier unidad.
+- **18/8/2026 se perdieron 4 IMEI de ClickTostado**: la edición de variantes
+  borraba y recreaba, y el FK estaba en CASCADE. Hoy la edición actualiza en lugar
+  (el id se conserva) y el FK es RESTRICT: cambiar los atributos de una variante
+  con IMEI falla con error de FK en vez de borrar la garantía. El 30/9 se recuperó
+  el del A7 Pro desde `ordenes_items.raw_imei`.
+
 ## Conciliación de remitos
 
 - **Dos modos, el default lo decide el dato** (`modo-conciliacion.ts`): CARGA INICIAL

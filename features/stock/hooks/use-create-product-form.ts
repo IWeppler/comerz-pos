@@ -183,6 +183,7 @@ export function useCreateProductForm(control?: ControlDeApertura) {
 
       if (result.success) {
         toast.success("Producto creado con éxito");
+        if (result.aviso) toast.warning(result.aviso, { duration: 10000 });
         handleOpenChange(false);
         queryClient.invalidateQueries({ queryKey: queryKeys.catalogo });
         router.refresh();

@@ -205,6 +205,14 @@ export function CartPanelAdmin({
     [items],
   );
 
+  // Variantes del carrito cuyo producto está marcado "lleva IMEI". Si una
+  // de ellas no tiene ninguna unidad cargada, el POS ADVIERTE antes de cobrar
+  // y ofrece tipear el número (no bloquea: el server no lo exige).
+  const [variantesLlevaSerie, setVariantesLlevaSerie] = useState<string[]>([]);
+  // Las que la vendedora ya decidió vender sin IMEI en esta venta, para no
+  // preguntarle dos veces (p. ej. al reintentar tras "ARCA no responde").
+  const [sinImeiAceptadas, setSinImeiAceptadas] = useState<string[]>([]);
+
   useEffect(() => {
     const ids = varianteIdsCarrito ? varianteIdsCarrito.split(",") : [];
     if (ids.length === 0) return;
@@ -215,6 +223,7 @@ export function CartPanelAdmin({
       // esta respuesta ya no corresponde y se descarta.
       if (cancelado) return;
       setDisponibilidadUnidades(res.disponibilidad);
+      setVariantesLlevaSerie(res.llevaSerie);
     });
 
     return () => {
@@ -263,6 +272,25 @@ export function CartPanelAdmin({
       Object.fromEntries(unidadesElegidas.map((u) => [u.varianteId, u.imei])),
     [unidadesElegidas],
   );
+
+  /** Líneas de productos que llevan IMEI y no tienen ninguna unidad cargada:
+   * se venderían sin número y el ticket saldría sin IMEI. */
+  const lineasSinImei = useMemo(() => {
+    const marcadas = new Set(variantesLlevaSerie);
+    return items
+      .filter(
+        (i) =>
+          i.varianteId &&
+          marcadas.has(i.varianteId) &&
+          !variantesSerializadas.has(i.varianteId),
+      )
+      .map((i) => ({
+        varianteId: i.varianteId as string,
+        nombre: i.nombre,
+        variante: i.variante,
+        cantidad: i.cantidad,
+      }));
+  }, [items, variantesLlevaSerie, variantesSerializadas]);
 
   const mounted = useSyncExternalStore(
     subscribeToClientMount,
@@ -910,6 +938,7 @@ export function CartPanelAdmin({
     setFacturarElegido(venta.facturarElegido);
     setCheckoutStep(venta.items.length > 0 ? venta.paso : "CART");
     setUnidadesElegidasRaw(venta.unidadesElegidas);
+    setSinImeiAceptadas([]);
     listaElegidaAMano.current = venta.listaElegidaAMano;
     clienteYaOfrecido.current = null;
     setSelectorClienteAbierto(false);
@@ -1164,6 +1193,7 @@ export function CartPanelAdmin({
 
   const clearCartAndResetStep = () => {
     clearCart();
+    setSinImeiAceptadas([]);
     setSaldoAFavorClienteId(null);
     setCheckoutStep("CART");
     if (esCajaCentral) setVistaTicket("POR_COBRAR");
@@ -1329,6 +1359,7 @@ export function CartPanelAdmin({
     }
     const ctx = p.contexto ?? {};
     clearCart();
+    setSinImeiAceptadas([]);
     for (const i of p.items) {
       addItem({
         productoId: i.productoId,
@@ -1403,8 +1434,10 @@ export function CartPanelAdmin({
     // del modal, este closure todavía vería `unidadesElegidas` vacío y la
     // venta saldría sin aparatos.
     unidadesOverride?: UnidadSeleccionada[],
-    /** Reintento tras "ARCA no responde": cobrar con ticket interno. */
-    opciones?: { sinFacturaPorArcaCaido?: boolean },
+    /** Reintento tras "ARCA no responde": cobrar con ticket interno.
+     * `sinImeiAceptadas` llega del modal por el mismo motivo que
+     * `unidadesOverride`: el estado todavía no se aplicó en este closure. */
+    opciones?: { sinFacturaPorArcaCaido?: boolean; sinImeiAceptadas?: string[] },
   ) => {
     const montoRealAsignado =
       montoAnticipoModal !== undefined ? montoAnticipoModal : sumaPagos;
@@ -1413,11 +1446,22 @@ export function CartPanelAdmin({
     const imeisParaVenta = Object.fromEntries(
       unidadesParaVenta.map((u) => [u.varianteId, u.imei]),
     );
+    const aceptadasSinImei = new Set(
+      opciones?.sinImeiAceptadas ?? sinImeiAceptadas,
+    );
 
     // Antes que cualquier otra validación: si hay líneas serializadas sin
     // aparato elegido, se abre el modal y no se cobra nada. El server hace
     // el mismo chequeo (esto es solo la UX; la regla vive en create-sale).
-    if (lineasSerializadas.some((l) => !imeisParaVenta[l.varianteId])) {
+    // En el mismo modal se advierte por los productos que llevan IMEI y no
+    // tienen ninguno cargado; esos no bloquean, se aceptan explícitamente.
+    if (
+      lineasSerializadas.some((l) => !imeisParaVenta[l.varianteId]) ||
+      lineasSinImei.some(
+        (l) =>
+          !imeisParaVenta[l.varianteId] && !aceptadasSinImei.has(l.varianteId),
+      )
+    ) {
       setAnticipoPendiente(montoAnticipoModal);
       setModalUnidades("CONFIRMAR");
       return;
@@ -1738,6 +1782,9 @@ export function CartPanelAdmin({
             : "PENDIENTE"
           : "PAGADA";
 
+        // "Vender sin IMEI" vale para ESTA venta: la próxima del mismo
+        // modelo vuelve a preguntar.
+        setSinImeiAceptadas([]);
         setVentaExitosa({
           // El IMEI viaja al ticket recién impreso: es el comprobante de
           // garantía del aparato que el cliente se acaba de llevar.
@@ -2327,16 +2374,32 @@ export function CartPanelAdmin({
         <SeleccionarUnidadesModal
           onCerrar={() => setModalUnidades(null)}
           lineas={lineasSerializadas}
-          onConfirmar={(seleccion) => {
+          lineasSinImei={lineasSinImei}
+          onConfirmar={(seleccion, { creadas, sinImei }) => {
             const modo = modalUnidades;
+            // Las unidades recién tipeadas ya existen en la base como
+            // disponibles: se suman a la disponibilidad local para que la
+            // línea pase a ser serializada y la unidad elegida no se filtre.
+            if (creadas.length > 0) {
+              setDisponibilidadUnidades((prev) => {
+                const siguiente = { ...prev };
+                for (const varianteId of creadas) {
+                  siguiente[varianteId] = (siguiente[varianteId] ?? 0) + 1;
+                }
+                return siguiente;
+              });
+            }
             setUnidadesElegidasRaw(seleccion);
+            setSinImeiAceptadas(sinImei);
             setModalUnidades(null);
             // Abierto desde el carrito: se guarda el aparato y listo, nadie
             // pidió cobrar todavía.
             if (modo !== "CONFIRMAR") return;
             // La selección va por argumento: el estado de arriba todavía no
             // se aplicó en este closure.
-            handleConfirmarVentaPOS(anticipoPendiente, seleccion);
+            handleConfirmarVentaPOS(anticipoPendiente, seleccion, {
+              sinImeiAceptadas: sinImei,
+            });
           }}
         />
       )}

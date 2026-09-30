@@ -21,6 +21,7 @@ import {
   normalizarUnidadMedida,
 } from "@/shared/lib/fiscal-producto";
 import { parsearCantidadDeEntrada } from "@/shared/lib/unidad-venta";
+import { normalizarImei } from "@/entities/ventas/imei";
 
 export async function crearProductoAction(
   prevState: { error: string | null; success: boolean },
@@ -114,6 +115,21 @@ export async function crearProductoAction(
   const tieneVariantes = formData.get("tieneVariantes") === "true";
   const stockBase = parsearCantidadDeEntrada(formData.get("stockBase"));
 
+  // IMEI / número de serie (rubro electro). Los números iniciales solo
+  // valen sin variantes: con variantes no hay a cuál atar cada uno, y se
+  // cargan desde la edición.
+  const lleva_serie = formData.get("lleva_serie") === "true";
+  const imeisIniciales = lleva_serie
+    ? [
+        ...new Set(
+          String(formData.get("imeis_iniciales") ?? "")
+            .split(/[\n,;]+/)
+            .map(normalizarImei)
+            .filter(Boolean),
+        ),
+      ]
+    : [];
+
   const archivos = formData.getAll("imagenes") as File[];
   const thumbnails = formData.getAll("thumbnails") as File[];
   const grids = formData.getAll("grids") as File[];
@@ -201,6 +217,7 @@ export async function crearProductoAction(
       precio_costo,
       tratamiento_iva,
       unidad_medida,
+      lleva_serie,
       imagen_url,
       thumbnail_url,
       grid_url,
@@ -245,12 +262,54 @@ export async function crearProductoAction(
       cantidad: stockBase,
     });
 
+    // Los IMEI van DESPUÉS de crear el producto y no lo voltean: un número
+    // repetido no puede impedir dar de alta el celular. Pero tampoco se
+    // calla: vuelve como aviso con los números que no entraron.
+    let aviso: string | null = null;
+    if (imeisIniciales.length > 0) {
+      if (!varianteUnica) {
+        aviso = "El producto se creó pero no se pudieron guardar los IMEI: cargalos desde la edición.";
+      } else {
+        const { data: unidades, error: errorUnidades } = await supabase
+          .from("unidades_serie")
+          .upsert(
+            imeisIniciales.map((imei) => ({
+              producto_variante_id: varianteUnica.id,
+              imei,
+              estado: "disponible",
+            })),
+            { onConflict: "negocio_id,imei", ignoreDuplicates: true },
+          )
+          .select("imei");
+
+        if (errorUnidades) {
+          console.error("[CREATE PRODUCT] IMEI iniciales:", errorUnidades);
+          aviso = "El producto se creó pero no se pudieron guardar los IMEI: cargalos desde la edición.";
+        } else {
+          const guardados = new Set((unidades ?? []).map((u) => u.imei as string));
+          const repetidos = imeisIniciales.filter((i) => !guardados.has(i));
+          if (repetidos.length > 0) {
+            aviso = `Estos IMEI ya estaban cargados en otro aparato y no se agregaron: ${repetidos.join(", ")}.`;
+          }
+        }
+      }
+      if (imeisIniciales.length > stockBase) {
+        aviso = [
+          aviso,
+          `Cargaste ${imeisIniciales.length} IMEI y el stock es ${stockBase}: revisá el stock.`,
+        ]
+          .filter(Boolean)
+          .join(" ");
+      }
+    }
+
     revalidatePath("/stock");
     revalidatePath("/store", "layout");
     invalidarCatalogo(negocioId);
     return {
       error: null,
       success: true,
+      aviso,
       producto: {
         id: nuevoProducto.id,
         nombre,

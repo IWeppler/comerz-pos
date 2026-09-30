@@ -265,3 +265,10 @@ AJUSTE de −$1.066.012 con impacto 0 que deja la Caja Grande en el conteo físi
 la dueña identifica una salida, se carga como egreso de la Caja Grande y se ACHICA
 el ajuste (reversa + re-emisión) — nunca un egreso además del ajuste. El detalle
 turno por turno: `git show 34fcf07:docs/auditoria-caja-el-nono-cacho-2026-09.md`.
+
+**30/9/2026** (`20260930130000`): un cambio de efectivo por transferencia de
+$85.000 del turno del 29/9 a la tarde no se cargó y el arqueo lo mostró como
+faltante (−96.020). Se registró como transferencia caja diaria → Caja Grande
+dentro del turno, y el ajuste se revirtió y se re-emitió por −11.020 (sin
+explicar). El cierre firmado no se tocó. Así se corrige un movimiento olvidado en
+un turno cerrado: reversa del ajuste, el movimiento en su fecha, ajuste nuevo.

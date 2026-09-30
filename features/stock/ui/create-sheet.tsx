@@ -18,6 +18,7 @@ import { ProductMediaSection } from "./create-product/product-media-section";
 import { ProductPriceSection } from "./create-product/product-price-section";
 import { ProductVariantsSection } from "./create-product/product-variants-section";
 import { ProductFiscalSection } from "./create-product/product-fiscal-section";
+import { ProductSerieSection } from "./create-product/product-serie-section";
 import { defaultsFiscalesPorRubro } from "@/shared/lib/fiscal-producto";
 import type { Rubro } from "@/entities/config/types";
 import { textoAtributosFaltantes } from "@/features/stock/utils/texto-atributos-faltantes";
@@ -130,6 +131,13 @@ export function CrearProductoSheet({
                 onShowInventoryChange={form.setShowInventory}
                 unidadMedida={defaultsFiscales.unidad_medida}
               />
+
+              {rubro === "electro" && (
+                <ProductSerieSection
+                  modo="alta"
+                  conVariantes={form.showVariants}
+                />
+              )}
 
               <ProductVariantsSection
                 showVariants={form.showVariants}

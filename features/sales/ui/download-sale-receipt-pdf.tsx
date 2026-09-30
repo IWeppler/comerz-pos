@@ -283,6 +283,20 @@ const ReceiptDocument = ({
                       .filter(Boolean)
                       .join(" · ")}
                   </Text>
+                  {/* Mismo criterio que ticket-printable.tsx: con este papel
+                      el cliente reclama la garantía del aparato. */}
+                  {item.imei && (
+                    <Text
+                      style={{
+                        fontSize: 9,
+                        color: "#334155",
+                        fontFamily: "Courier",
+                        marginTop: 2,
+                      }}
+                    >
+                      IMEI: {item.imei}
+                    </Text>
+                  )}
                 </View>
                 <Text style={[styles.colPrice, styles.rowText]}>
                   ${pu.toLocaleString("es-AR")}

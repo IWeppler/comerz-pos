@@ -147,7 +147,7 @@ export async function editarProductoAction(
   // sus inputs. Con `get()`, un producto al 10,5% volvería al default 21%
   // cada vez que alguien le corrige el precio. Es el mismo error que borraba
   // los datos fiscales de un cliente al guardar sin tocar el toggle.
-  const camposOpcionales: Record<string, string | null> = {};
+  const camposOpcionales: Record<string, string | boolean | null> = {};
   if (formData.has("marca")) {
     // Contra el catálogo, no tal cual viene: tipear "Popys" donde ya hay
     // "popys" tiene que guardar "popys". Sin esto el combobox sugiere bien y
@@ -170,6 +170,11 @@ export async function editarProductoAction(
     camposOpcionales.unidad_medida = normalizarUnidadMedida(
       formData.get("unidad_medida"),
     );
+  }
+  // La sección de IMEI solo manda el campo una vez que leyó el valor real:
+  // mientras carga, `has()` da false y no se pisa nada.
+  if (formData.has("lleva_serie")) {
+    camposOpcionales.lleva_serie = formData.get("lleva_serie") === "true";
   }
 
   // (a) Imágenes + cabecera del producto — corre siempre, sin importar lo
@@ -219,7 +224,10 @@ export async function editarProductoAction(
     id,
     negocioId,
     formData,
-    unidadMedida: camposOpcionales.unidad_medida ?? null,
+    unidadMedida:
+      typeof camposOpcionales.unidad_medida === "string"
+        ? camposOpcionales.unidad_medida
+        : null,
   });
 
   revalidatePath("/stock");
@@ -504,7 +512,7 @@ async function actualizarImagenesYCabecera(
     masters: File[];
     imagenesAEliminar: string[];
     /** Columnas de cabecera que solo se tocan si el form las mandó. */
-    camposOpcionales: Record<string, string | null>;
+    camposOpcionales: Record<string, string | boolean | null>;
     /** Para leer `imagenes_urls`, el camino nuevo en el que el navegador ya
      * subió las fotos a Storage y solo manda las URLs. */
     formData: FormData;

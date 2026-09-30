@@ -16,44 +16,74 @@ import type {
  * siempre — es el caso de toda la indumentaria y de los accesorios de
  * electro, y por eso la respuesta para ellas es simplemente ausencia de
  * clave, no un error.
+ *
+ * `llevaSerie` son las variantes cuyo PRODUCTO está marcado "lleva IMEI"
+ * (`productos.lleva_serie`). Con eso el POS advierte cuando una de ellas no
+ * tiene ninguna unidad cargada: sin la marca, un celular cargado a mano se
+ * vendía sin pedir nada y el ticket salía sin IMEI. Viaja acá y no en el
+ * catálogo del celular para no depender de que la copia local esté al día.
  */
 export async function getDisponibilidadUnidadesAction(
   varianteIds: string[],
-): Promise<{ error: string | null; disponibilidad: DisponibilidadPorVariante }> {
+): Promise<{
+  error: string | null;
+  disponibilidad: DisponibilidadPorVariante;
+  llevaSerie: string[];
+}> {
   const ids = [...new Set(varianteIds.filter(Boolean))];
-  if (ids.length === 0) return { error: null, disponibilidad: {} };
+  if (ids.length === 0) return { error: null, disponibilidad: {}, llevaSerie: [] };
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
   const disponibilidad: DisponibilidadPorVariante = {};
+  const llevaSerie: string[] = [];
 
   // En lotes: un `.in()` con demasiados ids arma una URL que el servidor
   // rechaza por longitud. Un carrito nunca llega a eso, pero el costo de
   // lotear es cero y evita un modo de falla silencioso.
   for (let i = 0; i < ids.length; i += 200) {
     const lote = ids.slice(i, i + 200);
-    const { data, error } = await supabase
-      .from("unidades_serie")
-      .select("producto_variante_id")
-      .in("producto_variante_id", lote)
-      .eq("estado", "disponible");
+    const [unidades, marcadas] = await Promise.all([
+      supabase
+        .from("unidades_serie")
+        .select("producto_variante_id")
+        .in("producto_variante_id", lote)
+        .eq("estado", "disponible"),
+      supabase
+        .from("producto_variantes")
+        .select("id, producto:productos!inner(lleva_serie)")
+        .in("id", lote)
+        .eq("producto.lleva_serie", true),
+    ]);
 
-    if (error) {
-      console.error("[UNIDADES SERIE] Error consultando disponibilidad:", error);
+    if (unidades.error) {
+      console.error(
+        "[UNIDADES SERIE] Error consultando disponibilidad:",
+        unidades.error,
+      );
       return {
         error: "No se pudo verificar las unidades con número de serie.",
         disponibilidad: {},
+        llevaSerie: [],
       };
     }
 
-    for (const row of data ?? []) {
+    for (const row of unidades.data ?? []) {
       const varianteId = row.producto_variante_id as string;
       disponibilidad[varianteId] = (disponibilidad[varianteId] ?? 0) + 1;
     }
+
+    // La marca solo alimenta una advertencia: si la consulta falla, se deja
+    // rastro y se sigue sin ella. Frenar el cobro por un aviso sería peor.
+    if (marcadas.error) {
+      console.error("[UNIDADES SERIE] Error consultando lleva_serie:", marcadas.error);
+    } else {
+      for (const row of marcadas.data ?? []) llevaSerie.push(row.id as string);
+    }
   }
 
-  return { error: null, disponibilidad };
+  return { error: null, disponibilidad, llevaSerie };
 }
 
 /**

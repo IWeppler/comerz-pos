@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Barcode, Loader2, ScanLine } from "lucide-react";
+import { AlertTriangle, Barcode, Loader2, ScanLine } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,6 +12,8 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { getUnidadesDisponiblesAction } from "@/features/sales/actions/get-unidades-serie";
+import { agregarUnidadSerieAction } from "@/features/stock/actions/unidades-serie";
+import { normalizarImei } from "@/entities/ventas/imei";
 import type {
   UnidadSeleccionada,
   UnidadSerieDisponible,
@@ -24,17 +26,35 @@ export interface LineaSerializada {
   variante: string;
 }
 
+/**
+ * Línea de un producto marcado "lleva IMEI" que NO tiene ninguna unidad
+ * cargada. No bloquea el cobro: se tipea el número acá (y queda registrado) o
+ * se vende sin IMEI a sabiendas.
+ */
+export interface LineaSinImei extends LineaSerializada {
+  cantidad: number;
+}
+
 interface SeleccionarUnidadesModalProps {
   /** El componente se monta solo cuando hay que elegir: no recibe `open`. */
   onCerrar: () => void;
   lineas: LineaSerializada[];
-  /** Se llama con una unidad por línea, en el mismo orden. */
-  onConfirmar: (seleccion: UnidadSeleccionada[]) => void;
+  lineasSinImei?: LineaSinImei[];
+  /**
+   * Se llama con una unidad por línea serializada (más las recién tipeadas).
+   * `creadas`: variantes a las que se les acaba de crear la unidad.
+   * `sinImei`: variantes que se venden sin IMEI por decisión de la vendedora.
+   */
+  onConfirmar: (
+    seleccion: UnidadSeleccionada[],
+    extra: { creadas: string[]; sinImei: string[] },
+  ) => void;
 }
 
 export function SeleccionarUnidadesModal({
   onCerrar,
   lineas,
+  lineasSinImei = [],
   onConfirmar,
 }: Readonly<SeleccionarUnidadesModalProps>) {
   // Arranca en true: el componente se monta justo para cargar, así el
@@ -48,6 +68,16 @@ export function SeleccionarUnidadesModal({
     Record<string, string>
   >({});
   const [filtro, setFiltro] = useState("");
+  // Líneas sin unidades: lo tipeado, lo aceptado "sin IMEI", y lo que ya se
+  // creó en la base en un intento anterior (para no volver a crearlo y
+  // chocar contra el índice único si otro número de la lista falló).
+  const [imeiTipeado, setImeiTipeado] = useState<Record<string, string>>({});
+  const [sinImei, setSinImei] = useState<Record<string, boolean>>({});
+  const [creadas, setCreadas] = useState<
+    Record<string, { unidadId: string; imei: string }>
+  >({});
+  const [guardando, setGuardando] = useState(false);
+  const [errorSinImei, setErrorSinImei] = useState<string | null>(null);
 
   const cargar = useCallback(async () => {
     try {
@@ -90,8 +120,11 @@ export function SeleccionarUnidadesModal({
   }, [cargar]);
 
   const todasElegidas = lineas.every((l) => elegidaPorVariante[l.varianteId]);
+  const sinImeiResueltas = lineasSinImei.every(
+    (l) => sinImei[l.varianteId] || normalizarImei(imeiTipeado[l.varianteId]),
+  );
 
-  const handleConfirmar = () => {
+  const handleConfirmar = async () => {
     const seleccion: UnidadSeleccionada[] = [];
     for (const linea of lineas) {
       const unidadId = elegidaPorVariante[linea.varianteId];
@@ -105,7 +138,55 @@ export function SeleccionarUnidadesModal({
         imei: unidad.imei,
       });
     }
-    onConfirmar(seleccion);
+
+    // Los IMEI tipeados se registran ANTES de cobrar, como unidades
+    // disponibles: la venta las marca vendidas por el camino de siempre. Si
+    // la venta después no se hace, el aparato queda con su número en stock,
+    // que es la verdad.
+    const creadasAhora = { ...creadas };
+    const aceptadasSinImei: string[] = [];
+    setErrorSinImei(null);
+    setGuardando(true);
+    try {
+      for (const linea of lineasSinImei) {
+        if (sinImei[linea.varianteId]) {
+          aceptadasSinImei.push(linea.varianteId);
+          continue;
+        }
+        const imei = normalizarImei(imeiTipeado[linea.varianteId]);
+        if (creadasAhora[linea.varianteId]?.imei !== imei) {
+          const res = await agregarUnidadSerieAction(linea.varianteId, imei);
+          if (!res.ok) {
+            setErrorSinImei(`${linea.nombre}: ${res.error}`);
+            setCreadas(creadasAhora);
+            return;
+          }
+          creadasAhora[linea.varianteId] = {
+            unidadId: res.unidad.id,
+            imei: res.unidad.imei,
+          };
+        }
+        const creada = creadasAhora[linea.varianteId];
+        seleccion.push({
+          varianteId: linea.varianteId,
+          unidadId: creada.unidadId,
+          imei: creada.imei,
+        });
+      }
+    } catch {
+      setErrorSinImei("No se pudo guardar el IMEI. Revisá la conexión.");
+      setCreadas(creadasAhora);
+      return;
+    } finally {
+      setGuardando(false);
+    }
+
+    onConfirmar(seleccion, {
+      // Toda unidad creada en este modal existe en la base como disponible,
+      // aunque la línea se haya pasado después a "sin IMEI".
+      creadas: Object.keys(creadasAhora),
+      sinImei: aceptadasSinImei,
+    });
   };
 
   return (
@@ -114,11 +195,12 @@ export function SeleccionarUnidadesModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Barcode className="w-5 h-5 text-success" />
-            Elegí el aparato
+            {lineas.length > 0 ? "Elegí el aparato" : "Falta el IMEI"}
           </DialogTitle>
           <DialogDescription>
-            Estos productos se venden por número de serie. Seleccioná qué unidad
-            se lleva el cliente.
+            {lineas.length > 0
+              ? "Estos productos se venden por número de serie. Seleccioná qué unidad se lleva el cliente."
+              : "Estos productos llevan IMEI y no tienen ninguno cargado. Sin él, el ticket sale sin IMEI."}
           </DialogDescription>
         </DialogHeader>
 
@@ -135,15 +217,17 @@ export function SeleccionarUnidadesModal({
               </p>
             )}
 
-            <div className="relative">
-              <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                value={filtro}
-                onChange={(e) => setFiltro(e.target.value)}
-                placeholder="Escaneá o tipeá un IMEI para filtrar"
-                className="pl-9"
-              />
-            </div>
+            {lineas.length > 0 && (
+              <div className="relative">
+                <ScanLine className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  value={filtro}
+                  onChange={(e) => setFiltro(e.target.value)}
+                  placeholder="Escaneá o tipeá un IMEI para filtrar"
+                  className="pl-9"
+                />
+              </div>
+            )}
 
             {lineas.map((linea) => {
               const unidades = unidadesPorVariante[linea.varianteId] ?? [];
@@ -222,6 +306,79 @@ export function SeleccionarUnidadesModal({
               );
             })}
 
+            {lineasSinImei.map((linea) => {
+              const unaPorLinea = linea.cantidad === 1;
+              const aceptada = Boolean(sinImei[linea.varianteId]);
+              return (
+                <div
+                  key={linea.varianteId}
+                  className="border border-warning/40 rounded-xl overflow-hidden"
+                >
+                  <div className="bg-warning/10 px-3 py-2 flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-warning shrink-0 mt-0.5" />
+                    <div>
+                      <div className="text-sm font-semibold">{linea.nombre}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {linea.variante} · sin IMEI cargado
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {unaPorLinea ? (
+                      <Input
+                        value={imeiTipeado[linea.varianteId] ?? ""}
+                        onChange={(e) => {
+                          const valor = e.target.value;
+                          setImeiTipeado((prev) => ({
+                            ...prev,
+                            [linea.varianteId]: valor,
+                          }));
+                        }}
+                        onKeyDown={(e) => {
+                          // El lector de códigos termina con Enter: no tiene
+                          // que confirmar la venta a mitad de carga.
+                          if (e.key === "Enter") e.preventDefault();
+                        }}
+                        placeholder="Escaneá o escribí el IMEI"
+                        className="h-11 font-mono text-sm"
+                        disabled={aceptada}
+                        autoComplete="off"
+                      />
+                    ) : (
+                      // Una unidad serializada va en una línea de cantidad 1
+                      // (create-sale lo exige): con cantidad 2 no hay a qué
+                      // renglón atar el segundo número.
+                      <p className="text-xs text-muted-foreground">
+                        Para registrar el IMEI, cargá una línea por aparato
+                        (cantidad 1).
+                      </p>
+                    )}
+                    <label className="flex items-center gap-2 min-h-11 text-sm cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4"
+                        checked={aceptada}
+                        onChange={(e) => {
+                          const marcado = e.target.checked;
+                          setSinImei((prev) => ({
+                            ...prev,
+                            [linea.varianteId]: marcado,
+                          }));
+                        }}
+                      />
+                      Vender sin IMEI
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+
+            {errorSinImei && (
+              <p className="text-xs text-danger border border-danger/20 bg-danger/10 rounded-lg px-3 py-2">
+                {errorSinImei}
+              </p>
+            )}
+
             <div className="flex justify-end gap-2 pt-2 border-t border-border">
               <Button
                 type="button"
@@ -233,10 +390,11 @@ export function SeleccionarUnidadesModal({
               </Button>
               <Button
                 type="button"
-                onClick={handleConfirmar}
-                disabled={!todasElegidas}
+                onClick={() => void handleConfirmar()}
+                disabled={!todasElegidas || !sinImeiResueltas || guardando}
               >
-                Confirmar unidades
+                {guardando && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                {lineas.length > 0 ? "Confirmar unidades" : "Continuar"}
               </Button>
             </div>
           </div>

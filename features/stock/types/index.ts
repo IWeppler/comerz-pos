@@ -64,4 +64,7 @@ export type ProductActionState = {
   error: string | null;
   success: boolean;
   producto?: ProductoCreado;
+  /** El producto se creó, pero algo accesorio no (p. ej. un IMEI repetido).
+   * No es un error del alta: se muestra como advertencia. */
+  aviso?: string | null;
 };

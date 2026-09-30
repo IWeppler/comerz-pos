@@ -315,6 +315,11 @@ export function TicketSheet({
                                 </span>
                               )}
                             </p>
+                            {item.imei && (
+                              <p className="font-mono text-xs text-muted-foreground mt-0.5">
+                                IMEI: {item.imei}
+                              </p>
+                            )}
                           </div>
                           <p className="font-mono text-sm font-medium text-foreground shrink-0">
                             {formatTicketMoney(precioUnidad * item.cantidad)}

@@ -39,6 +39,7 @@ export function buildWhatsappMessage(
   ticket.items.forEach((item) => {
     const precioUnitario = item.precioUnitario || item.precio || 0;
     mensaje += `${item.cantidad}x ${item.nombre} (${item.variante})\n`;
+    if (item.imei) mensaje += `   IMEI: ${item.imei}\n`;
     mensaje += `   ${formatTicketMoney(precioUnitario * item.cantidad)}\n`;
   });
 

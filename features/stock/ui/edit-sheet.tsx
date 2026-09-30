@@ -68,6 +68,7 @@ import { ProductVariantsSection } from "./create-product/product-variants-sectio
 import { ProductFiscalSection } from "./create-product/product-fiscal-section";
 import { ProductListasSection } from "./create-product/product-listas-section";
 import { ProductPresentacionesSection } from "./create-product/product-presentaciones-section";
+import { ProductSerieSection } from "./create-product/product-serie-section";
 import { ShareButton } from "@/shared/components/share-button";
 import {
   construirUrlProducto,
@@ -908,6 +909,19 @@ function EditProductForm({
             defaultStock={producto.stock?.[0]?.cantidad || 0}
             unidadMedida={producto.unidad_medida}
           />
+
+          {/* Solo en electro: una remera no tiene IMEI y la sección sería
+              ruido en el formulario de todos los demás rubros. */}
+          {rubro === "electro" && (
+            <ProductSerieSection
+              modo="edicion"
+              productoId={producto.id}
+              variantes={(producto.producto_variantes ?? []).map((v) => ({
+                id: v.id,
+                nombre_display: v.nombre_display,
+              }))}
+            />
+          )}
 
           <ProductVariantsSection
             showVariants={showVariants}
