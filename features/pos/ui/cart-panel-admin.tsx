@@ -29,7 +29,11 @@ import { useVentasPendientesStore } from "@/shared/store/ventas-pendientes-store
 import { useCajaModalStore } from "@/shared/store/caja-modal-store";
 import { esErrorDeRed } from "@/shared/lib/error-de-red";
 import { getDisponibilidadUnidadesAction } from "@/features/sales/actions/get-unidades-serie";
-import { SeleccionarUnidadesModal } from "./seleccionar-unidades-modal";
+import {
+  SeleccionarUnidadesModal,
+  aparatosRequeridos,
+  imeisPorVariante,
+} from "./seleccionar-unidades-modal";
 import type {
   DisponibilidadPorVariante,
   UnidadSeleccionada,
@@ -244,17 +248,6 @@ export function CartPanelAdmin({
     );
   }, [disponibilidadUnidades, varianteIdsCarrito]);
 
-  // Una unidad elegida deja de valer si esa línea salió del carrito. Se
-  // filtra al leer en vez de limpiarse por efecto, para no encadenar un
-  // render extra cada vez que cambia el carrito.
-  const unidadesElegidas = useMemo(
-    () =>
-      unidadesElegidasRaw.filter((u) =>
-        variantesSerializadas.has(u.varianteId),
-      ),
-    [unidadesElegidasRaw, variantesSerializadas],
-  );
-
   const lineasSerializadas = useMemo(
     () =>
       items
@@ -263,15 +256,44 @@ export function CartPanelAdmin({
           varianteId: i.varianteId as string,
           nombre: i.nombre,
           variante: i.variante,
+          cantidad: i.cantidad,
         })),
     [items, variantesSerializadas],
   );
 
-  const imeiPorVariante = useMemo(
+  /** Cuántos aparatos hay que elegir en cada línea serializada: uno por
+   * unidad vendida, hasta los que tienen IMEI (mismo criterio que el server). */
+  const aparatosPorVariante = useMemo(
     () =>
-      Object.fromEntries(unidadesElegidas.map((u) => [u.varianteId, u.imei])),
-    [unidadesElegidas],
+      Object.fromEntries(
+        lineasSerializadas.map((l) => [
+          l.varianteId,
+          aparatosRequeridos(l.cantidad, disponibilidadUnidades[l.varianteId] ?? 0),
+        ]),
+      ),
+    [lineasSerializadas, disponibilidadUnidades],
   );
+
+  // Una unidad elegida deja de valer si esa línea salió del carrito, y sobran
+  // las que exceden la cantidad si la bajaron después de elegir (2 aparatos
+  // elegidos y la línea pasó a 1: el ticket no puede decir dos IMEI). Se
+  // filtra al leer en vez de limpiarse por efecto, para no encadenar un
+  // render extra cada vez que cambia el carrito.
+  const unidadesElegidas = useMemo(() => {
+    const tomadas: Record<string, number> = {};
+    return unidadesElegidasRaw.filter((u) => {
+      const tope = aparatosPorVariante[u.varianteId] ?? 0;
+      const ya = tomadas[u.varianteId] ?? 0;
+      if (ya >= tope) return false;
+      tomadas[u.varianteId] = ya + 1;
+      return true;
+    });
+  }, [unidadesElegidasRaw, aparatosPorVariante]);
+
+  /** Los IMEI de cada línea, juntos: con dos aparatos el ticket dice los dos. */
+  const imeiPorVariante = useMemo(() => imeisPorVariante(unidadesElegidas), [
+    unidadesElegidas,
+  ]);
 
   /** Líneas de productos que llevan IMEI y no tienen ninguna unidad cargada:
    * se venderían sin número y el ticket saldría sin IMEI. */
@@ -1443,20 +1465,30 @@ export function CartPanelAdmin({
       montoAnticipoModal !== undefined ? montoAnticipoModal : sumaPagos;
 
     const unidadesParaVenta = unidadesOverride ?? unidadesElegidas;
-    const imeisParaVenta = Object.fromEntries(
-      unidadesParaVenta.map((u) => [u.varianteId, u.imei]),
-    );
+    const imeisParaVenta = imeisPorVariante(unidadesParaVenta);
+    const aparatosElegidos: Record<string, number> = {};
+    for (const u of unidadesParaVenta) {
+      aparatosElegidos[u.varianteId] = (aparatosElegidos[u.varianteId] ?? 0) + 1;
+    }
     const aceptadasSinImei = new Set(
       opciones?.sinImeiAceptadas ?? sinImeiAceptadas,
     );
 
     // Antes que cualquier otra validación: si hay líneas serializadas sin
-    // aparato elegido, se abre el modal y no se cobra nada. El server hace
-    // el mismo chequeo (esto es solo la UX; la regla vive en create-sale).
-    // En el mismo modal se advierte por los productos que llevan IMEI y no
-    // tienen ninguno cargado; esos no bloquean, se aceptan explícitamente.
+    // todos sus aparatos elegidos, se abre el modal y no se cobra nada. El
+    // server hace el mismo chequeo (esto es solo la UX; la regla vive en
+    // create-sale). En el mismo modal se advierte por los productos que
+    // llevan IMEI y no tienen ninguno cargado; esos no bloquean, se aceptan
+    // explícitamente. Si la selección llega del modal, el modal ya exigió
+    // todos los aparatos (y la disponibilidad de este closure todavía no
+    // cuenta los IMEI recién tipeados ahí).
     if (
-      lineasSerializadas.some((l) => !imeisParaVenta[l.varianteId]) ||
+      (!unidadesOverride &&
+        lineasSerializadas.some(
+          (l) =>
+            (aparatosElegidos[l.varianteId] ?? 0) <
+            (aparatosPorVariante[l.varianteId] ?? 0),
+        )) ||
       lineasSinImei.some(
         (l) =>
           !imeisParaVenta[l.varianteId] && !aceptadasSinImei.has(l.varianteId),

@@ -919,7 +919,19 @@ function EditProductForm({
               variantes={(producto.producto_variantes ?? []).map((v) => ({
                 id: v.id,
                 nombre_display: v.nombre_display,
+                atributos: v.atributos ?? {},
               }))}
+              onVariantesCambiaron={() => {
+                // La grilla de este formulario todavía tiene la variante
+                // vieja: guardarlo ahora la volvería a crear. Se cierra y se
+                // recarga, igual que después de un guardado.
+                queryClient.invalidateQueries({ queryKey: queryKeys.catalogo });
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.stock.detalle(producto.id),
+                });
+                router.refresh();
+                onSaved();
+              }}
             />
           )}
 

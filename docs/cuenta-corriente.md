@@ -96,16 +96,64 @@ VENCIMIENTO, imputación guardada, desglose en el detalle del cliente).
   creado en la transacción en curso (`xmin`). `recibo_cobro_cc` lo relee para
   reimprimir; los cobros anteriores al 1/10/2026 no tienen recibo guardado.
 - Hoy la imputación es la AUTOMÁTICA (la misma que decide vencimiento y mora),
-  así nada se contradice. Etapa 2: vencimiento, mora y antigüedad leen
-  `cc_imputaciones` (con backfill `RECONSTRUIDA` y guard de que dan igual) y
-  todos los escritores del libro la mantienen (anular/devolver venta, anular o
-  editar manual, perdonar, ajustar, saldo a favor). Etapa 3: el cajero elige
-  qué tickets paga (`origen = 'MANUAL'`).
+  así nada se contradice. Las etapas 2 y 3 están abajo, en "Pendiente".
+- Estado de la etapa 1 (1/10/2026): migración APLICADA en prod; código en el
+  working tree (commit/deploy a cargo de Ignacio); falta el smoke test (un
+  cobro chico: modal por mes, recibo con "Este pago cancela", reimprimir).
+
+### Pendiente: etapa 2 — la imputación guardada pasa a mandar
+
+Objetivo: vencimiento, mora y antigüedad leen `cc_imputaciones` en vez de
+reconstruir el FIFO. Sin esto la etapa 3 no se puede hacer: una imputación
+manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
+- [ ] Backfill de los cobros anteriores al 1/10/2026 con `origen =
+      'RECONSTRUIDA'`, con la misma regla de `cc_deudas_vivas`, incluido el
+      saldo a favor consumido por compras posteriores. Guard: por cliente, lo
+      vivo según imputaciones = lo vivo según `cc_deudas_vivas`.
+- [ ] Decidir cómo se imputa el saldo a favor cuando entra una compra fiada
+      (propuesta: trigger AFTER INSERT del DEBITO que le imputa los créditos sin
+      asignar, sin tocar `registrar_venta`).
+- [ ] Mantener las imputaciones en TODOS los escritores del libro: anular y
+      devolver venta (lo imputado a ese ticket queda libre = a favor, coherente
+      con "lo ya pagado queda a favor"), anular/editar movimiento manual,
+      `corregir_metodo_pago_cobro_cc` (no cambia montos), perdonar deuda,
+      `ajustar_saldo_cliente`, consumo de saldo a favor en el POS. Buscar los
+      escritores siguiendo el código, no la UI.
+- [ ] Reescribir `cc_deudas_vivas` para que lea lo imputado (vivo = monto −
+      Σ aplicado), y desde ahí `recalcular_vencimiento_cc`. Guard antes/después
+      para TODOS los clientes: el mismo resultado.
+- [ ] Unificar `deuda_cc_vencida` (base de la mora; hoy trata el recargo como
+      deuda aparte con la fecha del cobro) y `antiguedad_saldo_cc` sobre la
+      misma función. Rebackfill de `fecha_vencimiento_deuda` si cambia.
+- [ ] Revisar el espejo TS `imputar-pagos-fifo.ts` (41 tests): queda como
+      propuesta del modal, no como regla.
+- [ ] Controles de siempre: Vero duarte (Evens) sigue vencida; Angi Levis
+      (Estilo Bonito) con su vencimiento correcto.
+
+### Pendiente: etapa 3 — el cajero elige qué paga
+
+- [ ] Modal de cobro: los tickets de cada mes con checkbox y monto editable,
+      pre-marcados en orden (la propuesta automática). "$90 entre estas 4
+      compras": lo no cubierto queda como resto en cada una.
+- [ ] `registrar_cobro_cc` recibe `p_imputaciones [{debito_id, monto}]`; el
+      server valida bajo el lock del cliente que cada parte ≤ lo vivo de ese
+      ticket y que la suma = monto base (+ mora). Sin imputaciones, la
+      automática. `origen = 'MANUAL'`.
+- [ ] La mora: decidir a qué ticket se carga cuando el cajero NO paga el más
+      viejo (hoy va al ticket de capital más antiguo vivo).
+- [ ] Recibo y detalle sin cambios de forma (ya leen `cc_imputaciones`).
+
+### Pendiente: vencimientos cacheados desfasados
+
+- [ ] 3 clientes con deuda real con `fecha_vencimiento_deuda` distinta de la
+      regla (Librería Colores +13 días, Evens −1 día, Estilo Bonito sin
+      vencimiento = sin mora): decidir con cada dueña antes de re-cachear.
+- [ ] Encontrar qué escritor deja el cache sin recalcular (la venta fiada de
+      Estilo Bonito del 19/9 quedó sin vencimiento).
 - **Vencimientos cacheados desfasados de antes** (medido el 1/10/2026, no
   tocados por la migración): 58 clientes con `fecha_vencimiento_deuda` distinta
-  de la regla. 48 sin deuda con fecha vieja, 7 del Kiosco Demo sin vencimiento,
-  y 3 con deuda real (Librería Colores +13 días, Evens −1 día, Estilo Bonito
-  sin vencimiento = sin mora). Pendiente: decidir y encontrar quién lo escribe.
+  de la regla. 48 no deben nada y tienen una fecha vieja, 7 son del Kiosco Demo
+  y no tienen vencimiento, y 3 tienen deuda real (ver "Pendiente" abajo).
 
 ## Mora
 

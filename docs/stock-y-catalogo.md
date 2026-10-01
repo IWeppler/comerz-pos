@@ -127,17 +127,47 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   del producto (`features/stock/actions/unidades-serie.ts`) o tipeada en el POS al
   vender. Nace `disponible` y NO mueve stock: el aparato ya está contado en la
   variante. Solo se borra si está disponible y nunca se vendió.
-- **Qué exige el server no cambió**: `create-sale` pide unidad solo si la variante
-  tiene disponibles. `productos.lleva_serie` (`20260930120000`) alimenta una
+- **Qué exige el server**: `create-sale` pide una unidad por aparato vendido, hasta
+  las disponibles de la variante (con 1 con IMEI y 2 vendidos, el segundo sale sin
+  número). `productos.lleva_serie` (`20260930120000`) alimenta una
   ADVERTENCIA en el POS cuando una línea de un producto marcado no tiene ninguna
   unidad: se tipea el IMEI ahí o se vende "sin IMEI" a sabiendas. Por producto y
   no por rubro (un electro vende fundas). El trigger `unidades_serie_marca_producto`
   lo prende al cargar cualquier unidad.
 - **18/8/2026 se perdieron 4 IMEI de ClickTostado**: la edición de variantes
-  borraba y recreaba, y el FK estaba en CASCADE. Hoy la edición actualiza en lugar
-  (el id se conserva) y el FK es RESTRICT: cambiar los atributos de una variante
-  con IMEI falla con error de FK en vez de borrar la garantía. El 30/9 se recuperó
-  el del A7 Pro desde `ordenes_items.raw_imei`.
+  borraba y recreaba, y el FK estaba en CASCADE. Hoy el FK es RESTRICT. OJO: la
+  grilla de edición conserva el id solo si los ATRIBUTOS no cambian
+  (`guardar_variantes_producto` reconoce por `atributos_comparables`); cambiar un
+  valor es para ella borrar y crear. Por eso: (1) borrar/renombrar una variante con
+  IMEI falla ANTES con `VARIANTE_CON_IMEI` y el nombre; (2) dos filas que quedan
+  iguales fallan con `VARIANTES_REPETIDAS` (antes un `CONTINUE` tiraba el stock de
+  la segunda); (3) el error de tipeo se corrige con **"Corregir" en la sección de
+  IMEI** → `corregir_variante` (`20261001150000`): renombra conservando el id, o si
+  choca con otra variante pregunta y la FUSIONA (reapunta IMEI, ventas,
+  devoluciones, presupuestos y reservas ANTES de borrar, suma el stock con origen
+  `EDICION_VARIANTES`, escribe el espejo). SECURITY DEFINER con
+  `stock.editar_producto`. Frena si precio/costo difieren. Caso que lo originó: A56
+  "12/257" de ClickTostado, 1/10/2026 (`20261001130000`). El 30/9 se recuperó
+  el IMEI del A7 Pro desde `ordenes_items.raw_imei`; siguen perdidos los del A07,
+  A16 y Redmi Pad (este último tenía un EAN en la columna IMEI).
+- **Dos aparatos iguales en un ticket** (1/10/2026): el carrito los junta en una
+  línea de cantidad N; el modal pide un IMEI por unidad (hasta las que tienen
+  número) y create-sale graba un renglón de `ventas_items` por aparato
+  (`renglones-por-aparato.ts`: exacto porque precio y descuento son por unidad).
+  Stock, promo, factura y totales siguen con la línea entera. El formato del
+  payload (`[{varianteId, unidadId}]`) no cambió: los clientes viejos y la
+  outbox offline siguen andando.
+- **Remito: `REMITO_IMEI_REPETIDO`** (`20261001140000`): un IMEI dos veces en el
+  remito o ya cargado en el comercio frena la aprobación con los números. Antes
+  `on conflict do nothing` sumaba el stock sin crear la unidad. Va después del
+  guard de idempotencia (re-aprobar sigue devolviendo `ya_aprobada`).
+- **El IMEI sigue a la mercadería al devolver.** Anulación: por `venta_id`
+  (`devolver_unidades_venta`). Devolución parcial (desde el 1/10/2026): por
+  renglón, con `ventas_items.unidad_serie_id` (cada renglón con IMEI es un aparato),
+  en `registrar-devolucion.ts` junto al stock y afuera de la transacción (es
+  compensación: si falla, avisa). STOCK → `disponible`; BAJA → `baja`. UPDATE
+  condicional a `estado = 'vendido'` y a esta venta, con conteo de filas. Antes el
+  celular volvía al stock con su IMEI todavía `vendido` y el POS no lo ofrecía.
 
 ## Conciliación de remitos
 

@@ -14,6 +14,7 @@ import {
   quitarUnidadSerieAction,
 } from "../../actions/unidades-serie";
 import { getSerieDeProductoAction } from "../../actions/get-serie-producto";
+import { CorregirVarianteForm } from "./corregir-variante-form";
 
 /**
  * "Lleva IMEI / número de serie" y los números de cada aparato.
@@ -43,14 +44,29 @@ type ProductSerieSectionProps =
       modo: "edicion";
       productoId: string;
       /** Las variantes GUARDADAS: una recién agregada no tiene id todavía. */
-      variantes: { id: string; nombre_display: string }[];
+      variantes: VarianteFicha[];
+      /** Una variante se corrigió o se juntó con otra: el formulario quedó
+       * viejo y hay que recargarlo antes de que alguien lo guarde. */
+      onVariantesCambiaron: () => void;
     };
+
+type VarianteFicha = {
+  id: string;
+  nombre_display: string;
+  atributos: Record<string, string>;
+};
 
 export function ProductSerieSection(props: Readonly<ProductSerieSectionProps>) {
   if (props.modo === "alta") {
     return <SerieAlta conVariantes={props.conVariantes} />;
   }
-  return <SerieEdicion productoId={props.productoId} variantes={props.variantes} />;
+  return (
+    <SerieEdicion
+      productoId={props.productoId}
+      variantes={props.variantes}
+      onVariantesCambiaron={props.onVariantesCambiaron}
+    />
+  );
 }
 
 function Encabezado({
@@ -123,10 +139,13 @@ type UnidadFicha = { id: string; imei: string; estado: string };
 function SerieEdicion({
   productoId,
   variantes,
+  onVariantesCambiaron,
 }: Readonly<{
   productoId: string;
-  variantes: { id: string; nombre_display: string }[];
+  variantes: VarianteFicha[];
+  onVariantesCambiaron: () => void;
 }>) {
+  const [corrigiendo, setCorrigiendo] = useState<string | null>(null);
   const [cargado, setCargado] = useState(false);
   const [activo, setActivo] = useState(false);
   const [unidades, setUnidades] = useState<Record<string, UnidadFicha[]>>({});
@@ -210,14 +229,39 @@ function SerieEdicion({
             const disponibles = lista.filter((u) => u.estado === "disponible");
             return (
               <div key={v.id} className="space-y-2">
-                {variantes.length > 1 && (
-                  <p className="text-xs font-semibold text-foreground">
-                    {v.nombre_display}
-                    <span className="ml-2 font-normal text-muted-foreground">
-                      {disponibles.length} disponible
-                      {disponibles.length === 1 ? "" : "s"}
-                    </span>
-                  </p>
+                {(variantes.length > 1 || Object.keys(v.atributos).length > 0) && (
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-foreground">
+                      {v.nombre_display}
+                      <span className="ml-2 font-normal text-muted-foreground">
+                        {disponibles.length} disponible
+                        {disponibles.length === 1 ? "" : "s"}
+                      </span>
+                    </p>
+                    {/* Corregir un valor mal tipeado sin perder los IMEI: la
+                        grilla de abajo lo leería como borrar y crear. */}
+                    {Object.keys(v.atributos).length > 0 && corrigiendo !== v.id && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="h-11 px-2 text-xs text-muted-foreground shrink-0"
+                        onClick={() => setCorrigiendo(v.id)}
+                      >
+                        Corregir
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {corrigiendo === v.id && (
+                  <CorregirVarianteForm
+                    variante={v}
+                    onCancelar={() => setCorrigiendo(null)}
+                    onCorregida={() => {
+                      setCorrigiendo(null);
+                      onVariantesCambiaron();
+                    }}
+                  />
                 )}
 
                 {lista.length > 0 && (

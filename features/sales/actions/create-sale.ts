@@ -30,6 +30,7 @@ import {
   mensajeSaldoAFavorInsuficiente,
 } from "../lib/saldo-a-favor-venta";
 import { agruparStockLegacy } from "../lib/agrupar-stock-legacy";
+import { renglonesPorAparato } from "../lib/renglones-por-aparato";
 import {
   cantidadBase,
   costoBaseDePresentacion,
@@ -878,53 +879,66 @@ export async function registrarVentaAction(
     }
   }
 
-  const unidadPorVariante = new Map(
-    unidadesElegidas
-      .filter((u) => u?.varianteId && u?.unidadId)
-      .map((u) => [u.varianteId, u.unidadId]),
-  );
+  // Las unidades elegidas, agrupadas por variante y sin repetir. Puede haber
+  // VARIAS por variante: dos A56 iguales son una línea de cantidad 2 en el
+  // carrito y dos unidades acá (hasta el 1/10/2026 era una sola por variante
+  // y vender dos aparatos iguales en un ticket era imposible).
+  const unidadesPorVariante = new Map<string, string[]>();
+  for (const u of unidadesElegidas) {
+    if (!u?.varianteId || !u?.unidadId) continue;
+    const lista = unidadesPorVariante.get(u.varianteId) ?? [];
+    if (!lista.includes(u.unidadId)) lista.push(u.unidadId);
+    unidadesPorVariante.set(u.varianteId, lista);
+  }
 
   // Pares (unidad, variante) que se le pasan a la RPC. Van con la variante
   // para que la propia RPC verifique que la unidad pertenece a la línea:
   // el id de unidad viene del cliente y no se usa sin contrastar.
   const unidadesAVender: { unidad_id: string; variante_id: string }[] = [];
 
-  for (const item of itemsResueltos) {
+  /** Qué unidades sale en cada renglón, por índice de `itemsResueltos`.
+   * Solo las que realmente entran a la venta: lo que mandó el cliente puede
+   * traer de más (una unidad para una variante que no es serializada). */
+  const unidadesPorRenglon = new Map<number, string[]>();
+
+  for (const [indice, item] of itemsResueltos.entries()) {
     const varianteId = item.varianteId;
     if (!varianteId) continue;
 
     const disponibles = disponiblesPorVariante.get(varianteId) ?? 0;
     if (disponibles === 0) continue;
 
-    const unidadId = unidadPorVariante.get(varianteId);
-    if (!unidadId) {
+    // Por aparato: la cantidad de una línea serializada es entera. Con
+    // 1,5 no hay forma de decir qué aparato salió.
+    if (!Number.isInteger(item.cantidad) || item.cantidad < 1) {
       return {
-        error: `"${item.variante}" se vende por número de serie: elegí la unidad antes de confirmar.`,
+        error: `"${item.variante}" se vende por número de serie: la cantidad tiene que ser un número entero.`,
         success: false,
       };
     }
 
-    // Una unidad por línea. Vender dos aparatos del mismo modelo son dos
-    // líneas, cada una con su IMEI — con una sola línea de cantidad 2 no
-    // habría a qué unidad atar el segundo ventas_items, y la trazabilidad
-    // por aparato es justamente el punto de todo esto.
-    if (item.cantidad !== 1) {
+    // Se exige un aparato por unidad vendida, hasta lo que haya con IMEI. Si
+    // hay 1 con IMEI y se venden 2, el segundo sale sin número: es mercadería
+    // que entró sin IMEI y el server no la inventa.
+    const requeridas = Math.min(item.cantidad, disponibles);
+    const pool = unidadesPorVariante.get(varianteId) ?? [];
+    const tomadas = pool.splice(0, requeridas);
+
+    if (tomadas.length < requeridas) {
       return {
-        error: `"${item.variante}" se vende por número de serie: cargá una línea por aparato (cantidad 1).`,
+        error:
+          requeridas === 1
+            ? `"${item.variante}" se vende por número de serie: elegí la unidad antes de confirmar.`
+            : `"${item.variante}" se vende por número de serie: elegí ${requeridas} aparatos (elegiste ${tomadas.length}).`,
         success: false,
       };
     }
 
-    unidadesAVender.push({ unidad_id: unidadId, variante_id: varianteId });
+    unidadesPorRenglon.set(indice, tomadas);
+    for (const unidadId of tomadas) {
+      unidadesAVender.push({ unidad_id: unidadId, variante_id: varianteId });
+    }
   }
-
-  /** Solo las unidades que realmente entran a la venta. `unidadPorVariante`
-   * es lo que mandó el cliente y puede traer de más (una unidad para una
-   * variante que no es serializada); esto es lo que se marca y lo que se
-   * enlaza después en ventas_items. */
-  const unidadesVendidasPorVariante = new Map(
-    unidadesAVender.map((u) => [u.variante_id, u.unidad_id]),
-  );
 
   // --- 0ter. EL DESCUENTO, RECALCULADO SERVER-SIDE ---
   //
@@ -1071,6 +1085,16 @@ export async function registrarVentaAction(
       presentacion: item.presentacion,
     });
   }
+
+  // Un renglón con aparatos se graba como un renglón por aparato (ver
+  // `renglones-por-aparato.ts`). Se arma ACÁ, antes de tocar stock o
+  // unidades: si la cuenta no cierra, tira sin nada que revertir.
+  // `itemsProcesados` está alineado 1 a 1 con `itemsResueltos`, que es el
+  // índice de `unidadesPorRenglon`.
+  const renglonesGrabables = renglonesPorAparato(
+    itemsProcesados,
+    unidadesPorRenglon,
+  );
 
   // --- 1bis. TOTAL, PAGOS Y REGLAS DE CUENTA CORRIENTE ---
   // Se valida ACÁ, antes de tocar stock — así una venta rechazada por
@@ -1700,7 +1724,7 @@ export async function registrarVentaAction(
   // serializadas, que ya son atómicos por su cuenta. Si la RPC falla, se
   // revierten los dos acá: es el mismo camino que usan todos los cortes de
   // arriba, y ahora no queda ningún punto entre medio.
-  const insertItems = itemsProcesados.map((item) => ({
+  const insertItems = renglonesGrabables.map(({ item, cantidad, unidadSerieId }) => ({
     producto_id: item.productoId,
     variante: item.variante,
     // La variante vendida, congelada en el renglón. Es por acá que la
@@ -1709,13 +1733,11 @@ export async function registrarVentaAction(
     // renombró después de la venta.
     variante_id: item.varianteId,
     // Cierra la cadena venta > ventas_items > unidad_serie > variante.
-    // Se lee de `unidadesVendidasPorVariante`, no del payload del cliente:
-    // solo se enlaza la unidad que la RPC efectivamente marcó como vendida.
+    // Sale de `unidadesPorRenglon`, no del payload del cliente: solo se
+    // enlaza la unidad que la RPC efectivamente marcó como vendida.
     // NULL en todo lo no serializado, que es el caso normal.
-    unidad_serie_id: item.varianteId
-      ? (unidadesVendidasPorVariante.get(item.varianteId) ?? null)
-      : null,
-    cantidad: item.cantidad,
+    unidad_serie_id: unidadSerieId,
+    cantidad,
     precio_unitario: item.precioUnitario,
     precio_costo: item.precioCosto,
     descuento_monto: item.descuentoMonto,

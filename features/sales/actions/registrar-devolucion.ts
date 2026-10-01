@@ -270,7 +270,7 @@ async function moverStock(
 
   const { data: items } = await supabase
     .from("ventas_items")
-    .select("id, producto_id, variante")
+    .select("id, producto_id, variante, unidad_serie_id")
     .eq("venta_id", ventaId);
 
   const porItem = new Map(
@@ -278,10 +278,27 @@ async function moverStock(
   );
 
   const sinRestaurar: string[] = [];
+  const imeiSinLiberar: string[] = [];
 
   for (const renglon of renglones) {
     const item = porItem.get(renglon.venta_item_id as string);
     const nombre = (item?.variante as string) ?? "un renglón";
+
+    // El aparato con IMEI sigue al stock. Hasta el 1/10/2026 la devolución
+    // parcial no lo tocaba: el celular volvía al stock pero su IMEI quedaba
+    // 'vendido', así que el POS no lo podía volver a elegir (y la ficha decía
+    // que se lo había llevado el cliente). La anulación ya lo hacía por
+    // `venta_id` (`devolver_unidades_venta`); acá es por renglón, porque cada
+    // renglón con IMEI es un aparato (create-sale los graba de a uno).
+    if (item?.unidad_serie_id) {
+      const liberada = await devolverUnidadSerie(
+        supabase,
+        item.unidad_serie_id as string,
+        ventaId,
+        renglon.destino === "BAJA" ? "BAJA" : "STOCK",
+      );
+      if (!liberada) imeiSinLiberar.push(nombre);
+    }
 
     if (renglon.destino === "BAJA") {
       if (!item?.producto_id) continue;
@@ -336,6 +353,52 @@ async function moverStock(
       `No se pudo devolver al stock: ${sinRestaurar.join(", ")}. Cargalo a mano.`,
     );
   }
+  if (imeiSinLiberar.length > 0) {
+    avisos.push(
+      `No se pudo actualizar el IMEI de: ${imeiSinLiberar.join(", ")}. Revisalo en la ficha del producto.`,
+    );
+  }
 
   return avisos;
+}
+
+/**
+ * Devuelve UN aparato vendido en esta venta: a la vitrina ('disponible') o
+ * fuera de circulación ('baja'), con el mismo criterio que
+ * `devolver_unidades_venta` en la anulación.
+ *
+ * UPDATE condicional y conteo de filas: solo si la unidad sigue vendida EN
+ * ESTA venta. Una segunda llamada (doble click, reintento) no la toca dos
+ * veces, y un UPDATE filtrado por RLS vuelve 0 filas sin error. Es una
+ * compensación como el stock: si falla no voltea la devolución, avisa.
+ */
+async function devolverUnidadSerie(
+  supabase: ClienteServidor,
+  unidadId: string,
+  ventaId: string,
+  destino: "STOCK" | "BAJA",
+): Promise<boolean> {
+  const cambios =
+    destino === "STOCK"
+      ? { estado: "disponible", fecha_venta: null, venta_id: null }
+      : { estado: "baja" };
+
+  const { data, error } = await supabase
+    .from("unidades_serie")
+    .update(cambios)
+    .eq("id", unidadId)
+    .eq("venta_id", ventaId)
+    .eq("estado", "vendido")
+    .select("id");
+
+  if (error || !data || data.length === 0) {
+    console.error("[DEVOLUCION] No se pudo devolver la unidad serializada:", {
+      unidadId,
+      ventaId,
+      destino,
+      error,
+    });
+    return false;
+  }
+  return true;
 }

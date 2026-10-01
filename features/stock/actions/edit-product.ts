@@ -995,6 +995,32 @@ async function procesarVariantes(
     console.error("[EDIT PRODUCT ERROR]", error);
 
     const pgError = error as { code?: string; message?: string };
+    const mensaje = pgError?.message ?? "";
+
+    // Los dos frenos de la RPC (20261001140000). Antes el primero era un
+    // CONTINUE que tiraba el stock de la fila repetida sin avisar, y el
+    // segundo llegaba como el 23503 pelado de abajo.
+    if (mensaje.includes("VARIANTES_REPETIDAS")) {
+      return {
+        success: false,
+        error:
+          "Dos combinaciones quedaron con las mismas propiedades y una perdería su stock. " +
+          "Si querés juntar dos variantes que son la misma, dejá solo una con el stock sumado.",
+      };
+    }
+    if (
+      mensaje.includes("VARIANTE_CON_IMEI") ||
+      (pgError?.code === "23503" && mensaje.includes("unidades_serie"))
+    ) {
+      const nombres = mensaje.split("VARIANTE_CON_IMEI:")[1]?.trim();
+      return {
+        success: false,
+        error:
+          `${nombres ? `"${nombres}" tiene` : "Una variante tiene"} IMEI cargados: no se puede borrar ni cambiarle las propiedades, ` +
+          "porque esos números son la garantía de cada aparato. Los disponibles se pueden quitar desde la sección de IMEI; " +
+          "si alguno ya se vendió, la variante tiene que quedar.",
+      };
+    }
 
     if (pgError?.code === "42501") {
       return {

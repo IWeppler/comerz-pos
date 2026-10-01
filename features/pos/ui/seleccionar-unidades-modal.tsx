@@ -24,6 +24,8 @@ export interface LineaSerializada {
   varianteId: string;
   nombre: string;
   variante: string;
+  /** Una línea de cantidad 2 son dos aparatos: se elige uno por unidad. */
+  cantidad: number;
 }
 
 /**
@@ -31,8 +33,32 @@ export interface LineaSerializada {
  * cargada. No bloquea el cobro: se tipea el número acá (y queda registrado) o
  * se vende sin IMEI a sabiendas.
  */
-export interface LineaSinImei extends LineaSerializada {
-  cantidad: number;
+export type LineaSinImei = LineaSerializada;
+
+/**
+ * Cuántos aparatos hay que elegir en una línea: uno por unidad vendida, hasta
+ * los que tienen IMEI. Mismo criterio que create-sale (`requeridas`): si hay
+ * 1 con IMEI y se venden 2, el segundo sale sin número.
+ */
+export function aparatosRequeridos(cantidad: number, disponibles: number): number {
+  return Math.max(0, Math.min(Math.floor(cantidad), disponibles));
+}
+
+/** Los IMEI elegidos de cada variante, juntos ("356…, 357…"): una línea de
+ * dos aparatos los muestra a los dos en el carrito y en el ticket. */
+export function imeisPorVariante(
+  unidades: UnidadSeleccionada[],
+): Record<string, string> {
+  const porVariante: Record<string, string[]> = {};
+  for (const u of unidades) {
+    (porVariante[u.varianteId] ??= []).push(u.imei);
+  }
+  return Object.fromEntries(
+    Object.entries(porVariante).map(([varianteId, imeis]) => [
+      varianteId,
+      imeis.join(", "),
+    ]),
+  );
 }
 
 interface SeleccionarUnidadesModalProps {
@@ -64,14 +90,16 @@ export function SeleccionarUnidadesModal({
   const [unidadesPorVariante, setUnidadesPorVariante] = useState<
     Record<string, UnidadSerieDisponible[]>
   >({});
-  const [elegidaPorVariante, setElegidaPorVariante] = useState<
-    Record<string, string>
+  // Las unidades elegidas de cada línea, en el orden en que se tocaron.
+  const [elegidasPorVariante, setElegidasPorVariante] = useState<
+    Record<string, string[]>
   >({});
   const [filtro, setFiltro] = useState("");
-  // Líneas sin unidades: lo tipeado, lo aceptado "sin IMEI", y lo que ya se
-  // creó en la base en un intento anterior (para no volver a crearlo y
-  // chocar contra el índice único si otro número de la lista falló).
-  const [imeiTipeado, setImeiTipeado] = useState<Record<string, string>>({});
+  // Líneas sin unidades: lo tipeado (un número por aparato), lo aceptado "sin
+  // IMEI", y lo que ya se creó en la base en un intento anterior (para no
+  // volver a crearlo y chocar contra el índice único si otro número falló).
+  // Las claves de `creadas` son `${varianteId}|${posición}`.
+  const [imeiTipeado, setImeiTipeado] = useState<Record<string, string[]>>({});
   const [sinImei, setSinImei] = useState<Record<string, boolean>>({});
   const [creadas, setCreadas] = useState<
     Record<string, { unidadId: string; imei: string }>
@@ -98,15 +126,18 @@ export function SeleccionarUnidadesModal({
       setUnidadesPorVariante(mapa);
       setError(primerError);
 
-      // Preselección FIFO: la primera disponible de cada línea. Es lo que
-      // el vendedor elige en el 90% de los casos y ahorra un clic por
-      // aparato; sigue pudiendo cambiarla si el cliente pide otro.
-      setElegidaPorVariante((previo) => {
+      // Preselección FIFO: las más antiguas de cada línea, tantas como
+      // aparatos lleva. Es lo que el vendedor elige en el 90% de los casos y
+      // ahorra un clic por aparato; sigue pudiendo cambiarlas si el cliente
+      // pide otro.
+      setElegidasPorVariante((previo) => {
         const siguiente = { ...previo };
-        for (const [varianteId, unidades] of Object.entries(mapa)) {
-          if (!siguiente[varianteId] && unidades.length > 0) {
-            siguiente[varianteId] = unidades[0].id;
-          }
+        for (const linea of lineas) {
+          const unidades = mapa[linea.varianteId] ?? [];
+          if (siguiente[linea.varianteId]?.length) continue;
+          siguiente[linea.varianteId] = unidades
+            .slice(0, aparatosRequeridos(linea.cantidad, unidades.length))
+            .map((u) => u.id);
         }
         return siguiente;
       });
@@ -119,24 +150,73 @@ export function SeleccionarUnidadesModal({
     cargar();
   }, [cargar]);
 
-  const todasElegidas = lineas.every((l) => elegidaPorVariante[l.varianteId]);
-  const sinImeiResueltas = lineasSinImei.every(
-    (l) => sinImei[l.varianteId] || normalizarImei(imeiTipeado[l.varianteId]),
-  );
+  const requeridasDe = (linea: LineaSerializada) =>
+    aparatosRequeridos(
+      linea.cantidad,
+      unidadesPorVariante[linea.varianteId]?.length ?? 0,
+    );
+
+  const todasElegidas = lineas.every((l) => {
+    const requeridas = requeridasDe(l);
+    return (
+      requeridas > 0 &&
+      (elegidasPorVariante[l.varianteId]?.length ?? 0) === requeridas
+    );
+  });
+
+  /** Una línea sin IMEI pide un número por aparato. Con una cantidad que no
+   * es entera (no debería pasar en un producto con IMEI) no hay qué tipear:
+   * solo se puede vender sin IMEI. */
+  const casillasSinImei = (linea: LineaSinImei) =>
+    Number.isInteger(linea.cantidad) ? linea.cantidad : 0;
+
+  const sinImeiResueltas = lineasSinImei.every((l) => {
+    if (sinImei[l.varianteId]) return true;
+    const casillas = casillasSinImei(l);
+    const tipeados = imeiTipeado[l.varianteId] ?? [];
+    return (
+      casillas > 0 &&
+      Array.from({ length: casillas }, (_, i) => normalizarImei(tipeados[i])).every(
+        Boolean,
+      )
+    );
+  });
+
+  const toggleUnidad = (linea: LineaSerializada, unidadId: string) => {
+    const requeridas = requeridasDe(linea);
+    setElegidasPorVariante((previo) => {
+      const actuales = previo[linea.varianteId] ?? [];
+      let siguientes: string[];
+      if (actuales.includes(unidadId)) {
+        siguientes = actuales.filter((id) => id !== unidadId);
+      } else if (actuales.length < requeridas) {
+        siguientes = [...actuales, unidadId];
+      } else {
+        // Ya están todas: tocar otra la cambia por la elegida hace más
+        // tiempo. Con un solo aparato es el comportamiento de siempre
+        // (elegir otro reemplaza al anterior).
+        siguientes = [...actuales.slice(1), unidadId];
+      }
+      return { ...previo, [linea.varianteId]: siguientes };
+    });
+  };
 
   const handleConfirmar = async () => {
     const seleccion: UnidadSeleccionada[] = [];
     for (const linea of lineas) {
-      const unidadId = elegidaPorVariante[linea.varianteId];
-      const unidad = unidadesPorVariante[linea.varianteId]?.find(
-        (u) => u.id === unidadId,
-      );
-      if (!unidad) return;
-      seleccion.push({
-        varianteId: linea.varianteId,
-        unidadId: unidad.id,
-        imei: unidad.imei,
-      });
+      const elegidas = elegidasPorVariante[linea.varianteId] ?? [];
+      if (elegidas.length !== requeridasDe(linea)) return;
+      for (const unidadId of elegidas) {
+        const unidad = unidadesPorVariante[linea.varianteId]?.find(
+          (u) => u.id === unidadId,
+        );
+        if (!unidad) return;
+        seleccion.push({
+          varianteId: linea.varianteId,
+          unidadId: unidad.id,
+          imei: unidad.imei,
+        });
+      }
     }
 
     // Los IMEI tipeados se registran ANTES de cobrar, como unidades
@@ -153,25 +233,37 @@ export function SeleccionarUnidadesModal({
           aceptadasSinImei.push(linea.varianteId);
           continue;
         }
-        const imei = normalizarImei(imeiTipeado[linea.varianteId]);
-        if (creadasAhora[linea.varianteId]?.imei !== imei) {
-          const res = await agregarUnidadSerieAction(linea.varianteId, imei);
-          if (!res.ok) {
-            setErrorSinImei(`${linea.nombre}: ${res.error}`);
-            setCreadas(creadasAhora);
-            return;
-          }
-          creadasAhora[linea.varianteId] = {
-            unidadId: res.unidad.id,
-            imei: res.unidad.imei,
-          };
+        const tipeados = imeiTipeado[linea.varianteId] ?? [];
+        const numeros = Array.from({ length: casillasSinImei(linea) }, (_, i) =>
+          normalizarImei(tipeados[i]),
+        );
+        // El mismo número dos veces fallaría recién en la base, con el primer
+        // aparato ya creado: se frena acá, antes de escribir nada.
+        if (new Set(numeros).size !== numeros.length) {
+          setErrorSinImei(`${linea.nombre}: hay un IMEI repetido.`);
+          return;
         }
-        const creada = creadasAhora[linea.varianteId];
-        seleccion.push({
-          varianteId: linea.varianteId,
-          unidadId: creada.unidadId,
-          imei: creada.imei,
-        });
+        for (const [posicion, imei] of numeros.entries()) {
+          const clave = `${linea.varianteId}|${posicion}`;
+          if (creadasAhora[clave]?.imei !== imei) {
+            const res = await agregarUnidadSerieAction(linea.varianteId, imei);
+            if (!res.ok) {
+              setErrorSinImei(`${linea.nombre}: ${res.error}`);
+              setCreadas(creadasAhora);
+              return;
+            }
+            creadasAhora[clave] = {
+              unidadId: res.unidad.id,
+              imei: res.unidad.imei,
+            };
+          }
+          const creada = creadasAhora[clave];
+          seleccion.push({
+            varianteId: linea.varianteId,
+            unidadId: creada.unidadId,
+            imei: creada.imei,
+          });
+        }
       }
     } catch {
       setErrorSinImei("No se pudo guardar el IMEI. Revisá la conexión.");
@@ -183,8 +275,9 @@ export function SeleccionarUnidadesModal({
 
     onConfirmar(seleccion, {
       // Toda unidad creada en este modal existe en la base como disponible,
-      // aunque la línea se haya pasado después a "sin IMEI".
-      creadas: Object.keys(creadasAhora),
+      // aunque la línea se haya pasado después a "sin IMEI". Una entrada por
+      // unidad: la variante se repite si se crearon varias.
+      creadas: Object.keys(creadasAhora).map((clave) => clave.split("|")[0]),
       sinImei: aceptadasSinImei,
     });
   };
@@ -236,18 +329,41 @@ export function SeleccionarUnidadesModal({
                     u.imei.toLowerCase().includes(filtro.trim().toLowerCase()),
                   )
                 : unidades;
+              const requeridas = requeridasDe(linea);
+              const elegidas = elegidasPorVariante[linea.varianteId] ?? [];
+              const sinNumero = Math.max(0, linea.cantidad - requeridas);
 
               return (
                 <div
                   key={linea.varianteId}
                   className="border border-border rounded-xl overflow-hidden"
                 >
-                  <div className="bg-muted/40 px-3 py-2">
-                    <div className="text-sm font-semibold">{linea.nombre}</div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {linea.variante}
+                  <div className="bg-muted/40 px-3 py-2 flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">{linea.nombre}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        {linea.variante}
+                      </div>
                     </div>
+                    {requeridas > 1 && (
+                      <span
+                        className={`text-[11px] font-semibold shrink-0 ${
+                          elegidas.length === requeridas
+                            ? "text-success"
+                            : "text-warning"
+                        }`}
+                      >
+                        {elegidas.length} de {requeridas} elegidos
+                      </span>
+                    )}
                   </div>
+                  {sinNumero > 0 && unidades.length > 0 && (
+                    <p className="px-3 py-2 text-[11px] text-warning border-b border-border">
+                      Se venden {linea.cantidad} y hay {unidades.length} con
+                      IMEI: {sinNumero === 1 ? "1 sale" : `${sinNumero} salen`}{" "}
+                      sin número.
+                    </p>
+                  )}
 
                   {unidades.length === 0 ? (
                     <p className="px-3 py-4 text-xs text-danger">
@@ -262,19 +378,14 @@ export function SeleccionarUnidadesModal({
                         </p>
                       )}
                       {filtradas.map((unidad, idx) => {
-                        const elegida =
-                          elegidaPorVariante[linea.varianteId] === unidad.id;
+                        const elegida = elegidas.includes(unidad.id);
                         return (
                           <button
                             key={unidad.id}
                             type="button"
-                            onClick={() =>
-                              setElegidaPorVariante((previo) => ({
-                                ...previo,
-                                [linea.varianteId]: unidad.id,
-                              }))
-                            }
-                            className={`w-full text-left px-3 py-2 flex items-center justify-between gap-3 transition-colors ${
+                            aria-pressed={elegida}
+                            onClick={() => toggleUnidad(linea, unidad.id)}
+                            className={`w-full text-left px-3 min-h-11 flex items-center justify-between gap-3 transition-colors ${
                               elegida ? "bg-success/10" : "hover:bg-muted/50"
                             }`}
                           >
@@ -307,7 +418,8 @@ export function SeleccionarUnidadesModal({
             })}
 
             {lineasSinImei.map((linea) => {
-              const unaPorLinea = linea.cantidad === 1;
+              const casillas = casillasSinImei(linea);
+              const tipeados = imeiTipeado[linea.varianteId] ?? [];
               const aceptada = Boolean(sinImei[linea.varianteId]);
               return (
                 <div
@@ -324,33 +436,41 @@ export function SeleccionarUnidadesModal({
                     </div>
                   </div>
                   <div className="p-3 space-y-2">
-                    {unaPorLinea ? (
-                      <Input
-                        value={imeiTipeado[linea.varianteId] ?? ""}
-                        onChange={(e) => {
-                          const valor = e.target.value;
-                          setImeiTipeado((prev) => ({
-                            ...prev,
-                            [linea.varianteId]: valor,
-                          }));
-                        }}
-                        onKeyDown={(e) => {
-                          // El lector de códigos termina con Enter: no tiene
-                          // que confirmar la venta a mitad de carga.
-                          if (e.key === "Enter") e.preventDefault();
-                        }}
-                        placeholder="Escaneá o escribí el IMEI"
-                        className="h-11 font-mono text-sm"
-                        disabled={aceptada}
-                        autoComplete="off"
-                      />
+                    {casillas > 0 ? (
+                      // Un número por aparato: create-sale parte la línea en
+                      // un renglón por IMEI.
+                      Array.from({ length: casillas }, (_, posicion) => (
+                        <Input
+                          key={posicion}
+                          value={tipeados[posicion] ?? ""}
+                          onChange={(e) => {
+                            const valor = e.target.value;
+                            setImeiTipeado((prev) => {
+                              const lista = [...(prev[linea.varianteId] ?? [])];
+                              lista[posicion] = valor;
+                              return { ...prev, [linea.varianteId]: lista };
+                            });
+                          }}
+                          onKeyDown={(e) => {
+                            // El lector de códigos termina con Enter: no tiene
+                            // que confirmar la venta a mitad de carga.
+                            if (e.key === "Enter") e.preventDefault();
+                          }}
+                          placeholder={
+                            casillas > 1
+                              ? `IMEI del aparato ${posicion + 1}`
+                              : "Escaneá o escribí el IMEI"
+                          }
+                          aria-label={`IMEI del aparato ${posicion + 1}`}
+                          className="h-11 font-mono text-sm"
+                          disabled={aceptada}
+                          autoComplete="off"
+                        />
+                      ))
                     ) : (
-                      // Una unidad serializada va en una línea de cantidad 1
-                      // (create-sale lo exige): con cantidad 2 no hay a qué
-                      // renglón atar el segundo número.
                       <p className="text-xs text-muted-foreground">
-                        Para registrar el IMEI, cargá una línea por aparato
-                        (cantidad 1).
+                        La cantidad no es entera: no hay a qué aparato atar
+                        cada número.
                       </p>
                     )}
                     <label className="flex items-center gap-2 min-h-11 text-sm cursor-pointer select-none">
