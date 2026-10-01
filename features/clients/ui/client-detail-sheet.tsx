@@ -48,6 +48,9 @@ import {
 import { PerdonarDeudaModal } from "./perdonar-deuda-modal";
 import { saldoAFavorDe } from "../lib/saldo-a-favor";
 import { construirMensajeDeuda } from "../lib/mensaje-deuda";
+import { agruparDeudaPorMes, type DeudaViva } from "../lib/deuda-por-mes";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
+import { DeudaPorMesLista } from "./deuda-por-mes-lista";
 import {
   linkWhatsapp,
   telefonoAWhatsapp,
@@ -108,7 +111,26 @@ export function ClientDetailSheet({
   const data: {
     movimientos: CuentaCorrienteMovimiento[];
     ventas: VentaResumen[];
-  } = queryData ?? { movimientos: [], ventas: [] };
+    deudas: DeudaViva[] | null;
+    pagosConRecibo: string[];
+  } = queryData ?? {
+    movimientos: [],
+    ventas: [],
+    deudas: null,
+    pagosConRecibo: [],
+  };
+
+  // Por mes de vencimiento, con el día comercial de hoy. Es la misma lista que
+  // ve la cajera en el modal de cobro.
+  const gruposDeuda = useMemo(
+    () =>
+      data.deudas ? agruparDeudaPorMes(data.deudas, diaComercial(new Date())) : [],
+    [data.deudas],
+  );
+  const pagosConRecibo = useMemo(
+    () => new Set(data.pagosConRecibo),
+    [data.pagosConRecibo],
+  );
 
   const stats = useMemo(() => {
     const totalComprado = data.ventas.reduce(
@@ -367,6 +389,7 @@ export function ClientDetailSheet({
                         cliente={cliente}
                         metodosPago={metodosPago}
                         recargoMoraEstimado={montoRecargo}
+                        gruposDeuda={gruposDeuda}
                         className="w-full md:w-auto order-3 md:order-2"
                       />
                       {lineaVencimiento && (
@@ -381,6 +404,43 @@ export function ClientDetailSheet({
                         </p>
                       )}
                     </div>
+
+                    {saldo > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold uppercase text-muted-foreground mb-3 border-b border-border/50 pb-2">
+                          Debe por mes
+                        </h3>
+                        {data.deudas === null ? (
+                          <p className="text-xs text-muted-foreground italic">
+                            No se pudo cargar el detalle por mes. El saldo de
+                            arriba es el correcto.
+                          </p>
+                        ) : (
+                          <DeudaPorMesLista grupos={gruposDeuda} />
+                        )}
+                        {/* El detalle sale del libro y el saldo de su caché:
+                            si no coinciden, se dice, no se esconde. */}
+                        {data.deudas !== null &&
+                          Math.abs(
+                            gruposDeuda.reduce((t, g) => t + g.monto, 0) - saldo,
+                          ) > 0.01 && (
+                            <p className="mt-2 text-[11px] text-warning">
+                              El detalle suma{" "}
+                              {formatearMoneda(
+                                gruposDeuda.reduce((t, g) => t + g.monto, 0),
+                              )}{" "}
+                              y el saldo dice {formatearMoneda(saldo)}: la
+                              cuenta tiene una diferencia para revisar.
+                            </p>
+                          )}
+                        {montoRecargo > 0 && (
+                          <p className="mt-2 text-[11px] text-danger">
+                            Al cobrar se suma {formatearMoneda(montoRecargo)} de
+                            recargo por mora.
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     <div>
                       <h3 className="text-sm font-semibold uppercase text-muted-foreground mb-3 border-b border-border/50 pb-2">
@@ -399,6 +459,9 @@ export function ClientDetailSheet({
                               isAdmin={isAdmin}
                               puedeCorregirCobro={puedeCorregirCobro}
                               metodosPago={metodosPago}
+                              tieneRecibo={
+                                !!mov.pago_id && pagosConRecibo.has(mov.pago_id)
+                              }
                             />
                           ))}
                         </div>

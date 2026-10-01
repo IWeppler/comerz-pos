@@ -9,6 +9,7 @@ import {
   CreditCard,
   Edit2,
   MoreVertical,
+  Printer,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/shared/ui/badge";
@@ -33,7 +34,11 @@ import { CuentaCorrienteMovimiento } from "@/entities/clientes/type";
 import { MetodoPago } from "@/entities/payments/types";
 import { getSupabaseRelation } from "@/entities/ventas/types";
 import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
-import { anularMovimientoManualAction } from "../actions/manage-clients";
+import {
+  anularMovimientoManualAction,
+  obtenerReciboCobroCCAction,
+} from "../actions/manage-clients";
+import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { EditMovimientoCCModal } from "./edit-movimiento-cc-modal";
 import { CorregirCobroCCModal } from "./corregir-cobro-cc-modal";
@@ -43,6 +48,8 @@ interface MovimientoCCCardProps {
   isAdmin: boolean;
   puedeCorregirCobro: boolean;
   metodosPago: MetodoPago[];
+  /** El cobro tiene recibo guardado (desde el 1/10/2026): se puede reimprimir. */
+  tieneRecibo?: boolean;
 }
 
 export function MovimientoCCCard({
@@ -50,6 +57,7 @@ export function MovimientoCCCard({
   isAdmin,
   puedeCorregirCobro,
   metodosPago,
+  tieneRecibo = false,
 }: Readonly<MovimientoCCCardProps>) {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCorregirOpen, setIsCorregirOpen] = useState(false);
@@ -69,7 +77,23 @@ export function MovimientoCCCard({
     mov.tipo === "CREDITO" &&
     pago?.estado_pago_operacion === "CONFIRMADO" &&
     (turno?.estado !== "CERRADO" || isAdmin);
-  const mostrarMenu = puedeGestionar || puedeCorregir;
+  const puedeReimprimir =
+    tieneRecibo && mov.tipo === "CREDITO" && !!mov.pago_id;
+  const mostrarMenu = puedeGestionar || puedeCorregir || puedeReimprimir;
+  const [reimprimiendo, startReimprimir] = useTransition();
+
+  const reimprimirRecibo = () => {
+    if (!mov.pago_id) return;
+    const pagoId = mov.pago_id;
+    startReimprimir(async () => {
+      const { recibo, error } = await obtenerReciboCobroCCAction(pagoId);
+      if (!recibo) {
+        toast.error(error || "No se pudo abrir el recibo.");
+        return;
+      }
+      useReciboCcStore.getState().mostrar(recibo);
+    });
+  };
 
   const fechaMostrada = mov.fecha_origen
     ? new Intl.DateTimeFormat("es-AR", {
@@ -166,6 +190,20 @@ export function MovimientoCCCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
+                {puedeReimprimir && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={reimprimirRecibo}
+                      disabled={reimprimiendo}
+                    >
+                      <Printer className="w-3.5 h-3.5 mr-2 text-info" />
+                      Reimprimir recibo
+                    </DropdownMenuItem>
+                    {(puedeCorregir || puedeGestionar) && (
+                      <DropdownMenuSeparator />
+                    )}
+                  </>
+                )}
                 {puedeCorregir && (
                   <DropdownMenuItem onClick={() => setIsCorregirOpen(true)}>
                     <CreditCard className="w-3.5 h-3.5 mr-2 text-info" />

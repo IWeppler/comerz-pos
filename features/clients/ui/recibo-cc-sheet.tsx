@@ -18,6 +18,9 @@ import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
 import { formatTicketMoney } from "@/features/sales/ui/ticket-utils";
 import { lineasCuentaRecibo, numeroReciboCC } from "../lib/recibo-cc";
 import { ReciboCcPrintable } from "./recibo-cc-printable";
+import { agruparDeudaPorMes, etiquetaDeuda } from "../lib/deuda-por-mes";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
+import { DeudaPorMesLista } from "./deuda-por-mes-lista";
 
 /**
  * El recibo del cobro de cuenta corriente, con el botón de imprimir.
@@ -141,6 +144,51 @@ export function ReciboCcSheet() {
                         </div>
                       )}
                     </div>
+
+                    {recibo.imputaciones.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                          Este pago cancela
+                        </p>
+                        <div className="rounded-xl border border-border bg-card divide-y divide-border">
+                          {recibo.imputaciones.map((imp) => (
+                            <div
+                              key={imp.debitoId}
+                              className="flex items-start justify-between px-4 py-2.5 gap-4"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-xs text-foreground truncate">
+                                  {etiquetaDeuda(imp)}
+                                </p>
+                                <p className="text-[11px] text-muted-foreground">
+                                  {imp.saldoRestante > 0
+                                    ? `Queda ${formatTicketMoney(imp.saldoRestante)}`
+                                    : "Saldada"}
+                                </p>
+                              </div>
+                              <span className="text-xs font-mono font-medium text-foreground shrink-0">
+                                {formatTicketMoney(imp.aplicado)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {recibo.pendientes.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">
+                          Queda por vencimiento
+                        </p>
+                        <DeudaPorMesLista
+                          grupos={agruparDeudaPorMes(
+                            recibo.pendientes,
+                            diaComercial(recibo.fecha),
+                          )}
+                          compacta
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 

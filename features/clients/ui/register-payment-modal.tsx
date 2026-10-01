@@ -30,16 +30,21 @@ import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
 import { deudaDe } from "../lib/saldo-a-favor";
 import { excedenteSobreDeuda } from "../lib/tope-cobro-cc";
+import { type GrupoDeuda } from "../lib/deuda-por-mes";
+import { QueCobrar } from "./que-cobrar";
 
 export function RegisterPaymentModal({
   cliente,
   metodosPago,
   recargoMoraEstimado = 0,
+  gruposDeuda = [],
   className,
 }: {
   cliente: Cliente;
   metodosPago: MetodoPago[];
   recargoMoraEstimado?: number;
+  /** La deuda por mes de vencimiento, para elegir qué cobrar con un toque. */
+  gruposDeuda?: GrupoDeuda[];
   className?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -140,6 +145,15 @@ export function RegisterPaymentModal({
             name="permitir_saldo_a_favor"
             value={excedente > 0 && confirmaAFavor ? "true" : "false"}
           />
+
+          {!esSena && gruposDeuda.length > 0 && (
+            <QueCobrar
+              grupos={gruposDeuda}
+              mora={recargoMoraEstimado}
+              montoActual={Number(monto) || 0}
+              onElegir={(valor) => setMonto(String(valor))}
+            />
+          )}
 
           <div className="space-y-2">
             <Label className="text-xs font-semibold uppercase text-muted-foreground">

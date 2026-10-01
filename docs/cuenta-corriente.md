@@ -76,6 +76,37 @@ un DEBITO propio que apunta a su ticket.
 - **El vencimiento vive cacheado en `clientes.fecha_vencimiento_deuda`**: toda
   migración que cambie `recalcular_vencimiento_cc` tiene que rebackfillearlo.
 
+## Deuda por ticket, por mes y recibo detallado (`20261001120000`)
+
+Etapa 1 de 3 hacia pagos imputados a mano (decidido el 1/10/2026: por mes de
+VENCIMIENTO, imputación guardada, desglose en el detalle del cliente).
+- **`cc_deudas_vivas(cliente, excluir_pago)`** es la regla única: deuda viva por
+  ticket con su recargo adentro, `vence_el` = fecha + `cc_plazo_mora` (un recargo
+  huérfano vence el día que nació). `recalcular_vencimiento_cc` es
+  `min(vence_el)` de ella. `cc_deudas_vivas_detalle` le suma el número del
+  comprobante de emisión (`numeroTicketVenta`). Espejo TS de nombres y grupos:
+  `features/clients/lib/deuda-por-mes.ts` (no recalcula, solo agrupa).
+- **El día de un movimiento sin `fecha_origen` es el día comercial argentino**,
+  no UTC (también en `deuda_cc_vencida` y su "hoy"). Movió 7 vencimientos.
+- **Cada cobro guarda su recibo** en la misma transacción
+  (`registrar_cobro_cc` → `registrar_recibo_cobro_cc`): `cc_imputaciones` (qué
+  canceló de cada ticket = vivo sin el cobro − vivo con el cobro) y
+  `cc_recibos` (saldos y lo pendiente por ticket, foto del momento). Sin
+  INSERT para `authenticated`; la función es DEFINER y solo acepta un cobro
+  creado en la transacción en curso (`xmin`). `recibo_cobro_cc` lo relee para
+  reimprimir; los cobros anteriores al 1/10/2026 no tienen recibo guardado.
+- Hoy la imputación es la AUTOMÁTICA (la misma que decide vencimiento y mora),
+  así nada se contradice. Etapa 2: vencimiento, mora y antigüedad leen
+  `cc_imputaciones` (con backfill `RECONSTRUIDA` y guard de que dan igual) y
+  todos los escritores del libro la mantienen (anular/devolver venta, anular o
+  editar manual, perdonar, ajustar, saldo a favor). Etapa 3: el cajero elige
+  qué tickets paga (`origen = 'MANUAL'`).
+- **Vencimientos cacheados desfasados de antes** (medido el 1/10/2026, no
+  tocados por la migración): 58 clientes con `fecha_vencimiento_deuda` distinta
+  de la regla. 48 sin deuda con fecha vieja, 7 del Kiosco Demo sin vencimiento,
+  y 3 con deuda real (Librería Colores +13 días, Evens −1 día, Estilo Bonito
+  sin vencimiento = sin mora). Pendiente: decidir y encontrar quién lo escribe.
+
 ## Mora
 
 - **La base es el SALDO COMPLETO, no la porción vencida** (5/9/2026): cláusula de

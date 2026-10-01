@@ -16,7 +16,16 @@ import { deudaDe } from "@/features/clients/lib/saldo-a-favor";
 import { urlDeResumen } from "@/shared/lib/dominios";
 import { esCuitValido, normalizarCuit } from "@/shared/lib/cuit";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
-import type { ReciboCobroCC } from "@/features/clients/lib/recibo-cc";
+import {
+  reciboDesdeFila,
+  type FilaReciboCC,
+  type ReciboCobroCC,
+} from "@/features/clients/lib/recibo-cc";
+import {
+  deudaVivaDesdeFila,
+  type DeudaViva,
+  type FilaDeudaViva,
+} from "@/features/clients/lib/deuda-por-mes";
 
 interface ClientActionState {
   error: string | null;
@@ -194,35 +203,113 @@ export async function getClienteDetalleAction(clienteId: string) {
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
-  const [movimientosRes, ventasRes, reservasRes] = await Promise.all([
-    supabase
-      .from("cuenta_corriente_movimientos")
-      .select(
-        "*, pago:venta_pagos!cuenta_corriente_movimientos_pago_id_fkey(id, metodo_pago_id, metodo_nombre, metodo_tipo, monto_base, recargo_porcentaje, recargo_monto, monto_bruto, comision_monto, monto_neto, estado_pago_operacion, turno:turnos_caja!venta_pagos_turno_caja_id_fkey(estado))",
-      )
-      .eq("cliente_id", clienteId)
-      .order("creado_en", { ascending: false }),
-    supabase
-      .from("ventas")
-      .select(
-        "id, total, cliente_id, clientes(nombre), monto_cobrado, monto_pendiente, estado_pago, fecha_venta, fecha_vencimiento, ventas_items(cantidad, variante, es_venta_libre, producto:productos(nombre, tipo)), venta_pagos(metodo_nombre, metodo_tipo, monto_bruto, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento)",
-      )
-      .eq("cliente_id", clienteId)
-      .order("fecha_venta", { ascending: false }),
-    supabase
-      .from("reservas")
-      .select(
-        "id, nota, estado, creado_en, producto:productos(nombre), variante:producto_variantes(nombre_display, precio)",
-      )
-      .eq("cliente_id", clienteId)
-      .order("creado_en", { ascending: false }),
-  ]);
+  const [movimientosRes, ventasRes, reservasRes, deudasRes, recibosRes] =
+    await Promise.all([
+      supabase
+        .from("cuenta_corriente_movimientos")
+        .select(
+          "*, pago:venta_pagos!cuenta_corriente_movimientos_pago_id_fkey(id, metodo_pago_id, metodo_nombre, metodo_tipo, monto_base, recargo_porcentaje, recargo_monto, monto_bruto, comision_monto, monto_neto, estado_pago_operacion, turno:turnos_caja!venta_pagos_turno_caja_id_fkey(estado))",
+        )
+        .eq("cliente_id", clienteId)
+        .order("creado_en", { ascending: false }),
+      supabase
+        .from("ventas")
+        .select(
+          "id, total, cliente_id, clientes(nombre), monto_cobrado, monto_pendiente, estado_pago, fecha_venta, fecha_vencimiento, ventas_items(cantidad, variante, es_venta_libre, producto:productos(nombre, tipo)), venta_pagos(metodo_nombre, metodo_tipo, monto_bruto, comision_monto, monto_neto, acreditacion_dias, tipo_movimiento)",
+        )
+        .eq("cliente_id", clienteId)
+        .order("fecha_venta", { ascending: false }),
+      supabase
+        .from("reservas")
+        .select(
+          "id, nota, estado, creado_en, producto:productos(nombre), variante:producto_variantes(nombre_display, precio)",
+        )
+        .eq("cliente_id", clienteId)
+        .order("creado_en", { ascending: false }),
+      // Lo que debe por ticket, con su vencimiento: de acá sale "debe por mes".
+      // Misma función que el vencimiento y el recibo (cc_deudas_vivas).
+      supabase.rpc("cc_deudas_vivas_detalle", { p_cliente_id: clienteId }),
+      // Qué cobros tienen recibo guardado, para ofrecer reimprimirlo solo ahí.
+      supabase.from("cc_recibos").select("pago_id").eq("cliente_id", clienteId),
+    ]);
+
+  if (deudasRes.error) {
+    console.error("[DETALLE CC] No se pudo leer la deuda por ticket:", deudasRes.error);
+  }
 
   return {
     movimientos: movimientosRes.data || [],
     ventas: ventasRes.data || [],
     reservas: reservasRes.data || [],
+    // null = no se pudo leer (distinto de "no debe nada"): la pantalla no
+    // muestra un desglose vacío como si estuviera al día.
+    deudas: deudasRes.error
+      ? null
+      : ((deudasRes.data ?? []) as FilaDeudaViva[]).map(deudaVivaDesdeFila),
+    pagosConRecibo: ((recibosRes.data ?? []) as { pago_id: string }[]).map(
+      (r) => r.pago_id,
+    ),
   };
+}
+
+/**
+ * La deuda viva de un cliente por ticket, para el modal de cobro: le dice a la
+ * cajera qué mes está cobrando. Un viaje, al elegir la clienta.
+ */
+export async function getDeudaPorTicketAction(
+  clienteId: string,
+): Promise<{ deudas: DeudaViva[] | null; error: string | null }> {
+  if (!clienteId) return { deudas: null, error: "Cliente inválido." };
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data, error } = await supabase.rpc("cc_deudas_vivas_detalle", {
+    p_cliente_id: clienteId,
+  });
+
+  if (error) {
+    console.error("[COBRO CC] No se pudo leer la deuda por ticket:", error);
+    return { deudas: null, error: "No se pudo leer el detalle de la deuda." };
+  }
+
+  return {
+    deudas: ((data ?? []) as FilaDeudaViva[]).map(deudaVivaDesdeFila),
+    error: null,
+  };
+}
+
+/**
+ * El recibo GUARDADO de un cobro, para reimprimirlo. Dice lo que dijo el día
+ * del cobro, no lo que daría hoy la cuenta. Un cobro anterior al 1/10/2026 no
+ * tiene recibo guardado.
+ */
+export async function obtenerReciboCobroCCAction(
+  pagoId: string,
+): Promise<{ recibo: ReciboCobroCC | null; error: string | null }> {
+  if (!pagoId || !UUID_RE.test(pagoId)) {
+    return { recibo: null, error: "Cobro inválido." };
+  }
+
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data, error } = await supabase.rpc("recibo_cobro_cc", {
+    p_pago_id: pagoId,
+  });
+
+  if (error) {
+    console.error("[RECIBO CC] No se pudo leer el recibo:", error);
+    return { recibo: null, error: "No se pudo leer el recibo." };
+  }
+  if (!data) {
+    return {
+      recibo: null,
+      error: "Este cobro es anterior al recibo detallado: no tiene recibo guardado.",
+    };
+  }
+
+  return { recibo: reciboDesdeFila(data as FilaReciboCC), error: null };
 }
 
 const UUID_RE =
@@ -492,23 +579,38 @@ export async function registrarPagoDeudaAction(
         saldo_anterior: number;
         saldo_nuevo: number;
         fecha_vencimiento: string | null;
+        /** Desde 20261001120000: el recibo guardado, con qué canceló. */
+        recibo?: FilaReciboCC | null;
       };
 
   revalidatePath("/clientes");
   revalidatePath("/caja");
 
   // Reintento de un cobro que YA entró (se perdió la respuesta, o se volvió a
-  // tocar Confirmar): no se escribió nada. Es un éxito, pero no hay recibo
-  // nuevo que imprimir — los números de ese papel eran los del primer intento.
+  // tocar Confirmar): no se escribió nada. Se devuelve el recibo GUARDADO del
+  // primer intento —los números de ese papel son los de entonces—, así la
+  // cajera igual tiene qué imprimir.
   if (cobro.ya_registrado) {
+    const { data: guardado } = await supabase.rpc("recibo_cobro_cc", {
+      p_pago_id: cobro.pago_id,
+    });
     return {
       error: null,
       success: true,
       yaRegistrado: true,
       montoYaRegistrado: Number(cobro.monto_base),
+      recibo: guardado ? reciboDesdeFila(guardado as FilaReciboCC) : undefined,
     };
   }
 
+  // El recibo sale de lo que la base GUARDÓ en la misma transacción del cobro
+  // (`registrar_recibo_cobro_cc`): qué tickets canceló y qué quedó por mes.
+  if (cobro.recibo) {
+    return { error: null, success: true, recibo: reciboDesdeFila(cobro.recibo) };
+  }
+
+  // Sin recibo guardado solo puede ser una base sin la migración
+  // 20261001120000: se arma el papel de antes, sin el detalle por ticket.
   const recibo: ReciboCobroCC = {
     pagoId: cobro.pago_id,
     fecha: new Date().toISOString(),
@@ -525,6 +627,8 @@ export async function registrarPagoDeudaAction(
     saldoAnterior: Number(cobro.saldo_anterior),
     saldoNuevo: Number(cobro.saldo_nuevo),
     fechaVencimiento: cobro.fecha_vencimiento,
+    imputaciones: [],
+    pendientes: [],
     comercio: {
       nombre: configPos?.posName ?? null,
       direccion: configPos?.direccion ?? null,

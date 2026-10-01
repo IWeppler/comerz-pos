@@ -4,6 +4,8 @@ import {
   numeroReciboCC,
   type ReciboCobroCC,
 } from "../lib/recibo-cc";
+import { agruparDeudaPorMes, etiquetaDeuda } from "../lib/deuda-por-mes";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 
 interface ReciboCcPrintableProps {
   recibo: ReciboCobroCC;
@@ -47,6 +49,10 @@ function CuerpoRecibo({ recibo, copia, cortar }: Readonly<CuerpoReciboProps>) {
   const direccionComercio = recibo.comercio.direccion || "";
   const whatsappComercio = recibo.comercio.whatsapp || "";
   const lineas = lineasCuentaRecibo(recibo);
+  const gruposPendientes = agruparDeudaPorMes(
+    recibo.pendientes,
+    diaComercial(recibo.fecha),
+  );
 
   return (
     <div
@@ -118,16 +124,70 @@ function CuerpoRecibo({ recibo, copia, cortar }: Readonly<CuerpoReciboProps>) {
           </div>
         ))}
         <div className="flex justify-between items-center font-semibold text-base pt-2 mt-2 border-t border-gray-300">
-          <span>SALDO</span>
-          <span>{formatTicketMoney(recibo.saldoNuevo)}</span>
+          <span>{recibo.saldoNuevo < 0 ? "A FAVOR" : "SALDO"}</span>
+          <span>{formatTicketMoney(Math.abs(recibo.saldoNuevo))}</span>
         </div>
-        {recibo.saldoNuevo > 0 && recibo.fechaVencimiento && (
-          <div className="flex justify-between text-xs text-gray-700">
+      </div>
+
+      {/* Qué compras pagó: es lo que la clienta pregunta ("¿qué estoy
+          pagando?") y lo que el comercio muestra si después hay discusión.
+          Guardado al cobrar: reimpreso dice lo mismo. */}
+      {recibo.imputaciones.length > 0 && (
+        <div className="py-3 border-b-2 border-dashed border-gray-400 space-y-2 text-sm">
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+            Este pago cancela
+          </p>
+          {recibo.imputaciones.map((imp) => (
+            <div key={imp.debitoId}>
+              <div className="flex justify-between gap-2">
+                <span className="truncate">{etiquetaDeuda(imp)}</span>
+                <span className="shrink-0">{formatTicketMoney(imp.aplicado)}</span>
+              </div>
+              <p className="text-xs text-gray-700">
+                {fechaCorta(imp.fecha)} ·{" "}
+                {imp.saldoRestante > 0
+                  ? `queda ${formatTicketMoney(imp.saldoRestante)}`
+                  : "SALDADA"}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Lo que queda, por el mes en que vence: lo que la clienta tiene que
+          traer y cuándo. Agrupado con el día del cobro, no el de hoy. */}
+      {gruposPendientes.length > 0 && (
+        <div className="py-3 border-b-2 border-dashed border-gray-400 space-y-1.5 text-sm">
+          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+            Pendiente por vencimiento
+          </p>
+          {gruposPendientes.map((grupo) => (
+            <div key={grupo.clave} className="flex justify-between gap-2">
+              <span className={grupo.vencido ? "font-bold" : ""}>
+                {grupo.vencido ? "VENCIDO" : grupo.etiqueta}
+                {!grupo.vencido && (
+                  <span className="text-xs text-gray-700">
+                    {" "}
+                    (vence {fechaCorta(grupo.deudas[0].venceEl).slice(0, 5)})
+                  </span>
+                )}
+              </span>
+              <span className={grupo.vencido ? "font-bold" : ""}>
+                {formatTicketMoney(grupo.monto)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {gruposPendientes.length === 0 &&
+        recibo.saldoNuevo > 0 &&
+        recibo.fechaVencimiento && (
+          <div className="py-3 border-b-2 border-dashed border-gray-400 flex justify-between text-xs text-gray-700">
             <span>Vence</span>
             <span>{fechaCorta(recibo.fechaVencimiento)}</span>
           </div>
         )}
-      </div>
 
       {/* Conformidad del cliente: firma y DNI a mano. Es lo que convierte
           el papel en un recibo que el comercio puede mostrar después, si la

@@ -1,3 +1,26 @@
+import {
+  deudaVivaDesdeFila,
+  numeroTicketDeFila,
+  type DeudaViva,
+  type FilaDeudaViva,
+} from "./deuda-por-mes";
+
+/** Una deuda que este cobro canceló (entera o en parte). */
+export interface ImputacionRecibo {
+  debitoId: string;
+  numeroTicket: string | null;
+  fecha: string;
+  venceEl: string;
+  descripcion: string | null;
+  esMoraHuerfana: boolean;
+  /** Lo que valía la deuda al cobrar, recargos incluidos. */
+  monto: number;
+  /** Lo que este cobro le descontó. */
+  aplicado: number;
+  /** Lo que le quedó. 0 = saldada. */
+  saldoRestante: number;
+}
+
 /**
  * El recibo de un cobro de cuenta corriente: lo que se imprime cuando la
  * clienta paga (parte de) su deuda.
@@ -34,6 +57,14 @@ export type ReciboCobroCC = {
   /** ISO date (yyyy-mm-dd) del vencimiento del saldo que queda, o null. */
   fechaVencimiento: string | null;
   /**
+   * Qué compras canceló este cobro, en orden. Guardado en `cc_imputaciones`
+   * al cobrar: reimpreso dice lo mismo aunque después cambie la cuenta.
+   * Vacío en un cobro anterior al 1/10/2026 (no se guardaba).
+   */
+  imputaciones: ImputacionRecibo[];
+  /** Lo que quedó debiendo después del cobro, por ticket. Foto del momento. */
+  pendientes: DeudaViva[];
+  /**
    * La cabecera del papel. Viaja con el recibo porque el layout del panel solo
    * tiene una proyección chica de la configuración (a propósito: se lee en
    * cada navegación) y el server que registra el cobro ya leyó
@@ -46,6 +77,76 @@ export type ReciboCobroCC = {
     anchoTicketMm: number | null;
   };
 };
+
+/** El recibo tal cual lo devuelve `recibo_cobro_cc` en la base. */
+export interface FilaReciboCC {
+  pago_id: string;
+  cliente_nombre: string | null;
+  fecha: string | null;
+  metodo_nombre: string | null;
+  monto_base: number | string | null;
+  recargo_porcentaje: number | string | null;
+  recargo_monto: number | string | null;
+  monto_bruto: number | string | null;
+  saldo_anterior: number | string;
+  mora_monto: number | string;
+  monto_aplicado: number | string;
+  saldo_nuevo: number | string;
+  fecha_vencimiento: string | null;
+  pendientes: FilaDeudaViva[] | null;
+  imputaciones:
+    | (FilaDeudaViva & {
+        aplicado: number | string;
+        saldo_restante: number | string;
+      })[]
+    | null;
+  comercio: {
+    nombre: string | null;
+    direccion: string | null;
+    whatsapp: string | null;
+    ancho_ticket_mm: number | null;
+  } | null;
+}
+
+/**
+ * Del jsonb de la base al recibo que se dibuja. Un solo armado para el cobro
+ * recién hecho y para la reimpresión: los dos papeles salen iguales.
+ */
+export function reciboDesdeFila(fila: FilaReciboCC): ReciboCobroCC {
+  const montoBase = Number(fila.monto_base ?? fila.monto_aplicado) || 0;
+  return {
+    pagoId: fila.pago_id,
+    fecha: fila.fecha ?? new Date().toISOString(),
+    clienteNombre: fila.cliente_nombre ?? "",
+    metodoNombre: fila.metodo_nombre ?? "",
+    montoBase,
+    recargoMetodoPorcentaje: Number(fila.recargo_porcentaje) || 0,
+    recargoMetodoMonto: Number(fila.recargo_monto) || 0,
+    montoBruto: Number(fila.monto_bruto ?? montoBase) || 0,
+    moraMonto: Number(fila.mora_monto) || 0,
+    saldoAnterior: Number(fila.saldo_anterior) || 0,
+    saldoNuevo: Number(fila.saldo_nuevo) || 0,
+    fechaVencimiento: fila.fecha_vencimiento,
+    imputaciones: (fila.imputaciones ?? []).map((i) => ({
+      debitoId: i.debito_id,
+      numeroTicket: numeroTicketDeFila(i),
+      fecha: String(i.fecha).slice(0, 10),
+      venceEl: String(i.vence_el).slice(0, 10),
+      descripcion: i.descripcion ?? null,
+      esMoraHuerfana: i.es_mora_huerfana === true,
+      monto: Number(i.monto) || 0,
+      aplicado: Number(i.aplicado) || 0,
+      saldoRestante: Number(i.saldo_restante) || 0,
+    })),
+    pendientes: (fila.pendientes ?? []).map(deudaVivaDesdeFila),
+    comercio: {
+      nombre: fila.comercio?.nombre ?? null,
+      direccion: fila.comercio?.direccion ?? null,
+      whatsapp: fila.comercio?.whatsapp ?? null,
+      anchoTicketMm: fila.comercio?.ancho_ticket_mm ?? null,
+    },
+  };
+}
 
 /**
  * El número que se le dice a la clienta: los primeros 8 del uuid del pago, en

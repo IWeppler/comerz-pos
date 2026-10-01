@@ -26,7 +26,10 @@ import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import { useCajaStatusStore } from "@/shared/store/caja-status-store";
 import { useCajaModalStore } from "@/shared/store/caja-modal-store";
 import { useCobroCcStore } from "@/shared/store/cobro-cc-store";
-import { registrarPagoDeudaAction } from "../actions/manage-clients";
+import {
+  getDeudaPorTicketAction,
+  registrarPagoDeudaAction,
+} from "../actions/manage-clients";
 import {
   cobroSuperaDeuda,
   excedenteSobreDeuda,
@@ -38,6 +41,9 @@ import {
 } from "../actions/datos-cobro-cc";
 import type { MetodoPago } from "@/entities/payments/types";
 import { useReciboCcStore } from "@/shared/store/recibo-cc-store";
+import { agruparDeudaPorMes, type DeudaViva } from "../lib/deuda-por-mes";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
+import { QueCobrar } from "./que-cobrar";
 
 /**
  * Cobrar un saldo de cuenta corriente, en dos pasos y sin salir de donde estés.
@@ -74,6 +80,9 @@ export function CobrarCuentaCorrienteModal() {
   // elegir la clienta y se repite en cada reintento de ESE cobro.
   const [pagoId, setPagoId] = useState("");
   const [confirmaAFavor, setConfirmaAFavor] = useState(false);
+  // Deuda por ticket de la clienta elegida; null = cargando o sin datos.
+  const [deudas, setDeudas] = useState<DeudaViva[] | null>(null);
+  const clienteDeudasRef = useRef<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const buscadorRef = useRef<HTMLInputElement>(null);
@@ -83,6 +92,15 @@ export function CobrarCuentaCorrienteModal() {
     setCliente(elegido);
     setPagoId(crypto.randomUUID());
     setConfirmaAFavor(false);
+    // El detalle por mes se pide al elegir: es UN viaje y solo para quien se
+    // cobra. Si llega tarde (otra clienta elegida en el medio) se descarta.
+    setDeudas(null);
+    clienteDeudasRef.current = elegido.id;
+    getDeudaPorTicketAction(elegido.id).then((res) => {
+      if (clienteDeudasRef.current !== elegido.id) return;
+      // Sin detalle el cobro sigue funcionando igual: solo no hay botones.
+      setDeudas(res.deudas ?? []);
+    });
     // Prefill = todo lo que debe, mora incluida. Es lo más frecuente y deja
     // el caso "me paga una parte" a un solo borrado.
     setMonto(String(elegido.saldo + elegido.mora));
@@ -96,6 +114,8 @@ export function CobrarCuentaCorrienteModal() {
   // cerrar y no un render extra después.
   const cerrar = () => {
     setCliente(null);
+    setDeudas(null);
+    clienteDeudasRef.current = null;
     setBusqueda("");
     setMonto("");
     setClientes([]);
@@ -235,7 +255,7 @@ export function CobrarCuentaCorrienteModal() {
           </DialogTitle>
           <DialogDescription className="text-xs">
             {cliente
-              ? "Entra al arqueo de tu turno de hoy. No es una venta: no toca el stock ni el ticket."
+              ? "Entra al arqueo de tu turno de hoy."
               : "Elegí a quién le cobrás. Solo aparecen los clientes con saldo."}
           </DialogDescription>
         </DialogHeader>
@@ -293,6 +313,20 @@ export function CobrarCuentaCorrienteModal() {
                 )}
               </div>
             </div>
+
+            {deudas === null ? (
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Cargando qué meses debe…
+              </p>
+            ) : (
+              <QueCobrar
+                grupos={agruparDeudaPorMes(deudas, diaComercial(new Date()))}
+                mora={cliente.mora}
+                montoActual={montoNumero}
+                onElegir={(valor) => setMonto(String(valor))}
+              />
+            )}
 
             <div className="space-y-2">
               <Label

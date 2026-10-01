@@ -43,7 +43,7 @@ export type TipoMovimientoCC = "DEBITO" | "CREDITO";
 
 export interface MovimientoCC {
   /** Día del movimiento, ISO `YYYY-MM-DD`. En la base es
-   * `coalesce(fecha_origen, creado_en::date)`. */
+   * `coalesce(fecha_origen, día argentino de creado_en)` (20261001120000). */
   fecha: string;
   /** Desempata dos movimientos del mismo día. Es `creado_en`. Sin esto, el
    * pago y la compra del mismo día se ordenan por casualidad. */
