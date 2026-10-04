@@ -20,9 +20,9 @@ import { Skeleton } from "@/shared/ui/skeleton";
  * baja el último byte. Este archivo es lo único que puede romper esa espera.
  *
  * No baja el tiempo hasta los datos; lo saca de "la app se colgó" y lo pone en
- * "está cargando". La bajada real de ese 1,1 MB es otro trabajo: `getVentasAction`
- * trae TODAS las ventas históricas con cinco embeds, y ya tiene los parámetros
- * `desde`/`hasta` esperando un consumidor.
+ * "está cargando". Desde el 4/10/2026 la página pide solo un rango (default 7
+ * días, ver `features/sales/lib/rango-historial.ts`), que es lo que achica el
+ * payload; con "Todo el historial" vuelve a ser el caso de arriba.
  */
 export default function Loading() {
   return (

@@ -48,18 +48,149 @@ function fechaCorta(iso: string): string {
  *
  * La función es pura y devuelve texto plano: el `*` de WhatsApp es negrita en
  * el celular de quien lo recibe.
+ *
+ * Con `plantilla` (configuracion_pos.mensaje_recordatorio_cc) el texto lo
+ * escribe el comercio y acá solo se reemplazan las variables. Vacía o null =
+ * este mensaje por defecto.
  */
-export function construirMensajeDeuda(datos: DatosMensajeDeuda): string {
-  const {
-    nombreCliente,
-    saldo,
-    montoRecargo,
-    saldoConRecargo,
-    fechaVencimiento,
-    diasVencido,
-    urlResumen,
-    nombreComercio,
-  } = datos;
+export function construirMensajeDeuda(
+  datos: DatosMensajeDeuda,
+  plantilla?: string | null,
+): string {
+  if (plantilla?.trim()) return aplicarPlantillaDeuda(plantilla, datos);
+  return mensajePorDefecto(datos);
+}
+
+/**
+ * Variables que entiende la plantilla, con la explicación que ve el dueño en
+ * Configuración. Una variable que no está acá se rechaza al guardar
+ * (`variablesDesconocidas`): un `{totla}` saldría literal en el WhatsApp.
+ */
+export const VARIABLES_MENSAJE_DEUDA = [
+  { clave: "nombre", ayuda: "Primer nombre del cliente" },
+  { clave: "nombre_completo", ayuda: "Nombre completo del cliente" },
+  { clave: "comercio", ayuda: "Nombre de tu comercio" },
+  {
+    clave: "total",
+    ayuda: "Total a pagar hoy (saldo + recargo por mora si hay)",
+  },
+  { clave: "saldo", ayuda: "Saldo sin recargo" },
+  { clave: "recargo", ayuda: "Recargo por mora ($ 0 si no hay)" },
+  {
+    clave: "desglose",
+    ayuda: "Saldo, recargo y total en negrita (o solo el total si no hay recargo)",
+  },
+  { clave: "vencimiento", ayuda: "\"Venció hace N días.\" o \"Vence el dd/mm.\"" },
+  { clave: "link", ayuda: "Link al resumen con el detalle de la cuenta" },
+] as const;
+
+/** Punto de partida en Configuración: el mismo mensaje por defecto, escrito
+ * como plantilla. */
+export const PLANTILLA_DEUDA_EJEMPLO = [
+  "Hola {nombre}, ¿cómo estás?",
+  "Te escribimos de {comercio} por tu cuenta corriente.",
+  "",
+  "{desglose}",
+  "{vencimiento}",
+  "",
+  "Ver el detalle: {link}",
+  "",
+  "Cualquier duda avisame y lo revisamos. ¡Gracias!",
+].join("\n");
+
+export type VariableMensajeDeuda = (typeof VARIABLES_MENSAJE_DEUDA)[number]["clave"];
+
+const PATRON_VARIABLE = /\{([^{}\s]+)\}/g;
+
+/** Las `{algo}` de la plantilla que no son variables conocidas, sin repetir. */
+export function variablesDesconocidas(plantilla: string): string[] {
+  const conocidas = new Set<string>(VARIABLES_MENSAJE_DEUDA.map((v) => v.clave));
+  const desconocidas = new Set<string>();
+  for (const [, clave] of plantilla.matchAll(PATRON_VARIABLE)) {
+    if (!conocidas.has(clave.toLowerCase())) desconocidas.add(clave);
+  }
+  return [...desconocidas];
+}
+
+function valoresVariables(
+  datos: DatosMensajeDeuda,
+): Record<VariableMensajeDeuda, string> {
+  const nombreCompleto = datos.nombreCliente.trim();
+  return {
+    nombre: nombreCompleto.split(/\s+/)[0] || nombreCompleto,
+    nombre_completo: nombreCompleto,
+    comercio: datos.nombreComercio?.trim() ?? "",
+    total: moneda.format(totalACobrar(datos)),
+    saldo: moneda.format(datos.saldo),
+    recargo: moneda.format(Math.max(0, datos.montoRecargo)),
+    desglose: lineasDesglose(datos).join("\n"),
+    vencimiento: lineaVencimiento(datos) ?? "",
+    link: datos.urlResumen?.trim() ?? "",
+  };
+}
+
+/**
+ * Reemplaza las variables de la plantilla del comercio.
+ *
+ * Una línea que usa un dato que no hay (sin vencimiento, sin link) NO se
+ * manda: "Ver el detalle: " con nada atrás, o "Vence el ." confunden más que
+ * la línea ausente. Por eso la regla es por línea y no por variable.
+ *
+ * Una variable desconocida queda literal: la pantalla de Configuración no deja
+ * guardarla, y si igual llegara, mostrarla es mejor que borrar texto en
+ * silencio.
+ */
+export function aplicarPlantillaDeuda(
+  plantilla: string,
+  datos: DatosMensajeDeuda,
+): string {
+  const valores = valoresVariables(datos);
+  const lineas: string[] = [];
+
+  for (const linea of plantilla.replace(/\r\n?/g, "\n").split("\n")) {
+    let faltaDato = false;
+    const reemplazada = linea.replace(PATRON_VARIABLE, (crudo, clave: string) => {
+      const k = clave.toLowerCase() as VariableMensajeDeuda;
+      if (!(k in valores)) return crudo;
+      if (valores[k] === "") faltaDato = true;
+      return valores[k];
+    });
+    if (!faltaDato) lineas.push(reemplazada.trimEnd());
+  }
+
+  // Sacar una línea puede dejar dos vacías seguidas.
+  return lineas
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function totalACobrar(datos: DatosMensajeDeuda): number {
+  return datos.montoRecargo > 0 ? datos.saldoConRecargo : datos.saldo;
+}
+
+function lineasDesglose(datos: DatosMensajeDeuda): string[] {
+  if (datos.montoRecargo > 0) {
+    return [
+      `Saldo: ${moneda.format(datos.saldo)}`,
+      `Recargo por mora: ${moneda.format(datos.montoRecargo)}`,
+      `*Total a pagar: ${moneda.format(datos.saldoConRecargo)}*`,
+    ];
+  }
+  return [`*Total a pagar: ${moneda.format(datos.saldo)}*`];
+}
+
+function lineaVencimiento(datos: DatosMensajeDeuda): string | null {
+  const { diasVencido, fechaVencimiento } = datos;
+  if (diasVencido !== null && diasVencido > 0) {
+    return `Venció hace ${diasVencido} día${diasVencido === 1 ? "" : "s"}.`;
+  }
+  if (fechaVencimiento) return `Vence el ${fechaCorta(fechaVencimiento)}.`;
+  return null;
+}
+
+function mensajePorDefecto(datos: DatosMensajeDeuda): string {
+  const { nombreCliente, urlResumen, nombreComercio } = datos;
 
   const primerNombre = nombreCliente.trim().split(/\s+/)[0] || nombreCliente;
   const lineas: string[] = [`Hola ${primerNombre}, ¿cómo estás?`];
@@ -72,19 +203,10 @@ export function construirMensajeDeuda(datos: DatosMensajeDeuda): string {
   );
   lineas.push("");
 
-  if (montoRecargo > 0) {
-    lineas.push(`Saldo: ${moneda.format(saldo)}`);
-    lineas.push(`Recargo por mora: ${moneda.format(montoRecargo)}`);
-    lineas.push(`*Total a pagar: ${moneda.format(saldoConRecargo)}*`);
-  } else {
-    lineas.push(`*Total a pagar: ${moneda.format(saldo)}*`);
-  }
+  lineas.push(...lineasDesglose(datos));
 
-  if (diasVencido !== null && diasVencido > 0) {
-    lineas.push(`Venció hace ${diasVencido} día${diasVencido === 1 ? "" : "s"}.`);
-  } else if (fechaVencimiento) {
-    lineas.push(`Vence el ${fechaCorta(fechaVencimiento)}.`);
-  }
+  const vencimiento = lineaVencimiento(datos);
+  if (vencimiento) lineas.push(vencimiento);
 
   if (urlResumen) {
     lineas.push("");

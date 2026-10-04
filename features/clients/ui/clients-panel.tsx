@@ -1,7 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { FaWhatsapp } from "react-icons/fa";
+import { queryKeys } from "@/shared/lib/query-keys";
+import { Textarea } from "@/shared/ui/textarea";
+import {
+  construirMensajeDeuda,
+  PLANTILLA_DEUDA_EJEMPLO,
+  VARIABLES_MENSAJE_DEUDA,
+  variablesDesconocidas,
+} from "../lib/mensaje-deuda";
 import { ConfiguracionPOS, RecargoMoraTipo } from "@/entities/config/types";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -32,9 +42,14 @@ interface ClientsPanelProps {
   config: ConfiguracionPOS;
 }
 
+/** Espejo del CHECK de configuracion_pos.mensaje_recordatorio_cc. */
+const LARGO_MAXIMO_PLANTILLA = 1000;
+
 export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isSaving, setIsSaving] = useState(false);
+  const plantillaRef = useRef<HTMLTextAreaElement>(null);
 
   const [formData, setFormData] = useState({
     cc_activas: config.cc_activas ?? true,
@@ -47,27 +62,99 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
     recargo_mora_tipo: config.recargo_mora_tipo ?? "NINGUNO",
     recargo_mora_valor: config.recargo_mora_valor ?? 0,
   });
+  // Vacío = mensaje por defecto (se guarda NULL, no "").
+  const [plantilla, setPlantilla] = useState(
+    config.mensaje_recordatorio_cc ?? "",
+  );
 
   const handleChange = (field: string, value: string | number | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // La variable entra donde está el cursor, no al final: escribir "{total}" a
+  // mano en el celular es donde nacen los "{totla}".
+  const insertarVariable = (clave: string) => {
+    const texto = `{${clave}}`;
+    const area = plantillaRef.current;
+    const inicio = area?.selectionStart ?? plantilla.length;
+    const fin = area?.selectionEnd ?? plantilla.length;
+    setPlantilla(plantilla.slice(0, inicio) + texto + plantilla.slice(fin));
+    requestAnimationFrame(() => {
+      area?.focus();
+      area?.setSelectionRange(inicio + texto.length, inicio + texto.length);
+    });
+  };
+
+  const desconocidasPlantilla = useMemo(
+    () => variablesDesconocidas(plantilla),
+    [plantilla],
+  );
+
+  // Vista previa con un caso que muestra todo: recargo, vencido y link.
+  const vistaPrevia = useMemo(
+    () =>
+      construirMensajeDeuda(
+        {
+          nombreCliente: "María López",
+          saldo: 50000,
+          montoRecargo: formData.recargo_mora_tipo === "NINGUNO" ? 0 : 5000,
+          saldoConRecargo:
+            formData.recargo_mora_tipo === "NINGUNO" ? 50000 : 55000,
+          fechaVencimiento: null,
+          diasVencido: 12,
+          urlResumen: "https://comerz.app/r/ejemplo",
+          nombreComercio: config.posName,
+        },
+        plantilla,
+      ),
+    [plantilla, formData.recargo_mora_tipo, config.posName],
+  );
+
   const handleSave = async () => {
+    const plantillaLimpia = plantilla.trim();
+    const desconocidas = variablesDesconocidas(plantillaLimpia);
+    if (desconocidas.length > 0) {
+      toast.error(
+        `El mensaje de recordatorio usa variables que no existen: ${desconocidas
+          .map((v) => `{${v}}`)
+          .join(", ")}.`,
+      );
+      return;
+    }
+    if (plantillaLimpia.length > LARGO_MAXIMO_PLANTILLA) {
+      toast.error(
+        `El mensaje de recordatorio no puede pasar de ${LARGO_MAXIMO_PLANTILLA} caracteres.`,
+      );
+      return;
+    }
+
     setIsSaving(true);
     const supabase = createClient();
 
-    const { error } = await supabase
+    // Con `.select("id")`: escribir configuracion_pos pide ADMIN, y un UPDATE
+    // filtrado por RLS devuelve 0 filas con `error: null`.
+    const { data: filas, error } = await supabase
       .from("configuracion_pos")
-      .update(formData)
-      .eq("id", config.id);
+      .update({
+        ...formData,
+        mensaje_recordatorio_cc: plantillaLimpia === "" ? null : plantillaLimpia,
+      })
+      .eq("id", config.id)
+      .select("id");
 
     setIsSaving(false);
 
     if (error) {
       toast.error("Error al guardar la configuración de clientes.");
       console.error(error);
+    } else if (!filas || filas.length === 0) {
+      toast.error(
+        "Solo un administrador puede cambiar la configuración del comercio.",
+      );
     } else {
       toast.success("Reglas de Cuentas Corrientes actualizadas.");
+      // El listado de clientes trae la plantilla y la cachea 3 minutos.
+      queryClient.invalidateQueries({ queryKey: queryKeys.clientes.listado });
       router.refresh();
     }
   };
@@ -389,6 +476,109 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
                       </span>
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* RECORDATORIO POR WHATSAPP */}
+          <div className="mt-8 bg-card border border-border rounded-2xl p-5 space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-border/50 pb-3">
+              <div className="space-y-0.5">
+                <h3 className="font-bold text-foreground flex items-center gap-2">
+                  <FaWhatsapp className="w-4 h-4 text-success" /> Mensaje de
+                  recordatorio de deuda
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  Es el texto que sale al tocar &quot;Recordar&quot; en el
+                  detalle de un cliente. Vacío = mensaje por defecto.
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                {plantilla.trim() === "" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-11 sm:h-8 text-xs"
+                    onClick={() => setPlantilla(PLANTILLA_DEUDA_EJEMPLO)}
+                  >
+                    Personalizar
+                  </Button>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-11 sm:h-8 text-xs"
+                    onClick={() => setPlantilla("")}
+                  >
+                    Volver al mensaje por defecto
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-3">
+                <Textarea
+                  ref={plantillaRef}
+                  value={plantilla}
+                  onChange={(e) => setPlantilla(e.target.value)}
+                  placeholder={PLANTILLA_DEUDA_EJEMPLO}
+                  rows={11}
+                  maxLength={LARGO_MAXIMO_PLANTILLA}
+                  className="bg-muted/50 border-border font-mono text-sm"
+                />
+                <div className="flex justify-between text-[11px] text-muted-foreground">
+                  <span>
+                    Si un dato no está (sin vencimiento, sin link), la línea
+                    que lo usa no se envía. *texto* = negrita en WhatsApp.
+                  </span>
+                  <span className="shrink-0 ml-2">
+                    {plantilla.length}/{LARGO_MAXIMO_PLANTILLA}
+                  </span>
+                </div>
+                {desconocidasPlantilla.length > 0 && (
+                  <p className="text-xs text-danger">
+                    No existen:{" "}
+                    {desconocidasPlantilla.map((v) => `{${v}}`).join(", ")}
+                  </p>
+                )}
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-foreground">
+                    Tocá para insertar:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {VARIABLES_MENSAJE_DEUDA.map((v) => (
+                      <button
+                        key={v.clave}
+                        type="button"
+                        title={v.ayuda}
+                        onClick={() => insertarVariable(v.clave)}
+                        className="min-h-11 sm:min-h-0 px-2 py-1 rounded-md border border-border bg-muted/50 text-xs font-mono hover:bg-primary/10 hover:border-primary transition-colors"
+                      >
+                        {`{${v.clave}}`}
+                      </button>
+                    ))}
+                  </div>
+                  <ul className="text-[11px] text-muted-foreground space-y-0.5 pt-1">
+                    {VARIABLES_MENSAJE_DEUDA.map((v) => (
+                      <li key={v.clave}>
+                        <span className="font-mono">{`{${v.clave}}`}</span>:{" "}
+                        {v.ayuda}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold text-foreground">
+                  Vista previa (cliente de ejemplo)
+                </p>
+                <div className="rounded-xl bg-success/10 border border-success/20 p-4 text-sm whitespace-pre-wrap break-words text-foreground">
+                  {vistaPrevia}
                 </div>
               </div>
             </div>

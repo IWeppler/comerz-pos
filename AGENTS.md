@@ -332,6 +332,16 @@ del catálogo (`catalogo-delta.ts`). El panel pide ventas con ventana
 cuesta requests (no bytes): polling de caja, `tiene_permiso` por permiso,
 `unidades_serie` en cada cambio del carrito, ~10 consultas de layout por navegación.
 
+Re-auditado el 4/10/2026: el egress subió por CRECIMIENTO, no por un select nuevo.
+Librería Colores (alta 14/9, ~105 ventas/día) y El Nono Cacho (7/9, ~48/día)
+multiplicaron ×5 las ventas, y las pantallas que bajan el historial ENTERO con
+embeds lo pagan en cada visita: `ventas` fue la tabla más pesada (73.000 filas en
+24 h). Arreglado: /ventas pide un rango (default 7 días, `rango-historial.ts`).
+Pendiente, en orden: select liviano para el panel (no usa comprobantes, IVA, IMEI ni
+fotos; con "Año" son 728 días), /reportes acotado por período, TTL del catálogo
+público (60 s, ya tiene invalidación por tag) y `getClientesAction` (embebe todas
+las ventas de cada cliente).
+
 ---
 
 ## Backlog de producto (no empezado)

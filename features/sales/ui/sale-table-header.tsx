@@ -35,6 +35,11 @@ interface SaleTableHeaderProps {
   /** Ausente = el historial no tiene facturas y el select no se muestra. */
   comprobanteValue?: string;
   onComprobanteChange?: (value: string) => void;
+  /** Cuánta historia trae el server. Va pegado al buscador porque decide
+   * DÓNDE busca: un ticket de hace dos meses no aparece en "Últimos 30 días". */
+  rangoValue: string;
+  onRangoChange: (value: string) => void;
+  rangoOptions: SaleTableHeaderOption[];
   actions?: ReactNode;
 }
 
@@ -64,17 +69,37 @@ export function SaleTableHeader({
   metodosOptions,
   comprobanteValue,
   onComprobanteChange,
+  rangoValue,
+  onRangoChange,
+  rangoOptions,
 }: Readonly<SaleTableHeaderProps>) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-2 sm:flex-row sm:items-center sm:gap-3 sm:p-3">
-      <div className="relative min-w-0 flex-1">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground sm:h-5 sm:w-5" />
-        <Input
-          placeholder="Buscar por cliente o #ticket..."
-          className="h-10 w-full rounded-lg border-border/60 bg-muted pl-9 text-xs shadow-none transition-colors focus-visible:bg-background sm:pl-10 sm:text-sm"
-          value={searchValue}
-          onChange={(event) => onSearchChange(event.target.value)}
-        />
+      <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground sm:h-5 sm:w-5" />
+          <Input
+            placeholder="Buscar por cliente o #ticket..."
+            className="h-10 w-full rounded-lg border-border/60 bg-muted pl-9 text-xs shadow-none transition-colors focus-visible:bg-background sm:pl-10 sm:text-sm"
+            value={searchValue}
+            onChange={(event) => onSearchChange(event.target.value)}
+          />
+        </div>
+        <Select value={rangoValue} onValueChange={onRangoChange}>
+          <SelectTrigger
+            aria-label="Período"
+            className="h-10 w-36 shrink-0 rounded-lg border-border/60 bg-muted px-2.5 text-xs font-medium shadow-none sm:w-44 sm:px-3 sm:text-sm"
+          >
+            <SelectValue placeholder="Período" />
+          </SelectTrigger>
+          <SelectContent className="rounded-xl">
+            {rangoOptions.map((opcion) => (
+              <SelectItem key={opcion.value} value={opcion.value}>
+                {opcion.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-3">

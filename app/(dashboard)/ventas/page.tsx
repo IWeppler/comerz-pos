@@ -5,10 +5,19 @@ import { cookies } from "next/headers";
 import { Venta } from "@/entities/ventas/types";
 import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 import { getRolActual } from "@/shared/config/supabase/contexto-actual";
+import {
+  desdeRangoHistorial,
+  normalizarRangoHistorial,
+} from "@/features/sales/lib/rango-historial";
 
 export const dynamic = "force-dynamic";
 
-export default async function VentasPage() {
+interface PageProps {
+  searchParams: Promise<{ rango?: string }>;
+}
+
+export default async function VentasPage({ searchParams }: Readonly<PageProps>) {
+  const rango = normalizarRangoHistorial((await searchParams).rango);
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -54,7 +63,13 @@ export default async function VentasPage() {
   // 2,70 MB en Evens— para pasárselo a VentasTable como prop `productos`. La
   // prop estaba declarada en la interfaz pero el componente NUNCA la leía: se
   // descargaba y se descartaba en cada carga de /ventas.
-  const ventasResponse = await getVentasAction({ soloPropias: !puedeVerTodas });
+  //
+  // Y solo el RANGO pedido (default 30 días), no el historial entero: ver
+  // features/sales/lib/rango-historial.ts.
+  const ventasResponse = await getVentasAction({
+    soloPropias: !puedeVerTodas,
+    desde: desdeRangoHistorial(rango) ?? undefined,
+  });
 
   const ventas = (ventasResponse.data || []) as unknown as Venta[];
   const error = ventasResponse.error;
@@ -67,7 +82,12 @@ export default async function VentasPage() {
         </div>
       ) : (
         <VentasTable
+          // La key remonta la tabla al cambiar de rango: página y filtros
+          // vuelven a cero en vez de quedar parados en la página 7 de un
+          // rango que ahora tiene 2.
+          key={rango}
           ventas={ventas || []}
+          rango={rango}
           userRole={userRole}
           puedeAnular={puedeAnular}
           puedeCorregirPago={puedeCorregirPago}

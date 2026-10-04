@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  RANGO_HISTORIAL_DEFAULT,
+  RANGOS_HISTORIAL,
+  etiquetaRangoHistorial,
+  normalizarRangoHistorial,
+  type RangoHistorial,
+} from "../lib/rango-historial";
 import {
   TicketData,
   TicketItemData,
@@ -94,6 +102,9 @@ function MontoDevuelto({ venta }: Readonly<{ venta: Venta }>) {
 
 interface VentasTableProps {
   ventas: Venta[];
+  /** Cuánta historia trajo el server. Búsqueda y filtros corren SOBRE este
+   * rango, no sobre todo el historial. Ver `rango-historial.ts`. */
+  rango: RangoHistorial;
   userRole: string;
   puedeAnular: boolean;
   /** Permiso `ventas.corregir_pago`. Separado de `puedeAnular` a propósito:
@@ -111,6 +122,7 @@ interface VentasTableProps {
 
 export function VentasTable({
   ventas = [],
+  rango,
   userRole,
   puedeAnular,
   puedeCorregirPago = false,
@@ -146,6 +158,44 @@ export function VentasTable({
   } | null>(null);
 
   const cerrarAccion = () => setAccionAbierta(null);
+
+  // Cambiar de rango es pedirle otra cosa al server: va por la URL. La
+  // transición deja la tabla actual a la vista (atenuada) mientras baja la
+  // nueva, en vez de saltar al loading de la ruta.
+  const router = useRouter();
+  const [cambiandoRango, startCambioRango] = useTransition();
+  const cambiarRango = (valor: string) => {
+    const nuevo = normalizarRangoHistorial(valor);
+    if (nuevo === rango) return;
+    startCambioRango(() => {
+      router.push(
+        nuevo === RANGO_HISTORIAL_DEFAULT ? "/ventas" : `/ventas?rango=${nuevo}`,
+        { scroll: false },
+      );
+    });
+  };
+  const etiquetaRango = etiquetaRangoHistorial(rango);
+  const puedeAmpliar = rango !== "todo";
+
+  // Sin resultados DENTRO del rango no es "no existe": el ticket que alguien
+  // tiene en la mano puede ser de hace tres meses.
+  const sinResultados = () => (
+    <>
+      No se encontraron tickets que coincidan con la búsqueda
+      {puedeAmpliar ? ` en: ${etiquetaRango.toLowerCase()}.` : "."}
+      {puedeAmpliar && (
+        <div>
+          <Button
+            variant="outline"
+            className="mt-3 h-11"
+            onClick={() => cambiarRango("todo")}
+          >
+            Buscar en todo el historial
+          </Button>
+        </div>
+      )}
+    </>
+  );
 
   const isAdmin = userRole === "ADMIN";
 
@@ -746,15 +796,36 @@ export function VentasTable({
               }
             : undefined
         }
+        rangoValue={rango}
+        onRangoChange={cambiarRango}
+        rangoOptions={RANGOS_HISTORIAL.map(({ value, label }) => ({
+          value,
+          label,
+        }))}
       />
 
+      <div
+        className={`space-y-6 transition-opacity ${cambiandoRango ? "pointer-events-none opacity-50" : ""}`}
+        aria-busy={cambiandoRango}
+      >
       {/* TABLA O EMPTY STATE */}
       {ventas.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 bg-card rounded-2xl border border-border">
+        <div className="flex flex-col items-center justify-center py-16 bg-card rounded-2xl border border-border text-center px-4">
           <Receipt className="h-16 w-16 text-muted-foreground/30 mb-4" />
           <p className="text-muted-foreground font-medium text-lg">
-            Aún no hay ventas registradas en el sistema.
+            {puedeAmpliar
+              ? `No hay ventas en: ${etiquetaRango.toLowerCase()}.`
+              : "Aún no hay ventas registradas en el sistema."}
           </p>
+          {puedeAmpliar && (
+            <Button
+              variant="outline"
+              className="mt-4 h-11"
+              onClick={() => cambiarRango("todo")}
+            >
+              Ver todo el historial
+            </Button>
+          )}
         </div>
       ) : (
         <>
@@ -929,7 +1000,7 @@ export function VentasTable({
                         colSpan={7}
                         className="h-32 text-center text-muted-foreground bg-card"
                       >
-                        No se encontraron tickets que coincidan con la búsqueda.
+                        {sinResultados()}
                       </TableCell>
                     </TableRow>
                   )}
@@ -1054,8 +1125,8 @@ export function VentasTable({
                 );
               })
             ) : (
-              <div className="py-12 text-center text-muted-foreground bg-card rounded-xl border border-border">
-                No se encontraron tickets que coincidan con la búsqueda.
+              <div className="py-12 px-4 text-center text-muted-foreground bg-card rounded-xl border border-border">
+                {sinResultados()}
               </div>
             )}
           </div>
@@ -1107,6 +1178,22 @@ export function VentasTable({
           )}
         </>
       )}
+
+      {/* El rango es lo que más fácil se olvida: decirlo al pie, y ofrecer
+          ampliarlo, evita el "me desaparecieron las ventas viejas". */}
+      {ventas.length > 0 && puedeAmpliar && (
+        <p className="text-center text-xs text-muted-foreground">
+          Mostrando: {etiquetaRango.toLowerCase()}.{" "}
+          <button
+            type="button"
+            className="min-h-11 font-semibold text-primary underline-offset-2 hover:underline sm:min-h-0"
+            onClick={() => cambiarRango("todo")}
+          >
+            Ver todo el historial
+          </button>
+        </p>
+      )}
+      </div>
     </div>
   );
 }

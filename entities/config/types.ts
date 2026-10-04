@@ -112,6 +112,9 @@ export interface ConfiguracionPOS {
   crm_dias_inactivo?: number;
   recargo_mora_tipo?: RecargoMoraTipo;
   recargo_mora_valor?: number;
+  /** Plantilla del recordatorio de deuda por WhatsApp. null = mensaje por
+   * defecto. Ver features/clients/lib/mensaje-deuda.ts. */
+  mensaje_recordatorio_cc?: string | null;
 
   // Configuración de Caja
   modo_caja?: "UNICA" | "POR_USUARIO" | "POR_PUNTO_VENTA";

@@ -152,7 +152,9 @@ export async function getClientesPageDataAction() {
     supabase.from("metodos_pago").select("*").eq("activo", true),
     supabase
       .from("configuracion_pos")
-      .select("cc_anticipo_default, recargo_mora_tipo, recargo_mora_valor")
+      .select(
+        "cc_anticipo_default, recargo_mora_tipo, recargo_mora_valor, posName, mensaje_recordatorio_cc",
+      )
       .single(),
     // Sin `p_cliente_id` devuelve todos los del negocio en UN viaje: la tabla
     // muestra el recargo de 156 clientes y pedirlo de a uno serían 156.
@@ -193,6 +195,9 @@ export async function getClientesPageDataAction() {
       recargoMoraConfig,
       vencidoPorCliente,
       moraPreviaPorCliente,
+      nombreComercio: (configRes.data?.posName as string | null) ?? null,
+      plantillaRecordatorio:
+        (configRes.data?.mensaje_recordatorio_cc as string | null) ?? null,
     },
     error: null,
   };

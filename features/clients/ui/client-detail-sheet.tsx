@@ -81,6 +81,9 @@ interface ClientDetailSheetProps {
   montoVencido: number;
   /** Recargos anteriores impagos. Se restan de la base del recargo nuevo. */
   moraPrevia: number;
+  nombreComercio?: string | null;
+  /** Plantilla del comercio para el recordatorio; null = mensaje por defecto. */
+  plantillaRecordatorio?: string | null;
   isAdmin?: boolean;
   puedeCorregirCobro?: boolean;
   onClose: () => void;
@@ -93,6 +96,8 @@ export function ClientDetailSheet({
   recargoMoraConfig,
   montoVencido,
   moraPrevia,
+  nombreComercio = null,
+  plantillaRecordatorio = null,
   isAdmin = false,
   puedeCorregirCobro = false,
   onClose,
@@ -214,15 +219,19 @@ export function ClientDetailSheet({
       const { url, error } = await obtenerLinkResumenAction(cliente.id);
       if (error) toast.error("No se pudo generar el link del resumen.");
 
-      const mensaje = construirMensajeDeuda({
-        nombreCliente: cliente.nombre,
-        saldo,
-        montoRecargo,
-        saldoConRecargo,
-        fechaVencimiento,
-        diasVencido,
-        urlResumen: url,
-      });
+      const mensaje = construirMensajeDeuda(
+        {
+          nombreCliente: cliente.nombre,
+          saldo,
+          montoRecargo,
+          saldoConRecargo,
+          fechaVencimiento,
+          diasVencido,
+          urlResumen: url,
+          nombreComercio,
+        },
+        plantillaRecordatorio,
+      );
       window.open(linkWhatsapp(cliente.telefono, mensaje), "_blank");
     });
   };

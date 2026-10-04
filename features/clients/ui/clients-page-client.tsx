@@ -55,6 +55,8 @@ export function ClientsPageClient({
         }
         vencidoPorCliente={data?.data?.vencidoPorCliente ?? {}}
         moraPreviaPorCliente={data?.data?.moraPreviaPorCliente ?? {}}
+        nombreComercio={data?.data?.nombreComercio ?? null}
+        plantillaRecordatorio={data?.data?.plantillaRecordatorio ?? null}
         isAdmin={isAdmin}
         puedeCorregirCobro={puedeCorregirCobro}
       />

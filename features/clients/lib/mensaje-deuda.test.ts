@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { construirMensajeDeuda } from "./mensaje-deuda";
+import {
+  construirMensajeDeuda,
+  PLANTILLA_DEUDA_EJEMPLO,
+  variablesDesconocidas,
+} from "./mensaje-deuda";
 
 const base = {
   nombreCliente: "María Fernanda López",
@@ -59,5 +63,100 @@ describe("construirMensajeDeuda", () => {
   it("nombra al comercio cuando se lo pasan", () => {
     const m = construirMensajeDeuda({ ...base, nombreComercio: "Evens" });
     expect(m).toContain("de Evens");
+  });
+
+  it("plantilla vacía o null usa el mensaje por defecto", () => {
+    expect(construirMensajeDeuda(base, null)).toBe(construirMensajeDeuda(base));
+    expect(construirMensajeDeuda(base, "   \n ")).toBe(
+      construirMensajeDeuda(base),
+    );
+  });
+});
+
+// Intl separa el $ con un espacio duro; acá se compara contra texto legible.
+const msj = (...args: Parameters<typeof construirMensajeDeuda>) =>
+  construirMensajeDeuda(...args).replace(/ /g, " ");
+
+describe("plantilla del comercio", () => {
+  it("reemplaza las variables", () => {
+    const m = msj(
+      { ...base, nombreComercio: "Evens" },
+      "Hola {nombre} ({nombre_completo}), soy de {comercio}. Debés {total}.",
+    );
+    expect(m).toBe(
+      "Hola María (María Fernanda López), soy de Evens. Debés $ 50.000.",
+    );
+  });
+
+  it("{total} es lo que se va a cobrar: incluye el recargo por mora", () => {
+    const m = msj(
+      { ...base, montoRecargo: 7500, saldoConRecargo: 57500 },
+      "Total {total} / saldo {saldo} / recargo {recargo}",
+    );
+    expect(m).toContain("Total $ 57.500");
+    expect(m).toContain("saldo $ 50.000");
+    expect(m).toContain("recargo $ 7.500");
+  });
+
+  it("{desglose} desglosa el recargo igual que el default", () => {
+    const m = msj(
+      { ...base, montoRecargo: 7500, saldoConRecargo: 57500 },
+      "{desglose}",
+    );
+    expect(m).toBe(
+      "Saldo: $ 50.000\nRecargo por mora: $ 7.500\n*Total a pagar: $ 57.500*",
+    );
+  });
+
+  it("la línea que usa un dato que no hay no se manda", () => {
+    const m = msj(
+      base,
+      "Hola {nombre}\n\n{vencimiento}\n\nVer el detalle: {link}\n\nGracias",
+    );
+    expect(m).toBe("Hola María\n\nGracias");
+  });
+
+  it("con los datos, esas líneas sí salen", () => {
+    const m = msj(
+      { ...base, diasVencido: 1, urlResumen: "https://x.co/r/a" },
+      "{vencimiento}\nVer el detalle: {link}",
+    );
+    expect(m).toBe("Venció hace 1 día.\nVer el detalle: https://x.co/r/a");
+  });
+
+  it("las variables no distinguen mayúsculas", () => {
+    expect(msj(base, "{NOMBRE} {Total}")).toBe(
+      "María $ 50.000",
+    );
+  });
+
+  it("una variable desconocida queda literal (no se borra texto en silencio)", () => {
+    expect(msj(base, "Debés {totla}")).toBe("Debés {totla}");
+  });
+
+  it("la plantilla de ejemplo dice lo mismo que el default", () => {
+    const datos = {
+      ...base,
+      nombreComercio: "Evens",
+      montoRecargo: 7500,
+      saldoConRecargo: 57500,
+      diasVencido: 3,
+      urlResumen: "https://x.co/r/a",
+    };
+    expect(msj(datos, PLANTILLA_DEUDA_EJEMPLO)).toBe(
+      msj(datos),
+    );
+  });
+});
+
+describe("variablesDesconocidas", () => {
+  it("lista las que no existen, sin repetir", () => {
+    expect(
+      variablesDesconocidas("{nombre} {totla} {totla} {link} {fecha}"),
+    ).toEqual(["totla", "fecha"]);
+  });
+
+  it("vacío si todas son conocidas", () => {
+    expect(variablesDesconocidas(PLANTILLA_DEUDA_EJEMPLO)).toEqual([]);
   });
 });

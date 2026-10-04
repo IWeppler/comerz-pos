@@ -84,6 +84,9 @@ interface ClientsViewProps {
   /** Recargos anteriores impagos por cliente. Salen de la base del próximo
    * recargo: la mora no se calcula sobre mora. */
   moraPreviaPorCliente: Record<string, number>;
+  nombreComercio?: string | null;
+  /** `configuracion_pos.mensaje_recordatorio_cc`; null = mensaje por defecto. */
+  plantillaRecordatorio?: string | null;
   isAdmin?: boolean;
   puedeCorregirCobro?: boolean;
 }
@@ -95,6 +98,8 @@ export function ClientsView({
   recargoMoraConfig,
   vencidoPorCliente,
   moraPreviaPorCliente,
+  nombreComercio = null,
+  plantillaRecordatorio = null,
   isAdmin = false,
   puedeCorregirCobro = false,
 }: Readonly<ClientsViewProps>) {
@@ -639,6 +644,8 @@ export function ClientsView({
         moraPrevia={
           selectedClient ? (moraPreviaPorCliente[selectedClient.id] ?? 0) : 0
         }
+        nombreComercio={nombreComercio}
+        plantillaRecordatorio={plantillaRecordatorio}
         isAdmin={isAdmin}
         puedeCorregirCobro={puedeCorregirCobro}
         onClose={() => setSelectedClientId(null)}

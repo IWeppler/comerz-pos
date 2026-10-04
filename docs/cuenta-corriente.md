@@ -174,6 +174,21 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
 - Configurable en Configuración > Clientes (`clients-panel.tsx`): `cc_plazo_mora` y
   `recargo_mora_tipo` / `recargo_mora_valor` (NINGUNO | MONTO_FIJO | PORCENTAJE).
 
+## Recordatorio de deuda por WhatsApp (`20261004120000`)
+
+Botón "Recordar" del detalle del cliente; arma el texto `construirMensajeDeuda`
+(`features/clients/lib/mensaje-deuda.ts`) y el detalle viaja como link a `/r/<token>`.
+- **Plantilla por comercio**: `configuracion_pos.mensaje_recordatorio_cc`, editable en
+  Configuración > Clientes. NULL = mensaje por defecto (no se siembra el texto: si el
+  default mejora, lo reciben los que nunca lo tocaron). CHECK de 1 a 1000 caracteres.
+  anon no la lee (GRANT por columna, la columna nació sin él).
+- Variables: `{nombre}`, `{nombre_completo}`, `{comercio}`, `{total}`, `{saldo}`,
+  `{recargo}`, `{desglose}`, `{vencimiento}`, `{link}`. **`{total}` es lo que va a
+  cobrar el sistema** (saldo + mora, misma `calcularSaldoConRecargo` que el cobro).
+- Una línea que usa un dato que no hay (sin vencimiento, sin link) no se manda. Una
+  variable desconocida no se puede guardar; si llegara, queda literal (no se borra
+  texto en silencio).
+
 ## Recargo de CC en la venta (`20260823180630`)
 
 `ventas.recargo_cc_porcentaje` / `recargo_cc_monto` (congelados, sin default: null =
