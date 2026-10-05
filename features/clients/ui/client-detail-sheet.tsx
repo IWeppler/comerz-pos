@@ -83,6 +83,9 @@ interface ClientDetailSheetProps {
   isAdmin?: boolean;
   puedeCorregirCobro?: boolean;
   onClose: () => void;
+  /** Después de mandar el resumen: lo registra en el ciclo de cobro si el
+   * cliente está en él (ver `useAvisosCc`). */
+  onResumenEnviado?: (clienteId: string) => Promise<void> | void;
 }
 
 export function ClientDetailSheet({
@@ -98,6 +101,7 @@ export function ClientDetailSheet({
   isAdmin = false,
   puedeCorregirCobro = false,
   onClose,
+  onResumenEnviado,
 }: Readonly<ClientDetailSheetProps>) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -213,8 +217,8 @@ export function ClientDetailSheet({
   // construirMensajeDeuda.
   const tieneWhatsappDirecto = telefonoAWhatsapp(cliente.telefono) !== null;
   const enviarRecordatorio = () => {
-    startRecordatorio(() =>
-      recordar({
+    startRecordatorio(async () => {
+      await recordar({
         clienteId: cliente.id,
         telefono: cliente.telefono,
         nombreCliente: cliente.nombre,
@@ -223,8 +227,9 @@ export function ClientDetailSheet({
         saldoConRecargo,
         fechaVencimiento,
         diasVencido,
-      }),
-    );
+      });
+      await onResumenEnviado?.(cliente.id);
+    });
   };
 
   const favCategoryLabel =
@@ -293,7 +298,7 @@ export function ClientDetailSheet({
                 className="h-8 text-xs font-medium border-border"
               >
                 <FaWhatsapp className="w-3.5 h-3.5 mr-1.5 text-success" />
-                Recordar
+                Resumen
               </Button>
             )}
           </div>

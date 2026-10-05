@@ -669,12 +669,13 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-border/50 pb-3">
               <div className="space-y-0.5">
                 <h3 className="font-bold text-foreground flex items-center gap-2">
-                  <FaWhatsapp className="w-4 h-4 text-success" /> Mensaje de
-                  recordatorio de deuda
+                  <FaWhatsapp className="w-4 h-4 text-success" /> Mensaje del
+                  resumen de cuenta
                 </h3>
                 <p className="text-xs text-muted-foreground">
-                  Es el texto que sale al tocar &quot;Recordar&quot; en el
-                  detalle de un cliente. Vacío = mensaje por defecto.
+                  Es el texto que sale al tocar el ícono de WhatsApp en la
+                  lista de clientes o &quot;Resumen&quot; en el detalle. Vacío
+                  = mensaje por defecto.
                 </p>
               </div>
               <div className="flex gap-2 shrink-0">

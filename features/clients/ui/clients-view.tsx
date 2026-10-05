@@ -6,6 +6,8 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
+  Loader2,
   Search,
   UploadCloud,
   Users,
@@ -19,7 +21,9 @@ import { MetodoPago } from "@/entities/payments/types";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { CreateClientModal } from "./add-client-modal";
 import { ClientDetailSheet } from "./client-detail-sheet";
-import { AvisosCc } from "./avisos-cc";
+import { useAvisosCc } from "./use-avisos-cc";
+import { useRecordatorioCc } from "./use-recordatorio-cc";
+import { FaWhatsapp } from "react-icons/fa";
 import {
   ClientStatusFilterControl,
   type ClientStatusFilter,
@@ -128,6 +132,14 @@ export function ClientsView({
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  // El ciclo de cobro (solo cierre mensual): el filtro "A abonar" y la marca
+  // de resumen enviado. Sin cierre mensual no cambia nada de la tabla.
+  const { aviso, enCiclo, marcar, etiquetaFiltro } = useAvisosCc();
+  const recordar = useRecordatorioCc({
+    nombreComercio,
+    plantilla: plantillaRecordatorio,
+  });
+  const [enviandoResumen, setEnviandoResumen] = useState<string | null>(null);
 
   const totalClientes = clientes.length;
   const morosos = clientes.filter(
@@ -219,7 +231,11 @@ export function ClientsView({
         (cliente.telefono && cliente.telefono.includes(searchQuery)),
     );
 
-    if (filterStatus !== "todos") {
+    if (filterStatus === "a_abonar") {
+      // Sin ciclo (el comercio dejó el cierre mensual) el filtro no tiene
+      // sentido y se ve todo, en vez de una tabla vacía sin explicación.
+      if (aviso) result = result.filter((cliente) => enCiclo.has(cliente.id));
+    } else if (filterStatus !== "todos") {
       result = result.filter((cliente) => cliente.estado === filterStatus);
     }
 
@@ -262,7 +278,7 @@ export function ClientsView({
     });
 
     return result;
-  }, [clientesMapeados, searchQuery, filterStatus, sortConfig]);
+  }, [clientesMapeados, searchQuery, filterStatus, sortConfig, aviso, enCiclo]);
 
   const totalPages = Math.max(
     1,
@@ -283,6 +299,28 @@ export function ClientsView({
   const handleFilterChange = (status: ClientStatusFilter) => {
     setFilterStatus(status);
     setCurrentPage(1);
+  };
+
+  // El mismo envío que el botón "Resumen" del detalle (useRecordatorioCc),
+  // con el total que muestra la fila. Si el cliente está en el ciclo, queda
+  // registrado como avisado.
+  const enviarResumen = async (cliente: ClienteMapeado) => {
+    setEnviandoResumen(cliente.id);
+    try {
+      await recordar({
+        clienteId: cliente.id,
+        telefono: cliente.telefono,
+        nombreCliente: cliente.nombre,
+        saldo: Number(cliente.saldo_pendiente || 0),
+        montoRecargo: cliente.montoRecargoMora,
+        saldoConRecargo: cliente.saldoConRecargo,
+        fechaVencimiento: cliente.fecha_vencimiento_deuda ?? null,
+        diasVencido: cliente.diasVencido,
+      });
+      await marcar(cliente.id);
+    } finally {
+      setEnviandoResumen(null);
+    }
   };
 
   const handleSort = (columna: SortConfig["key"]) => {
@@ -382,18 +420,6 @@ export function ClientsView({
         </Card>
       </div>
 
-      {/* Avisos del día (solo cierre mensual). No ocupa lugar si no hay a
-          quién avisar. */}
-      <AvisosCc
-        clientes={clientes}
-        recargoMoraConfig={recargoMoraConfig}
-        vencidoPorCliente={vencidoPorCliente}
-        moraPreviaPorCliente={moraPreviaPorCliente}
-        basesMoraPorCliente={basesMoraPorCliente}
-        nombreComercio={nombreComercio}
-        plantillaRecordatorio={plantillaRecordatorio}
-      />
-
       {/* SEARCHBAR Y FILTERBAR */}
       <div className="flex flex-col gap-3 px-2 pt-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div className="relative w-full sm:w-80 shrink-0">
@@ -408,6 +434,7 @@ export function ClientsView({
 
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-4">
           <ClientStatusFilterControl
+            etiquetaCiclo={etiquetaFiltro}
             value={filterStatus}
             onChange={handleFilterChange}
           />
@@ -492,12 +519,15 @@ export function ClientsView({
                     Fecha de vencimiento {renderSortIcon("vencimiento")}
                   </div>
                 </th>
+                <th className="px-2 py-3 md:px-4 md:py-4 text-center">
+                  Resumen
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/60">
               {clientesFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-2 py-12 text-center">
+                  <td colSpan={7} className="px-2 py-12 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <Users className="w-8 h-8 opacity-20 mb-2" />
                       <p className="font-medium">No se encontraron clientes.</p>
@@ -608,6 +638,46 @@ export function ClientsView({
                           {cliente.fechaVencimientoFormateada ?? "—"}
                         </span>
                       </td>
+
+                      <td className="px-1 py-1 md:px-4 text-center">
+                        {/* Solo con deuda: un resumen de cobranza a quien no
+                            debe nada es una molestia. Verde = ya se le mandó
+                            en este ciclo. */}
+                        {saldo > 0 ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void enviarResumen(cliente);
+                            }}
+                            disabled={enviandoResumen !== null}
+                            aria-label={`Enviar resumen de cuenta a ${cliente.nombre} por WhatsApp`}
+                            title={
+                              enCiclo.get(cliente.id)?.enviado
+                                ? "Resumen ya enviado en este ciclo. Tocá para mandarlo de nuevo."
+                                : "Enviar resumen de cuenta por WhatsApp"
+                            }
+                            className="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-success disabled:opacity-50"
+                          >
+                            {enviandoResumen === cliente.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <FaWhatsapp
+                                className={`h-[18px] w-[18px] ${
+                                  enCiclo.get(cliente.id)?.enviado
+                                    ? "text-success"
+                                    : ""
+                                }`}
+                              />
+                            )}
+                            {enCiclo.get(cliente.id)?.enviado && (
+                              <Check className="absolute right-1.5 top-1.5 h-3 w-3 rounded-full bg-card text-success" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-muted-foreground/50">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -672,6 +742,7 @@ export function ClientsView({
         isAdmin={isAdmin}
         puedeCorregirCobro={puedeCorregirCobro}
         onClose={() => setSelectedClientId(null)}
+        onResumenEnviado={marcar}
       />
       <ImportClientsCsvModal
         open={isImportOpen}

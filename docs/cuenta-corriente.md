@@ -250,13 +250,19 @@ persona toca Enviar y se abre WhatsApp. Sin API de Meta.
   como foto; leer y marcar piden `clientes.ver_modulo`, el acceso del botón
   Recordar; se registra solo a nombre propio). "Enviado" = se abrió WhatsApp, no
   que el mensaje salió.
-- **Fase 3 (pantalla)**: `AvisosCc` arriba de la tabla de Clientes, una línea que
-  solo aparece con alguien sin avisar; abre un panel con la lista (mayor deuda
-  primero) y "Enviar" por fila. `getAvisosCcAction` lee la config primero (en modo
-  días no paga el viaje de la deuda) y `marcarAvisoCcEnviadoAction` registra (23505
-  = ya estaba). El envío es `useRecordatorioCc`, el MISMO hook que el botón
-  "Recordar" del detalle (mismo link, plantilla y total con mora). Clave de query
-  `clientes.avisos` cuelga de `clientes.listado`: un cobro invalida los dos.
+- **Fase 3 (pantalla)**, rediseñada el mismo día a pedido de Ignacio (un banner con
+  panel aparte "medio raro y con poca información"): en la tabla de Clientes,
+  (a) una opción más en el filtro de estado, "A abonar 15/10" ("Impagos 15/10"
+  desde el día siguiente al vencimiento), solo con cierre mensual; (b) una columna
+  "Resumen" con el ícono de WhatsApp en cada cliente con deuda, para mandar el
+  resumen de cuenta en CUALQUIER momento del mes. Si el cliente está en el ciclo,
+  el envío queda en `cc_avisos` y el ícono se pone verde con un check. El botón
+  "Recordar" del detalle pasó a "Resumen" y también registra. Todo sale de
+  `useAvisosCc` (`getAvisosCcAction` lee la config primero: en modo días no paga
+  el viaje de la deuda; `marcarAvisoCcEnviadoAction`, 23505 = ya estaba) y de
+  `useRecordatorioCc` (el envío: mismo link, plantilla y total con mora en los dos
+  lugares). Clave de query `clientes.avisos` cuelga de `clientes.listado`: un
+  cobro invalida los dos.
 - Pendiente: fase 4 (smoke en Colores).
 
 ## Recargo de CC en la venta (`20260823180630`)
