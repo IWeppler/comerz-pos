@@ -9,107 +9,47 @@ import {
 } from "@/shared/ui/select";
 import type { EstadoCliente } from "../lib/clasificar-estado-cliente";
 
-/** "a_abonar": los que tienen que pagar en el ciclo de cobro (solo comercios
- * con cierre mensual; ver `useAvisosCc`). */
-export type ClientStatusFilter = "todos" | EstadoCliente | "a_abonar";
+export type ClientStatusFilter = "todos" | EstadoCliente;
 
-type Opcion = {
-  value: ClientStatusFilter;
-  label: string;
-  activeClassName: string;
-  hoverClassName: string;
-};
-
-const OPTIONS: Opcion[] = [
-  {
-    value: "todos",
-    label: "Todos",
-    activeClassName: "bg-background text-foreground",
-    hoverClassName: "hover:text-foreground",
-  },
-  {
-    value: "al_dia",
-    label: "Al día",
-    activeClassName: "bg-background text-success",
-    hoverClassName: "hover:text-success/90",
-  },
-  {
-    value: "con_deuda",
-    label: "Con deuda",
-    activeClassName: "bg-background text-warning",
-    hoverClassName: "hover:text-warning",
-  },
-  {
-    value: "vencido",
-    label: "Vencido",
-    activeClassName: "bg-background text-danger",
-    hoverClassName: "hover:text-danger/90",
-  },
+const OPTIONS: { value: ClientStatusFilter; label: string }[] = [
+  { value: "todos", label: "Todos" },
+  { value: "al_dia", label: "Al día" },
+  { value: "con_deuda", label: "Con deuda" },
+  { value: "vencido", label: "Vencido" },
 ];
 
 interface ClientStatusFilterControlProps {
   value: ClientStatusFilter;
   onChange: (value: ClientStatusFilter) => void;
-  /** La opción del ciclo de cobro ("A abonar 15/10"). Sin ella, el control
-   * es el de siempre: solo existe en comercios con cierre mensual. */
-  etiquetaCiclo?: string | null;
 }
 
+/**
+ * El estado del cliente, como select en todos los tamaños (antes eran tabs
+ * en desktop). El ciclo de cobro ("A abonar") va aparte, en
+ * `FiltroCicloCobro`: se combina con este, no es un estado más.
+ */
 export function ClientStatusFilterControl({
   value,
   onChange,
-  etiquetaCiclo,
 }: Readonly<ClientStatusFilterControlProps>) {
-  const opciones: Opcion[] = etiquetaCiclo
-    ? [
-        ...OPTIONS,
-        {
-          value: "a_abonar",
-          label: etiquetaCiclo,
-          activeClassName: "bg-background text-primary",
-          hoverClassName: "hover:text-primary",
-        },
-      ]
-    : OPTIONS;
-
   return (
-    <>
-      {/* Desktop/tablet: segmented control */}
-      <div className="hidden sm:flex sm:gap-1 sm:bg-muted sm:p-1 sm:rounded-xl sm:border sm:border-border/50 sm:w-auto sm:items-center">
-        {opciones.map((option) => (
-          <button
-            key={option.value}
-            type="button"
-            onClick={() => onChange(option.value)}
-            className={`px-2 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
-              value === option.value
-                ? option.activeClassName
-                : `text-muted-foreground ${option.hoverClassName}`
-            }`}
-          >
+    <Select
+      value={value}
+      onValueChange={(next) => onChange(next as ClientStatusFilter)}
+    >
+      <SelectTrigger
+        aria-label="Estado del cliente"
+        className="h-10 w-full sm:w-40 bg-muted border border-border rounded-xl"
+      >
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="start">
+        {OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
             {option.label}
-          </button>
+          </SelectItem>
         ))}
-      </div>
-
-      {/* Mobile: select (4 o 5 opciones no entran cómodas en tabs) */}
-      <div className="sm:hidden w-full">
-        <Select
-          value={value}
-          onValueChange={(next) => onChange(next as ClientStatusFilter)}
-        >
-          <SelectTrigger className="h-10 w-full bg-muted border border-border">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent align="start">
-            {opciones.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </>
+      </SelectContent>
+    </Select>
   );
 }

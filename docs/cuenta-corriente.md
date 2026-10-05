@@ -252,8 +252,11 @@ persona toca Enviar y se abre WhatsApp. Sin API de Meta.
   que el mensaje salió.
 - **Fase 3 (pantalla)**, rediseñada el mismo día a pedido de Ignacio (un banner con
   panel aparte "medio raro y con poca información"): en la tabla de Clientes,
-  (a) una opción más en el filtro de estado, "A abonar 15/10" ("Impagos 15/10"
-  desde el día siguiente al vencimiento), solo con cierre mensual; (b) una columna
+  (a) un toggle aparte del select de estado (`FiltroCicloCobro`), "A abonar 15/10"
+  ("Impagos 15/10" desde el día siguiente al vencimiento), solo con cierre
+  mensual; se combina con el estado y, prendido, los tres KPI pasan a contar el
+  ciclo (cuentas, capital a abonar + mora, resúmenes enviados); el estado pasó de
+  tabs a select en todos los tamaños; (b) una columna
   "Resumen" con el ícono de WhatsApp en cada cliente con deuda, para mandar el
   resumen de cuenta en CUALQUIER momento del mes. Si el cliente está en el ciclo,
   el envío queda en `cc_avisos` y el ícono se pone verde con un check. El botón

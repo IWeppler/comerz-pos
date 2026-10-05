@@ -6,6 +6,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  CalendarClock,
   Check,
   Loader2,
   Search,
@@ -22,6 +23,7 @@ import { formatearMoneda } from "@/shared/utils/formatters";
 import { CreateClientModal } from "./add-client-modal";
 import { ClientDetailSheet } from "./client-detail-sheet";
 import { useAvisosCc } from "./use-avisos-cc";
+import { FiltroCicloCobro } from "./filtro-ciclo-cobro";
 import { useRecordatorioCc } from "./use-recordatorio-cc";
 import { FaWhatsapp } from "react-icons/fa";
 import {
@@ -140,6 +142,10 @@ export function ClientsView({
     plantilla: plantillaRecordatorio,
   });
   const [enviandoResumen, setEnviandoResumen] = useState<string | null>(null);
+  // El toggle del ciclo. Sin ciclo (no hay cierre mensual) queda apagado
+  // aunque haya quedado prendido: la tabla nunca filtra por algo invisible.
+  const [cicloPedido, setCicloPedido] = useState(false);
+  const cicloActivo = cicloPedido && aviso !== null;
 
   const totalClientes = clientes.length;
   const morosos = clientes.filter(
@@ -231,12 +237,11 @@ export function ClientsView({
         (cliente.telefono && cliente.telefono.includes(searchQuery)),
     );
 
-    if (filterStatus === "a_abonar") {
-      // Sin ciclo (el comercio dejó el cierre mensual) el filtro no tiene
-      // sentido y se ve todo, en vez de una tabla vacía sin explicación.
-      if (aviso) result = result.filter((cliente) => enCiclo.has(cliente.id));
-    } else if (filterStatus !== "todos") {
+    if (filterStatus !== "todos") {
       result = result.filter((cliente) => cliente.estado === filterStatus);
+    }
+    if (cicloActivo) {
+      result = result.filter((cliente) => enCiclo.has(cliente.id));
     }
 
     result.sort((a, b) => {
@@ -278,7 +283,38 @@ export function ClientsView({
     });
 
     return result;
-  }, [clientesMapeados, searchQuery, filterStatus, sortConfig, aviso, enCiclo]);
+  }, [
+    clientesMapeados,
+    searchQuery,
+    filterStatus,
+    sortConfig,
+    cicloActivo,
+    enCiclo,
+  ]);
+
+  // Los KPI del ciclo: los clientes del ciclo con el filtro de estado
+  // aplicado (no la búsqueda, que es para encontrar a uno, no para contar).
+  // Plata = lo que tienen que abonar hasta el vencimiento, capital; la mora
+  // va aparte, como en el KPI de siempre.
+  const kpiCiclo = useMemo(() => {
+    if (!cicloActivo) return null;
+    const delCiclo = clientesMapeados.filter(
+      (c) =>
+        enCiclo.has(c.id) &&
+        (filterStatus === "todos" || c.estado === filterStatus),
+    );
+    return {
+      cuentas: delCiclo.length,
+      monto: delCiclo.reduce((t, c) => t + (enCiclo.get(c.id)?.monto ?? 0), 0),
+      mora: delCiclo.reduce((t, c) => t + c.montoRecargoMora, 0),
+      avisados: delCiclo.filter((c) => enCiclo.get(c.id)?.enviado).length,
+    };
+  }, [cicloActivo, clientesMapeados, enCiclo, filterStatus]);
+
+  const fechaCorta = (iso: string) => {
+    const [, mes, dia] = iso.split("-");
+    return `${Number(dia)}/${Number(mes)}`;
+  };
 
   const totalPages = Math.max(
     1,
@@ -360,65 +396,138 @@ export function ClientsView({
           rechaza el alta manual de deuda al llegar al tope, y la venta fiada
           nunca se frena. */}
 
-      {/* ── KPIs SUPERIORES ── */}
-      <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
-        <Card className="min-w-[82vw] border-border shadow-none snap-start sm:min-w-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Dinero en la Calle
-            </CardTitle>
-            <Wallet className="w-4 h-4 text-success" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-mono font-medium text-foreground">
-              {formatearMoneda(dineroEnCalle)}
-            </div>
-            <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
-              Capital a cobrar
-            </p>
-            {recargoMoraEnCalle > 0 && (
-              <p className="text-xs font-mono uppercase text-danger mt-0.5">
-                + {formatearMoneda(recargoMoraEnCalle)} de mora
+      {/* ── KPIs SUPERIORES ──
+          Con el ciclo de cobro prendido cuentan el ciclo (cuántas cuentas,
+          cuánta plata, a cuántas ya se les mandó el resumen); apagado, la
+          cartera entera como siempre. */}
+      {kpiCiclo && aviso ? (
+        <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
+          <Card className="min-w-[82vw] border-primary/30 shadow-none snap-start sm:min-w-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {etiquetaFiltro}
+              </CardTitle>
+              <Wallet className="w-4 h-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-mono font-medium text-foreground">
+                {formatearMoneda(kpiCiclo.monto)}
+              </div>
+              <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
+                {aviso.tipo === "MORA" ? "Venció" : "Vence"} el{" "}
+                {fechaCorta(aviso.venceEl)}
               </p>
-            )}
-          </CardContent>
-        </Card>
+              {kpiCiclo.mora > 0 && (
+                <p className="text-xs font-mono uppercase text-danger mt-0.5">
+                  + {formatearMoneda(kpiCiclo.mora)} de mora
+                </p>
+              )}
+            </CardContent>
+          </Card>
 
-        <Card className="min-w-[82vw] border-border shadow-none bg-card snap-start sm:min-w-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Cuentas con Deuda
-            </CardTitle>
-            <AlertTriangle className="w-4 h-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-mono font-medium text-foreground">
-              {morosos.length}{" "}
-              <span className="text-sm font-sans font-normal">clientes</span>
-            </div>
-            <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
-              Con saldo pendiente
-            </p>
-          </CardContent>
-        </Card>
+          <Card className="min-w-[82vw] border-primary/30 shadow-none bg-card snap-start sm:min-w-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Cuentas a abonar
+              </CardTitle>
+              <CalendarClock className="w-4 h-4 text-warning" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-mono font-medium text-foreground">
+                {kpiCiclo.cuentas}{" "}
+                <span className="text-sm font-sans font-normal">clientes</span>
+              </div>
+              <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
+                Cierre del {fechaCorta(aviso.cierre)}
+              </p>
+            </CardContent>
+          </Card>
 
-        <Card className="min-w-[82vw] border-border shadow-none bg-card snap-start sm:min-w-0">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Clientes activos
-            </CardTitle>
-            <Users className="w-4 h-4 text-info" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-mono font-medium text-foreground">
-              {totalClientes}
-            </div>
-            <p className="font-mono uppercase text-xs text-muted-foreground mt-1">
-              En tu base de datos
-            </p>
-          </CardContent>
-        </Card>
-      </div>
+          <Card className="min-w-[82vw] border-primary/30 shadow-none bg-card snap-start sm:min-w-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Resumen enviado
+              </CardTitle>
+              <Check className="w-4 h-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-mono font-medium text-foreground">
+                {kpiCiclo.avisados}{" "}
+                <span className="text-sm font-sans font-normal">
+                  de {kpiCiclo.cuentas}
+                </span>
+              </div>
+              <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-success transition-all"
+                  style={{
+                    width: `${kpiCiclo.cuentas ? (kpiCiclo.avisados / kpiCiclo.cuentas) * 100 : 0}%`,
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : (
+        <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory sm:grid sm:grid-cols-3 sm:overflow-visible sm:pb-0">
+          <Card className="min-w-[82vw] border-border shadow-none snap-start sm:min-w-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Dinero en la Calle
+              </CardTitle>
+              <Wallet className="w-4 h-4 text-success" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-mono font-medium text-foreground">
+                {formatearMoneda(dineroEnCalle)}
+              </div>
+              <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
+                Capital a cobrar
+              </p>
+              {recargoMoraEnCalle > 0 && (
+                <p className="text-xs font-mono uppercase text-danger mt-0.5">
+                  + {formatearMoneda(recargoMoraEnCalle)} de mora
+                </p>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="min-w-[82vw] border-border shadow-none bg-card snap-start sm:min-w-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Cuentas con Deuda
+              </CardTitle>
+              <AlertTriangle className="w-4 h-4 text-warning" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-mono font-medium text-foreground">
+                {morosos.length}{" "}
+                <span className="text-sm font-sans font-normal">clientes</span>
+              </div>
+              <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
+                Con saldo pendiente
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="min-w-[82vw] border-border shadow-none bg-card snap-start sm:min-w-0">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Clientes activos
+              </CardTitle>
+              <Users className="w-4 h-4 text-info" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-mono font-medium text-foreground">
+                {totalClientes}
+              </div>
+              <p className="font-mono uppercase text-xs text-muted-foreground mt-1">
+                En tu base de datos
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* SEARCHBAR Y FILTERBAR */}
       <div className="flex flex-col gap-3 px-2 pt-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
@@ -434,10 +543,20 @@ export function ClientsView({
 
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-4">
           <ClientStatusFilterControl
-            etiquetaCiclo={etiquetaFiltro}
             value={filterStatus}
             onChange={handleFilterChange}
           />
+          {aviso && etiquetaFiltro && (
+            <FiltroCicloCobro
+              etiqueta={etiquetaFiltro}
+              cantidad={enCiclo.size}
+              activo={cicloActivo}
+              onCambiar={(activo) => {
+                setCicloPedido(activo);
+                setCurrentPage(1);
+              }}
+            />
+          )}
 
           <div className="hidden sm:flex gap-2">
             <Button
@@ -657,7 +776,7 @@ export function ClientsView({
                                 ? "Resumen ya enviado en este ciclo. Tocá para mandarlo de nuevo."
                                 : "Enviar resumen de cuenta por WhatsApp"
                             }
-                            className="relative inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-success disabled:opacity-50"
+                            className="relative inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {enviandoResumen === cliente.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
