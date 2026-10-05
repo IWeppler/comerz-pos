@@ -45,6 +45,10 @@ export const queryKeys = {
   },
   clientes: {
     listado: ["clientes", "listado"] as const,
+    /** Los avisos de cuenta corriente del día. Cuelga de `listado` a
+     * propósito: todo lo que invalida el listado (un cobro, un ajuste, la
+     * configuración) invalida también los avisos por prefijo. */
+    avisos: ["clientes", "listado", "avisos"] as const,
     detalle: (clienteId: string) => ["clientes", "detalle", clienteId] as const,
   },
   categorias: {

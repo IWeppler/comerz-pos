@@ -232,6 +232,33 @@ Botón "Recordar" del detalle del cliente; arma el texto `construirMensajeDeuda`
   variable desconocida no se puede guardar; si llegara, queda literal (no se borra
   texto en silencio).
 
+## Avisos de cuenta corriente (en curso, 5/10/2026)
+
+"A quién avisar hoy" para comercios con CIERRE MENSUAL (no en modo días: sería una
+lista diaria y ruidosa). Semiautomático: el sistema arma la lista y el mensaje, la
+persona toca Enviar y se abre WhatsApp. Sin API de Meta.
+- **Fase 1 (lógica)**: `features/clients/lib/avisos-cc.ts`, con tests. Ciclo
+  vigente = último cierre <= hoy y su vencimiento V (misma regla
+  `calcularVencimientoCc`). CIERRE desde el cierre hasta V−3, PREVIO de V−2 a V
+  (`DIAS_AVISO_PREVIO`), MORA desde V+1 hasta el cierre siguiente. Los tres
+  avisan TODO lo que vence hasta V, deuda vieja incluida (Colores el 5/10: 56
+  clientes arrastraban deuda del 15/9). Mismo mensaje que "Recordar".
+- **Fase 2 (base, `20261005150000`)**: `cc_deuda_por_vencimiento()` (INVOKER, deuda
+  viva por cliente y vencimiento del negocio en un viaje, de `cc_deudas_vivas`;
+  Colores: 116 clientes, cuadra al peso con el saldo, 100 ms) y `cc_avisos`
+  (append-only, UNIQUE por cliente + tipo + vencimiento, sin FK al cliente, monto
+  como foto; leer y marcar piden `clientes.ver_modulo`, el acceso del botón
+  Recordar; se registra solo a nombre propio). "Enviado" = se abrió WhatsApp, no
+  que el mensaje salió.
+- **Fase 3 (pantalla)**: `AvisosCc` arriba de la tabla de Clientes, una línea que
+  solo aparece con alguien sin avisar; abre un panel con la lista (mayor deuda
+  primero) y "Enviar" por fila. `getAvisosCcAction` lee la config primero (en modo
+  días no paga el viaje de la deuda) y `marcarAvisoCcEnviadoAction` registra (23505
+  = ya estaba). El envío es `useRecordatorioCc`, el MISMO hook que el botón
+  "Recordar" del detalle (mismo link, plantilla y total con mora). Clave de query
+  `clientes.avisos` cuelga de `clientes.listado`: un cobro invalida los dos.
+- Pendiente: fase 4 (smoke en Colores).
+
 ## Recargo de CC en la venta (`20260823180630`)
 
 `ventas.recargo_cc_porcentaje` / `recargo_cc_monto` (congelados, sin default: null =

@@ -25,11 +25,8 @@ import {
   PlusCircle,
 } from "lucide-react";
 import { FaWhatsapp } from "react-icons/fa";
-import { toast } from "sonner";
-import {
-  getClienteDetalleAction,
-  obtenerLinkResumenAction,
-} from "../actions/manage-clients";
+import { getClienteDetalleAction } from "../actions/manage-clients";
+import { useRecordatorioCc } from "./use-recordatorio-cc";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { calcularDiasVencido } from "../lib/calcular-dias-vencido";
 import { clasificarEstadoCliente } from "../lib/clasificar-estado-cliente";
@@ -48,14 +45,10 @@ import {
 } from "../lib/calcular-saldo-con-recargo";
 import { PerdonarDeudaModal } from "./perdonar-deuda-modal";
 import { saldoAFavorDe } from "../lib/saldo-a-favor";
-import { construirMensajeDeuda } from "../lib/mensaje-deuda";
 import { agruparDeudaPorMes, type DeudaViva } from "../lib/deuda-por-mes";
 import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import { DeudaPorMesLista } from "./deuda-por-mes-lista";
-import {
-  linkWhatsapp,
-  telefonoAWhatsapp,
-} from "@/shared/lib/telefono-whatsapp";
+import { telefonoAWhatsapp } from "@/shared/lib/telefono-whatsapp";
 
 interface VentaResumen {
   id: string;
@@ -110,6 +103,10 @@ export function ClientDetailSheet({
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isPerdonOpen, setIsPerdonOpen] = useState(false);
   const [enviandoRecordatorio, startRecordatorio] = useTransition();
+  const recordar = useRecordatorioCc({
+    nombreComercio,
+    plantilla: plantillaRecordatorio,
+  });
 
   const { data: queryData, isLoading } = useQuery({
     queryKey: queryKeys.clientes.detalle(cliente?.id ?? ""),
@@ -216,29 +213,18 @@ export function ClientDetailSheet({
   // construirMensajeDeuda.
   const tieneWhatsappDirecto = telefonoAWhatsapp(cliente.telefono) !== null;
   const enviarRecordatorio = () => {
-    startRecordatorio(async () => {
-      // El link se pide ANTES de abrir WhatsApp: si el token no existe todavía
-      // se genera acá. Si falla, el mensaje sale igual pero sin detalle — un
-      // recordatorio sin link es peor que ninguno, pero mucho mejor que un
-      // botón que no hace nada.
-      const { url, error } = await obtenerLinkResumenAction(cliente.id);
-      if (error) toast.error("No se pudo generar el link del resumen.");
-
-      const mensaje = construirMensajeDeuda(
-        {
-          nombreCliente: cliente.nombre,
-          saldo,
-          montoRecargo,
-          saldoConRecargo,
-          fechaVencimiento,
-          diasVencido,
-          urlResumen: url,
-          nombreComercio,
-        },
-        plantillaRecordatorio,
-      );
-      window.open(linkWhatsapp(cliente.telefono, mensaje), "_blank");
-    });
+    startRecordatorio(() =>
+      recordar({
+        clienteId: cliente.id,
+        telefono: cliente.telefono,
+        nombreCliente: cliente.nombre,
+        saldo,
+        montoRecargo,
+        saldoConRecargo,
+        fechaVencimiento,
+        diasVencido,
+      }),
+    );
   };
 
   const favCategoryLabel =

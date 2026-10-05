@@ -19,6 +19,7 @@ import { MetodoPago } from "@/entities/payments/types";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { CreateClientModal } from "./add-client-modal";
 import { ClientDetailSheet } from "./client-detail-sheet";
+import { AvisosCc } from "./avisos-cc";
 import {
   ClientStatusFilterControl,
   type ClientStatusFilter,
@@ -380,6 +381,18 @@ export function ClientsView({
           </CardContent>
         </Card>
       </div>
+
+      {/* Avisos del día (solo cierre mensual). No ocupa lugar si no hay a
+          quién avisar. */}
+      <AvisosCc
+        clientes={clientes}
+        recargoMoraConfig={recargoMoraConfig}
+        vencidoPorCliente={vencidoPorCliente}
+        moraPreviaPorCliente={moraPreviaPorCliente}
+        basesMoraPorCliente={basesMoraPorCliente}
+        nombreComercio={nombreComercio}
+        plantillaRecordatorio={plantillaRecordatorio}
+      />
 
       {/* SEARCHBAR Y FILTERBAR */}
       <div className="flex flex-col gap-3 px-2 pt-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
