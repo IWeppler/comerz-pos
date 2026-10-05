@@ -176,8 +176,14 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
   `cc_deudas_vivas`, `deuda_cc_vencida` y `registrar_venta`; espejo TS
   `calcularVencimientoCc` (mismos casos en el test y en el guard de la migración).
   Cambiar el modo o los días re-cachea los vencimientos del comercio (mismo
-  trigger). Librería Colores: cierre 5, vence 15 (5/10/2026); con eso pasó de 48 a
-  56 clientes vencidos (lo del 5/8 al 4/9 venció el 15/9).
+  trigger). **Librería Colores: cierre 1, vence 15** (`20261005170000`): lo
+  comprado en todo el mes se avisa alrededor del 5 y se paga hasta el 15 del mes
+  siguiente. **El día de aviso no es el día de cierre**: `20261005140000` cargó
+  cierre 5 por ese malentendido y lo del 1 al 4 de cada mes caía en el ciclo
+  anterior (NATI CORDOBA: $14.800 del 4/9 "vencidos el 15/9"). Al corregirlo,
+  los vencidos al 5/10 pasaron de 54 a 37 clientes.
+  Mora cobrada el 5/10 con la regla mal: MARIANA BOLEA, $1.522,50 sobre un saldo
+  inicial del 1/9 que con cierre 1 vence el 15/10. Ajuste a decidir con la dueña.
 - Pendiente: crear y editar cliente (`crearClienteAction`, `editClienteAction`)
   escriben `fecha_vencimiento_deuda` a mano desde el formulario, por fuera de la
   regla; probable escritor del "cache desfasado" de abajo.

@@ -134,7 +134,9 @@ export function ClientDetailSheet({
   // ve la cajera en el modal de cobro.
   const gruposDeuda = useMemo(
     () =>
-      data.deudas ? agruparDeudaPorMes(data.deudas, diaComercial(new Date())) : [],
+      data.deudas
+        ? agruparDeudaPorMes(data.deudas, diaComercial(new Date()))
+        : [],
     [data.deudas],
   );
   const pagosConRecibo = useMemo(
@@ -360,33 +362,34 @@ export function ClientDetailSheet({
                             {formatearMoneda(saldoAFavorDe(saldo))}
                           </p>
                           <p className="mt-1 text-[11px] text-muted-foreground">
-                            Plata del cliente: se descuenta de su próxima compra.
+                            Plata del cliente: se descuenta de su próxima
+                            compra.
                           </p>
                         </div>
                       ) : (
-                      <div className="order-1">
-                        <p className="text-xs font-medium text-muted-foreground mb-1">
-                          {montoRecargo > 0
-                            ? "Saldo con recargo"
-                            : "Saldo Actual"}
-                        </p>
-                        <p className="text-2xl font-mono font-medium text-foreground">
-                          {formatearMoneda(
-                            montoRecargo > 0 ? saldoConRecargo : saldo,
-                          )}
-                        </p>
-                        {/* El desglose solo aparece cuando hay mora: si el
+                        <div className="order-1">
+                          <p className="text-xs font-medium text-muted-foreground mb-1">
+                            {montoRecargo > 0
+                              ? "Saldo con recargo"
+                              : "Saldo Actual"}
+                          </p>
+                          <p className="text-2xl font-mono font-medium text-foreground">
+                            {formatearMoneda(
+                              montoRecargo > 0 ? saldoConRecargo : saldo,
+                            )}
+                          </p>
+                          {/* El desglose solo aparece cuando hay mora: si el
                             número grande ya incluye el recargo, hay que poder
                             explicarle al cliente de dónde salió. */}
-                        {montoRecargo > 0 && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
-                            {formatearMoneda(saldo)} de deuda{" "}
-                            <span className="text-danger font-medium">
-                              + {formatearMoneda(montoRecargo)} por mora
-                            </span>
-                          </p>
-                        )}
-                      </div>
+                          {montoRecargo > 0 && (
+                            <p className="mt-1 text-[11px] text-muted-foreground">
+                              {formatearMoneda(saldo)} de deuda{" "}
+                              <span className="text-danger font-medium">
+                                + {formatearMoneda(montoRecargo)} por mora
+                              </span>
+                            </p>
+                          )}
+                        </div>
                       )}
                       {/* Siempre: sin deuda es para registrar una seña, que
                           queda como saldo a favor (20260928250000). */}
@@ -427,7 +430,8 @@ export function ClientDetailSheet({
                             si no coinciden, se dice, no se esconde. */}
                         {data.deudas !== null &&
                           Math.abs(
-                            gruposDeuda.reduce((t, g) => t + g.monto, 0) - saldo,
+                            gruposDeuda.reduce((t, g) => t + g.monto, 0) -
+                              saldo,
                           ) > 0.01 && (
                             <p className="mt-2 text-[11px] text-warning">
                               El detalle suma{" "}
@@ -438,12 +442,6 @@ export function ClientDetailSheet({
                               cuenta tiene una diferencia para revisar.
                             </p>
                           )}
-                        {montoRecargo > 0 && (
-                          <p className="mt-2 text-[11px] text-danger">
-                            Al cobrar se suma {formatearMoneda(montoRecargo)} de
-                            recargo por mora.
-                          </p>
-                        )}
                       </div>
                     )}
 

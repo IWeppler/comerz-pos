@@ -7,7 +7,8 @@ import {
 } from "./avisos-cc";
 import type { ReglaVencimientoCc } from "./calcular-fecha-vencimiento";
 
-// Librería Colores desde el 5/10/2026: cierre el 5, vence el 15.
+// Regla de ejemplo: cierre el 5, vence el 15. (Colores usa cierre 1 desde
+// 20261005170000; los casos no cambian de forma.)
 const COLORES: ReglaVencimientoCc = {
   modo: "CIERRE_MENSUAL",
   plazoDias: 32,

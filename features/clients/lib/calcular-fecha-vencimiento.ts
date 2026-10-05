@@ -50,7 +50,8 @@ function isoDeUtc(anio: number, mes0: number, dia: number): string {
  * DIAS: fecha + plazo. CIERRE_MENSUAL: lo comprado ANTES del día de cierre
  * cierra ese día del mes; lo comprado ese día o después, el del mes que viene.
  * Vence el primer día de vencimiento a partir del cierre (o el mismo cierre).
- * Librería Colores, cierre 5 y vencimiento 15: del 5/9 al 4/10 vence el 15/10.
+ * Cierre 5 y vencimiento 15: del 5/9 al 4/10 vence el 15/10. Librería Colores
+ * (cierre 1, vence 15): todo septiembre vence el 15/10.
  */
 export function calcularVencimientoCc(
   fecha: string,

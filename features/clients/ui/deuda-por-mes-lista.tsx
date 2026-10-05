@@ -6,11 +6,6 @@ import { cn } from "@/lib/utils";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { etiquetaDeuda, type GrupoDeuda } from "../lib/deuda-por-mes";
 
-function fechaCorta(iso: string): string {
-  const [, mes, dia] = iso.slice(0, 10).split("-");
-  return `${dia}/${mes}`;
-}
-
 /**
  * Lo que debe una clienta, por mes de vencimiento, con los tickets de cada mes
  * a un toque. Lo usan el detalle del cliente y el modal de cobro: la cajera ve
@@ -97,12 +92,11 @@ export function DeudaPorMesLista({
                       <p className="truncate text-foreground">
                         {etiquetaDeuda(deuda)}
                       </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        Compra {fechaCorta(deuda.fecha)} · vence{" "}
-                        {fechaCorta(deuda.venceEl)}
-                        {deuda.vivo < deuda.monto &&
-                          ` · de ${formatearMoneda(deuda.monto)}`}
-                      </p>
+                      {deuda.vivo < deuda.monto && (
+                        <p className="text-[11px] text-muted-foreground">
+                          de {formatearMoneda(deuda.monto)}
+                        </p>
+                      )}
                     </div>
                     <span className="font-mono text-foreground shrink-0">
                       {formatearMoneda(deuda.vivo)}

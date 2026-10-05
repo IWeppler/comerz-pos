@@ -166,7 +166,7 @@ describe("fechaOrigenParaVencimiento — la inversa para importar", () => {
     expect(calcularVencimientoCc(origen, regla)).toBe(vence);
   });
 
-  it("Colores: lo que vence el 15/10 nació, a más tardar, el 4/10", () => {
+  it("cierre 5: lo que vence el 15/10 nació, a más tardar, el 4/10", () => {
     expect(
       fechaOrigenParaVencimiento("2026-10-15", {
         modo: "CIERRE_MENSUAL",
