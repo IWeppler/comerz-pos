@@ -10,6 +10,9 @@ export type RecargoMoraTipo = "NINGUNO" | "MONTO_FIJO" | "PORCENTAJE";
  */
 export type RecargoMoraBase = "SALDO_COMPLETO" | "PORCION_VENCIDA";
 
+/** Cómo vence la deuda de cuenta corriente. Ver `cc_vence_el`. */
+export type CcVencimientoModo = "DIAS" | "CIERRE_MENSUAL";
+
 /**
  * Rubro del comercio. Decide dos cosas: qué columnas trae la plantilla de
  * mercadería (features/stock/lib/columnas-por-rubro.ts) y cómo se muestra la
@@ -117,6 +120,12 @@ export interface ConfiguracionPOS {
   entrega_minima_bloqueante?: boolean;
   cc_limite_default?: number;
   cc_plazo_mora?: number;
+  /** DIAS (fecha + cc_plazo_mora) o CIERRE_MENSUAL (cc_dia_cierre /
+   * cc_dia_vencimiento). Regla: `cc_vence_el` en la base, espejo en
+   * calcular-fecha-vencimiento.ts. */
+  cc_vencimiento_modo?: CcVencimientoModo;
+  cc_dia_cierre?: number | null;
+  cc_dia_vencimiento?: number | null;
   crm_dias_inactivo?: number;
   recargo_mora_tipo?: RecargoMoraTipo;
   recargo_mora_valor?: number;

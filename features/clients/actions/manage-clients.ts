@@ -2,7 +2,7 @@
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
-import { calcularFechaVencimiento } from "@/features/clients/lib/calcular-fecha-vencimiento";
+import { fechaOrigenParaVencimiento } from "@/features/clients/lib/calcular-fecha-vencimiento";
 import { revalidatePath } from "next/cache";
 import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import { parseClientesCSV } from "@/features/clients/lib/parse-clientes-csv";
@@ -992,11 +992,20 @@ export async function importarClientesCSVAction(formData: FormData) {
     // movimiento quedaba con fecha_origen null y para el libro la deuda nacía
     // el día del import: una clienta atrasada desde marzo aparecía venciendo
     // recién 35 días después de la importación (ver 20260828140000).
+    // Con cierre mensual no es "menos N días": es el día anterior al cierre
+    // que vence en esa fecha (ver `fechaOrigenParaVencimiento`).
     const { data: configPlazo } = await supabase
       .from("configuracion_pos")
-      .select("cc_plazo_mora")
+      .select(
+        "cc_plazo_mora, cc_vencimiento_modo, cc_dia_cierre, cc_dia_vencimiento",
+      )
       .single();
-    const plazoMoraImport = configPlazo?.cc_plazo_mora ?? 30;
+    const reglaVencimiento = {
+      modo: configPlazo?.cc_vencimiento_modo ?? "DIAS",
+      plazoDias: configPlazo?.cc_plazo_mora ?? 30,
+      diaCierre: configPlazo?.cc_dia_cierre ?? null,
+      diaVencimiento: configPlazo?.cc_dia_vencimiento ?? null,
+    };
 
     for (const candidato of parsed.clientes) {
       const { nombre, telefono, dni, deudaInicial, fechaVencimientoDeuda } =
@@ -1055,9 +1064,9 @@ export async function importarClientesCSVAction(formData: FormData) {
             tipo: "DEBITO",
             monto: deudaInicial,
             fecha_origen: fechaVencimientoDeuda
-              ? calcularFechaVencimiento(
+              ? fechaOrigenParaVencimiento(
                   fechaVencimientoDeuda,
-                  -plazoMoraImport,
+                  reglaVencimiento,
                 )
               : null,
             descripcion: "Saldo inicial importado (CSV)",

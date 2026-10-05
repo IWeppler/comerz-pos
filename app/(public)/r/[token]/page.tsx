@@ -1,6 +1,13 @@
 import { createPublicClient } from "@/shared/config/supabase/server";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import type { Metadata } from "next";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
+import {
+  agruparDeudaPorMes,
+  deudaVivaDesdeFila,
+  type FilaDeudaViva,
+} from "@/features/clients/lib/deuda-por-mes";
+import { DeudaPorMesLista } from "@/features/clients/ui/deuda-por-mes-lista";
 
 export const dynamic = "force-dynamic";
 
@@ -27,23 +34,16 @@ type Resumen = {
   saldo_anterior: number;
   saldo_actual: number;
   vence_el: string | null;
+  /** Lo que sigue debiendo, por venta y con su vencimiento
+   * (`cc_deudas_vivas_detalle`). Opcional: un deploy con la base vieja no lo
+   * trae. */
+  deudas?: FilaDeudaViva[];
   movimientos: MovimientoResumen[];
 };
 
 function fechaCorta(iso: string): string {
   const [anio, mes, dia] = iso.slice(0, 10).split("-");
   return `${dia}/${mes}/${anio}`;
-}
-
-function fechaHora(iso: string): string {
-  return new Intl.DateTimeFormat("es-AR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "America/Argentina/Buenos_Aires",
-  }).format(new Date(iso));
 }
 
 /** El saldo corriente de una fila. Negativo es plata de la clienta: se dice
@@ -95,6 +95,14 @@ export default async function ResumenCuentaPage({
   const alDia = resumen.saldo_actual <= 0;
   // Saldo con signo: negativo es plata de la clienta (seña, pago de más, vale).
   const aFavor = resumen.saldo_actual < 0;
+  // Qué vence cada mes, con la misma regla y la misma lista que el detalle
+  // del cliente adentro. Un solo "vence el" mentía: es el vencimiento MÁS
+  // VIEJO, y la clienta leía que todo el saldo vencía ese día (EESO 405 en
+  // Colores: $276.450 "vence el 10/10" cuando ese día vencían $98.850).
+  const grupos = agruparDeudaPorMes(
+    (resumen.deudas ?? []).map(deudaVivaDesdeFila),
+    diaComercial(new Date()),
+  );
 
   return (
     <main className="min-h-dvh bg-muted/20 py-6 px-4">
@@ -209,6 +217,13 @@ export default async function ResumenCuentaPage({
             <p className="text-xs text-success mt-1">
               Tu cuenta está al día. ¡Gracias!
             </p>
+          ) : grupos.length > 0 ? (
+            <div className="mt-3 space-y-1.5">
+              <p className="text-xs text-muted-foreground">
+                Qué vence cada mes:
+              </p>
+              <DeudaPorMesLista grupos={grupos} />
+            </div>
           ) : (
             resumen.vence_el && (
               <p className="text-xs text-muted-foreground mt-1">
@@ -216,31 +231,7 @@ export default async function ResumenCuentaPage({
               </p>
             )
           )}
-
-          {comercio.whatsapp && !alDia && (
-            <a
-              href={`https://wa.me/${comercio.whatsapp}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center mt-4 h-10 px-4 rounded-lg bg-primary text-primary-foreground text-sm font-semibold"
-            >
-              Escribirle al comercio
-            </a>
-          )}
         </div>
-
-        {/* PIE — la fecha de emisión evita la discusión de "esto es viejo", y
-            la aclaración fiscal evita que un resumen se confunda con una
-            factura. Con ARCA en el horizonte eso no es un detalle. */}
-        <footer className="px-5 py-4 border-t border-border">
-          <p className="text-[11px] text-muted-foreground">
-            Emitido el {fechaHora(resumen.emitido_en)}. Los importes se
-            actualizan cada vez que abrís este link.
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1">
-            Resumen de cuenta corriente — documento no válido como factura.
-          </p>
-        </footer>
       </div>
     </main>
   );

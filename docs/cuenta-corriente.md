@@ -169,6 +169,18 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
   (CELESTE SCHOFER: $15.723,75 contra $26,25); el test de
   `calcular-saldo-con-recargo.test.ts` guarda esos números. `estaVencido` no exige
   `montoVencido > 0`; solo saldo cero apaga el recargo.
+- **El vencimiento es "días desde la compra" o "cierre mensual"**, por comercio
+  (`cc_vencimiento_modo`, `20261005140000`). Con cierre: lo comprado ANTES de
+  `cc_dia_cierre` cierra ese día y vence el `cc_dia_vencimiento` siguiente (NULL =
+  el día del cierre); días 1..28. **Una sola regla: `cc_vence_el`**, que usan
+  `cc_deudas_vivas`, `deuda_cc_vencida` y `registrar_venta`; espejo TS
+  `calcularVencimientoCc` (mismos casos en el test y en el guard de la migración).
+  Cambiar el modo o los días re-cachea los vencimientos del comercio (mismo
+  trigger). Librería Colores: cierre 5, vence 15 (5/10/2026); con eso pasó de 48 a
+  56 clientes vencidos (lo del 5/8 al 4/9 venció el 15/9).
+- Pendiente: crear y editar cliente (`crearClienteAction`, `editClienteAction`)
+  escriben `fecha_vencimiento_deuda` a mano desde el formulario, por fuera de la
+  regla; probable escritor del "cache desfasado" de abajo.
 - **El plazo (`cc_plazo_mora`) es >= 1** (CHECK). Con 0 una compra vence el día
   que se hizo y al siguiente toda la cuenta está en mora. **Cambiar el plazo re-cachea `fecha_vencimiento_deuda`**
   de todo el comercio (trigger `trg_recachear_vencimientos_por_plazo`); antes el
@@ -209,6 +221,13 @@ Botón "Recordar" del detalle del cliente; arma el texto `construirMensajeDeuda`
 - Variables: `{nombre}`, `{nombre_completo}`, `{comercio}`, `{total}`, `{saldo}`,
   `{recargo}`, `{desglose}`, `{vencimiento}`, `{link}`. **`{total}` es lo que va a
   cobrar el sistema** (saldo + mora, misma `calcularSaldoConRecargo` que el cobro).
+- **El resumen público (`/r/<token>`) muestra qué vence cada mes**
+  (`20261005130000`): `resumen_cuenta_por_token` devuelve `deudas` de
+  `cc_deudas_vivas_detalle` y la página agrupa con `agruparDeudaPorMes` y
+  `DeudaPorMesLista`, lo mismo que el detalle del cliente. Antes mostraba un solo
+  "vence el" (el vencimiento más viejo) para todo el saldo: EESO 405 en Colores leía
+  $276.450 "vence el 10/10" cuando ese día vencían $98.850. Sin botón "Escribirle al
+  comercio" ni pie de emisión (pedido del 5/10/2026).
 - Una línea que usa un dato que no hay (sin vencimiento, sin link) no se manda. Una
   variable desconocida no se puede guardar; si llegara, queda literal (no se borra
   texto en silencio).

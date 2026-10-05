@@ -13,10 +13,46 @@ import {
   variablesDesconocidas,
 } from "../lib/mensaje-deuda";
 import {
+  CcVencimientoModo,
   ConfiguracionPOS,
   RecargoMoraBase,
   RecargoMoraTipo,
 } from "@/entities/config/types";
+import { calcularVencimientoCc } from "../lib/calcular-fecha-vencimiento";
+
+/** "2026-10-15" → "15/10". */
+function diaMes(iso: string): string {
+  const [, mes, dia] = iso.split("-");
+  return `${Number(dia)}/${Number(mes)}`;
+}
+
+/**
+ * El ejemplo que se lee debajo de los días: "lo comprado del 5/9 al 4/10
+ * cierra el 5/10 y vence el 15/10". Sale de la MISMA regla que el resto
+ * (`calcularVencimientoCc`, espejo de `cc_vence_el`): un ejemplo armado a
+ * mano podría decir otra cosa que lo que después pasa.
+ */
+function ejemploCierre(diaCierre: number, diaVencimiento: number): string {
+  if (!Number.isInteger(diaCierre) || diaCierre < 1 || diaCierre > 28) {
+    return "Elegí el día del mes en que cerrás las cuentas (1 a 28).";
+  }
+  const regla = {
+    modo: "CIERRE_MENSUAL" as const,
+    plazoDias: null,
+    diaCierre,
+    diaVencimiento:
+      diaVencimiento >= 1 && diaVencimiento <= 28 ? diaVencimiento : null,
+  };
+  // El período que cierra en octubre de 2026: arranca el día de cierre de
+  // septiembre y termina el día anterior al de octubre.
+  const desde = `2026-09-${String(diaCierre).padStart(2, "0")}`;
+  const hasta = new Date(Date.UTC(2026, 9, diaCierre - 1))
+    .toISOString()
+    .slice(0, 10);
+  const cierre = `2026-10-${String(diaCierre).padStart(2, "0")}`;
+  const vence = calcularVencimientoCc(desde, regla);
+  return `Ejemplo: lo comprado del ${diaMes(desde)} al ${diaMes(hasta)} cierra el ${diaMes(cierre)} y vence el ${diaMes(vence)}.`;
+}
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -62,6 +98,10 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
     entrega_minima_bloqueante: config.entrega_minima_bloqueante ?? false,
     cc_limite_default: config.cc_limite_default ?? 0,
     cc_plazo_mora: config.cc_plazo_mora ?? 30,
+    cc_vencimiento_modo: config.cc_vencimiento_modo ?? "DIAS",
+    // 0 = sin elegir en el formulario; se guarda NULL.
+    cc_dia_cierre: config.cc_dia_cierre ?? 0,
+    cc_dia_vencimiento: config.cc_dia_vencimiento ?? 0,
     crm_dias_inactivo: config.crm_dias_inactivo ?? 60,
     recargo_mora_tipo: config.recargo_mora_tipo ?? "NINGUNO",
     recargo_mora_valor: config.recargo_mora_valor ?? 0,
@@ -136,9 +176,28 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
     // Con 0 una compra vence el mismo día y al siguiente toda la cuenta está
     // en mora. La base lo rechaza igual (CHECK `cc_plazo_mora >= 1`); acá se
     // avisa con un mensaje que se entiende.
-    if (!Number.isInteger(formData.cc_plazo_mora) || formData.cc_plazo_mora < 1) {
+    if (
+      !Number.isInteger(formData.cc_plazo_mora) ||
+      formData.cc_plazo_mora < 1
+    ) {
       toast.error("El vencimiento de deuda tiene que ser de al menos 1 día.");
       return;
+    }
+    // Hasta el 28 para que el día exista en todos los meses. La base tiene el
+    // mismo CHECK.
+    const diaValido = (d: number) => Number.isInteger(d) && d >= 1 && d <= 28;
+    if (formData.cc_vencimiento_modo === "CIERRE_MENSUAL") {
+      if (!diaValido(formData.cc_dia_cierre)) {
+        toast.error("El día de cierre tiene que ser entre 1 y 28.");
+        return;
+      }
+      if (
+        formData.cc_dia_vencimiento !== 0 &&
+        !diaValido(formData.cc_dia_vencimiento)
+      ) {
+        toast.error("El día de vencimiento tiene que ser entre 1 y 28.");
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -150,7 +209,10 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
       .from("configuracion_pos")
       .update({
         ...formData,
-        mensaje_recordatorio_cc: plantillaLimpia === "" ? null : plantillaLimpia,
+        cc_dia_cierre: formData.cc_dia_cierre || null,
+        cc_dia_vencimiento: formData.cc_dia_vencimiento || null,
+        mensaje_recordatorio_cc:
+          plantillaLimpia === "" ? null : plantillaLimpia,
       })
       .eq("id", config.id)
       .select("id");
@@ -408,24 +470,99 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
                       Vencimiento de Deuda
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Días desde la compra para considerar que el saldo deudor
-                      de un ticket está vencido (Mora).
+                      Cuándo se considera vencida una compra fiada (desde el día
+                      siguiente corre la mora).
                     </p>
                   </div>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formData.cc_plazo_mora}
-                      onChange={(e) =>
-                        handleChange("cc_plazo_mora", Number(e.target.value))
-                      }
-                      className="pr-12 bg-muted/50 border-border"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium text-xs">
-                      días
-                    </span>
-                  </div>
+                  <Select
+                    value={formData.cc_vencimiento_modo}
+                    onValueChange={(val) =>
+                      handleChange(
+                        "cc_vencimiento_modo",
+                        val as CcVencimientoModo,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="w-full bg-muted/50 border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DIAS">
+                        Días desde cada compra
+                      </SelectItem>
+                      <SelectItem value="CIERRE_MENSUAL">
+                        Cierre mensual
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  {formData.cc_vencimiento_modo === "DIAS" ? (
+                    <div className="relative">
+                      <Input
+                        type="number"
+                        min="1"
+                        value={formData.cc_plazo_mora}
+                        onChange={(e) =>
+                          handleChange("cc_plazo_mora", Number(e.target.value))
+                        }
+                        className="pr-12 bg-muted/50 border-border"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium text-xs">
+                        días
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">
+                            Día de cierre
+                          </Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="28"
+                            inputMode="numeric"
+                            value={formData.cc_dia_cierre || ""}
+                            onChange={(e) =>
+                              handleChange(
+                                "cc_dia_cierre",
+                                Number(e.target.value),
+                              )
+                            }
+                            placeholder="Ej: 5"
+                            className="bg-muted/50 border-border"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs text-muted-foreground">
+                            Vence el día (opcional)
+                          </Label>
+                          <Input
+                            type="number"
+                            min="1"
+                            max="28"
+                            inputMode="numeric"
+                            value={formData.cc_dia_vencimiento || ""}
+                            onChange={(e) =>
+                              handleChange(
+                                "cc_dia_vencimiento",
+                                Number(e.target.value),
+                              )
+                            }
+                            placeholder="El del cierre"
+                            className="bg-muted/50 border-border"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {ejemploCierre(
+                          formData.cc_dia_cierre,
+                          formData.cc_dia_vencimiento,
+                        )}
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-3 pt-2 border-t border-border/50">
