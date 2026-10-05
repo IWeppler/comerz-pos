@@ -43,6 +43,13 @@ Lo que la venta hace con la PLATA (arqueo, ledger, reintegros) está en
   viejo (incidente del 5/9: "Error de stock" con la base perfecta). El espejo
   legacy se busca por el nombre ACTUAL y en `ventas_items.variante` se guarda el
   vigente.
+- **El espejo `productos_stock` no frena la venta.** Los datos del producto
+  (precio, costo, unidad, categoría, IVA) se leen de `productos`, y una variante
+  real de ese producto sin fila espejo se vende igual: el stock que manda es el de
+  la variante y el espejo se descuenta solo si existe (log
+  `[VENTA VARIANTE SIN ESPEJO]`). Sin variante ni espejo sigue siendo "Error de
+  stock". Incidente del 5/10/2026: 15 variantes de Estilo Bonito de la carga del
+  24-25/7 sin espejo nunca se pudieron vender; repuestas en `20261005160000`.
 
 ### Venta libre: la única excepción al precio revalidado (`20260917120000`)
 

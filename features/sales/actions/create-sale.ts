@@ -381,6 +381,7 @@ export async function registrarVentaAction(
     { data: metodosDb },
     { promoData, categoriasPromo, metodosPromo },
     { data: stockFilas },
+    { data: productosFilas },
     { data: variantesFilas },
     { listaData, overridePorProducto },
     { data: presentacionesFilas },
@@ -394,20 +395,28 @@ export async function registrarVentaAction(
         "id, nombre, tipo, comision, recargo_porcentaje, acreditacion_dias",
       ),
     cargarPromocion(),
+    // El espejo legacy: solo para descontarlo en la RPC. Los datos del
+    // producto ya no viajan embebidos acá (ver `productosFilas`).
     supabase
       .from("productos_stock")
-      // `unidad_medida` viaja acá y no en una consulta propia: es la misma
-      // fila que ya estamos trayendo. Decide si este producto se puede vender
-      // fraccionado (0,750 kg) o solo de a enteros.
-      .select(
-        // `tipo` es la CATEGORÍA del producto y viaja porque contra ella
-        // matchean las promos por categoría. Se lee de la base y no del
-        // carrito por el mismo motivo que el precio: el `tipo` que manda el
-        // cliente es texto libre en un request, y con él se podría hacer
-        // entrar cualquier renglón a una promo que no le corresponde.
-        "cantidad, id, producto_id, variante, producto:productos(nombre, precio, precio_costo, unidad_medida, tipo, tratamiento_iva)",
-      )
+      .select("cantidad, id, producto_id, variante")
       .in("producto_id", productoIds),
+    // Los datos del producto, leídos de `productos` y no embebidos en el
+    // espejo: antes, una variante sin fila en `productos_stock` dejaba el
+    // renglón sin precio ni producto y la venta caía con "Error de stock en
+    // …" con la mercadería en el mostrador (Estilo Bonito, 5/10/2026: 15
+    // variantes de la carga del 24/7 sin espejo). Va en el mismo
+    // `Promise.all`: no agrega round-trips.
+    //
+    // `unidad_medida` decide si se vende fraccionado (0,750 kg) o de a
+    // enteros. `tipo` es la CATEGORÍA y viaja porque contra ella matchean las
+    // promos por categoría: se lee de la base y no del carrito por el mismo
+    // motivo que el precio (el `tipo` del cliente es texto libre en un
+    // request y con él se podría meter cualquier renglón en una promo).
+    supabase
+      .from("productos")
+      .select("id, nombre, precio, precio_costo, unidad_medida, tipo, tratamiento_iva")
+      .in("id", productoIds),
     supabase
       .from("producto_variantes")
       .select("id, precio, costo, producto_id, nombre_display")
@@ -457,6 +466,9 @@ export async function registrarVentaAction(
       `${fila.producto_id}|${fila.variante}`,
       fila,
     ]),
+  );
+  const productoPorId = new Map(
+    (productosFilas ?? []).map((p) => [p.id as string, p]),
   );
   const variantePorId = new Map((variantesFilas ?? []).map((v) => [v.id, v]));
   const variantePorNombre = new Map(
@@ -567,10 +579,30 @@ export async function registrarVentaAction(
       stockPorClave.get(`${productoIdReal}|${nombreVarianteVigente}`) ??
       stockPorClave.get(`${productoIdReal}|${item.variante}`);
 
-    if (!stockActual)
+    // La variante resuelta tiene que ser de ESTE producto para poder vender
+    // sin espejo: es la que descuenta stock en `ajustar_stock_variante`.
+    const varianteDeEsteProducto =
+      varianteData && varianteData.producto_id === productoIdReal
+        ? varianteData
+        : null;
+
+    const productoData = productoPorId.get(productoIdReal);
+
+    // Sin producto, o sin variante NI fila espejo, no hay contra qué vender.
+    // Una variante real sin espejo SÍ se vende: el stock que manda es el de
+    // la variante, y el espejo es una copia que se descuenta si existe.
+    if (!productoData || (!stockActual && !varianteDeEsteProducto))
       return { error: `Error de stock en ${item.variante}.`, success: false };
 
-    const productoData = stockActual.producto as any;
+    if (!stockActual) {
+      console.warn("[VENTA VARIANTE SIN ESPEJO]", {
+        vendedorId: user.id,
+        productoId: productoIdReal,
+        varianteId: varianteDeEsteProducto?.id ?? null,
+        variante: nombreVarianteVigente,
+      });
+    }
+
     const precioProducto = Number(productoData?.precio) || 0;
     const costoProducto = Number(productoData?.precio_costo) || 0;
 
@@ -816,7 +848,8 @@ export async function registrarVentaAction(
       // fila que el precio, así que no cuesta una consulta.
       nombreProducto: (productoData?.nombre as string | null) ?? item.nombre,
       cantidad: cantidadValidada,
-      stockActual,
+      // null si la variante no tiene fila espejo: no hay copia que descontar.
+      stockActual: stockActual ?? null,
       // Con importe fijado, el precio por kilo efectivo de la línea; si no,
       // el de siempre.
       precioServer: precioLinea,
