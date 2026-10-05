@@ -3,6 +3,14 @@ import type { ModoFacturacion, TipoComprobante } from "@/shared/lib/facturacion"
 export type RecargoMoraTipo = "NINGUNO" | "MONTO_FIJO" | "PORCENTAJE";
 
 /**
+ * Sobre qué se calcula el recargo por mora PORCENTAJE
+ * (`configuracion_pos.recargo_mora_base`). SALDO_COMPLETO: todo el capital
+ * adeudado, cláusula de aceleración. PORCION_VENCIDA: solo el capital de los
+ * tickets vencidos. Ver `calcularSaldoConRecargo`.
+ */
+export type RecargoMoraBase = "SALDO_COMPLETO" | "PORCION_VENCIDA";
+
+/**
  * Rubro del comercio. Decide dos cosas: qué columnas trae la plantilla de
  * mercadería (features/stock/lib/columnas-por-rubro.ts) y cómo se muestra la
  * identidad del producto en Inventario — indumentaria razona por talle/color
@@ -112,6 +120,7 @@ export interface ConfiguracionPOS {
   crm_dias_inactivo?: number;
   recargo_mora_tipo?: RecargoMoraTipo;
   recargo_mora_valor?: number;
+  recargo_mora_base?: RecargoMoraBase;
   /** Plantilla del recordatorio de deuda por WhatsApp. null = mensaje por
    * defecto. Ver features/clients/lib/mensaje-deuda.ts. */
   mensaje_recordatorio_cc?: string | null;

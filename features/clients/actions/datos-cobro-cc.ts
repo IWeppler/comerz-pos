@@ -5,6 +5,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import {
   calcularSaldoConRecargo,
+  type BasesMora,
   type RecargoMoraConfig,
 } from "@/features/clients/lib/calcular-saldo-con-recargo";
 import { calcularDiasVencido } from "@/features/clients/lib/calcular-dias-vencido";
@@ -78,7 +79,7 @@ export async function getDatosCobroCuentaCorrienteAction(): Promise<DatosCobroCu
       .order("comision", { ascending: true }),
     supabase
       .from("configuracion_pos")
-      .select("recargo_mora_tipo, recargo_mora_valor")
+      .select("recargo_mora_tipo, recargo_mora_valor, recargo_mora_base")
       .single(),
     // La porción vencida de cada cliente, imputando FIFO. Es la base del
     // recargo por mora: sobre el saldo entero se le cobra interés a compras
@@ -96,6 +97,7 @@ export async function getDatosCobroCuentaCorrienteAction(): Promise<DatosCobroCu
   const recargoConfig: RecargoMoraConfig = {
     recargo_mora_tipo: config?.recargo_mora_tipo ?? "NINGUNO",
     recargo_mora_valor: config?.recargo_mora_valor ?? 0,
+    recargo_mora_base: config?.recargo_mora_base ?? "SALDO_COMPLETO",
   };
 
   const vencidoPorCliente = new Map<string, number>(
@@ -110,6 +112,17 @@ export async function getDatosCobroCuentaCorrienteAction(): Promise<DatosCobroCu
       (vencidos ?? []) as { cliente_id: string; mora_viva: number | null }[]
     ).map((v) => [v.cliente_id, Number(v.mora_viva ?? 0)]),
   );
+  // Capital vencido (base con PORCION_VENCIDA) y lo que ya pagó su recargo.
+  const basesMoraPorCliente = new Map<string, BasesMora>(
+    ((vencidos ?? []) as ({ cliente_id: string } & BasesMora)[]).map((v) => [
+      v.cliente_id,
+      {
+        capital_vencido: v.capital_vencido,
+        recargado_saldo: v.recargado_saldo,
+        recargado_vencido: v.recargado_vencido,
+      },
+    ]),
+  );
 
   const conDeuda: ClienteConDeuda[] = (clientes ?? []).map((c) => {
     const { saldoBase, montoRecargo } = calcularSaldoConRecargo(
@@ -118,6 +131,7 @@ export async function getDatosCobroCuentaCorrienteAction(): Promise<DatosCobroCu
         fecha_vencimiento: c.fecha_vencimiento_deuda,
         monto_vencido: vencidoPorCliente.get(c.id) ?? 0,
         mora_previa: moraPreviaPorCliente.get(c.id) ?? 0,
+        ...basesMoraPorCliente.get(c.id),
       },
       recargoConfig,
     );

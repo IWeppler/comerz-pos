@@ -1,12 +1,38 @@
-import { RecargoMoraTipo } from "@/entities/config/types";
+import type { RecargoMoraBase, RecargoMoraTipo } from "@/entities/config/types";
 import { calcularDiasVencido } from "./calcular-dias-vencido";
 
 export interface RecargoMoraConfig {
   recargo_mora_tipo: RecargoMoraTipo;
   recargo_mora_valor: number;
+  /** Sin dato = SALDO_COMPLETO, el default de la columna y lo que todos los
+   * comercios tenían antes de que existiera (5/10/2026). */
+  recargo_mora_base?: RecargoMoraBase;
 }
 
-export interface TicketConVencimiento {
+/**
+ * Lo que sale de `deuda_cc_vencida` por cliente para armar la base del
+ * recargo (5/10/2026). Viaja junto: separarlo invita a que una pantalla pase
+ * una parte y olvide la otra.
+ */
+export interface BasesMora {
+  /**
+   * El capital (sin recargos previos) de las ventas VENCIDAS. Es la base del
+   * recargo cuando el comercio eligió PORCION_VENCIDA.
+   */
+  capital_vencido?: number | string | null;
+  /**
+   * Capital vivo de ventas que YA pagaron su recargo con SALDO_COMPLETO:
+   * existían cuando se cobró una mora. Se resta de la base para que la mora
+   * se cobre una vez por venta (Configuración lo promete: "se suma una única
+   * vez"). 0 = ninguna venta viva tuvo recargo todavía.
+   */
+  recargado_saldo?: number | string | null;
+  /** Lo mismo con PORCION_VENCIDA: ventas que ya estaban vencidas cuando se
+   * cobró una mora. */
+  recargado_vencido?: number | string | null;
+}
+
+export interface TicketConVencimiento extends BasesMora {
   monto_pendiente?: number | string | null;
   fecha_vencimiento?: string | null;
   /**
@@ -42,9 +68,10 @@ export interface SaldoConRecargo {
   /** La porción vencida por FIFO. Se informa; NO es la base del recargo desde
    * el 5/9/2026. */
   montoVencido: number;
-  /** Sobre qué se calculó el recargo: el capital adeudado, sin los recargos
-   * anteriores. Se devuelve para poder mostrarlo y para que un test pueda
-   * afirmar que la mora no entró en su propia base. */
+  /** Sobre qué se calculó el recargo: el capital adeudado (o solo el vencido,
+   * según `recargo_mora_base`), sin los recargos anteriores. Se devuelve para
+   * poder mostrarlo y para que un test pueda afirmar que la mora no entró en
+   * su propia base. */
   baseRecargo: number;
   montoRecargo: number;
   saldoConRecargo: number;
@@ -63,6 +90,12 @@ export interface SaldoConRecargo {
  * `ventas`. La firma quedó genérica a propósito —monto pendiente + fecha— para
  * que el server (registrarPagoDeudaAction) y la UI (tabla y detalle del
  * cliente) calculen exactamente el mismo número.
+ *
+ * LA BASE LA ELIGE CADA COMERCIO desde el 5/10/2026 (`recargo_mora_base`).
+ * Lo que sigue es la historia de SALDO_COMPLETO, que es el default. Librería
+ * Colores reclamó lo contrario: NATI CORDOBA tenía $14.800 vencidos y una
+ * compra de $302.150 de seis días; sobre el saldo el 15% daba $47.542,50,
+ * sobre lo vencido $2.220. Con PORCION_VENCIDA la base es `capital_vencido`.
  *
  * LA BASE ES EL SALDO COMPLETO, y esto cambió el 5/9/2026. Entre el 30/8 y esa
  * fecha la base fue la porción vencida FIFO, para no cobrarle mora a una
@@ -102,7 +135,22 @@ export function calcularSaldoConRecargo(
     saldoBase,
     Math.max(0, Number(ticket.mora_previa) || 0),
   );
-  const baseRecargo = Math.max(0, saldoBase - moraPrevia);
+  const capital = Math.max(0, saldoBase - moraPrevia);
+  const numero = (v: number | string | null | undefined) =>
+    Math.max(0, Number(v) || 0);
+  // PORCION_VENCIDA: solo el capital de las ventas vencidas, acotado al
+  // capital por la misma defensa contra un libro descuadrado. En las dos
+  // bases se resta lo que YA pagó su recargo: una venta recarga una sola vez.
+  // Hasta el 5/10/2026 cada cobro con la cuenta vencida recargaba de nuevo
+  // (MARA MANSILLA en Evens: 4/9, 14/9 y 26/9).
+  const baseRecargo =
+    config.recargo_mora_base === "PORCION_VENCIDA"
+      ? Math.max(
+          0,
+          Math.min(capital, numero(ticket.capital_vencido)) -
+            numero(ticket.recargado_vencido),
+        )
+      : Math.max(0, capital - numero(ticket.recargado_saldo));
   const diasVencido = calcularDiasVencido(ticket.fecha_vencimiento);
   // Vencido = hay saldo y la fecha pasó. NO se exige `montoVencido > 0`: con
   // el vencimiento anclado al ciclo de deuda (ver `recalcular_vencimiento_cc`),
@@ -123,12 +171,13 @@ export function calcularSaldoConRecargo(
 
   let montoRecargo = 0;
   if (config.recargo_mora_tipo === "MONTO_FIJO") {
-    montoRecargo = Math.max(0, Number(config.recargo_mora_valor) || 0);
+    // También una vez: si todo lo que debe ya pagó su recargo, no hay otro.
+    montoRecargo =
+      baseRecargo > 0 ? Math.max(0, Number(config.recargo_mora_valor) || 0) : 0;
   } else if (config.recargo_mora_tipo === "PORCENTAJE") {
     const pct = Math.max(0, Number(config.recargo_mora_valor) || 0);
-    // Sobre todo el CAPITAL. Es una cláusula de aceleración: si la clienta se
-    // atrasó, toda su cuenta entra en mora, no solo el tramo con fecha pasada.
-    // Pero capital: un recargo anterior impago no puede generar recargo (ver
+    // Sobre el CAPITAL: todo (SALDO_COMPLETO, cláusula de aceleración) o solo
+    // el vencido (PORCION_VENCIDA). Nunca un recargo anterior impago (ver
     // `mora_previa`).
     montoRecargo = (baseRecargo * pct) / 100;
   }

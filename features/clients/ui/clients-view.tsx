@@ -30,6 +30,7 @@ import {
   type EstadoCliente,
 } from "../lib/clasificar-estado-cliente";
 import {
+  BasesMora,
   calcularSaldoConRecargo,
   RecargoMoraConfig,
 } from "../lib/calcular-saldo-con-recargo";
@@ -84,6 +85,9 @@ interface ClientsViewProps {
   /** Recargos anteriores impagos por cliente. Salen de la base del próximo
    * recargo: la mora no se calcula sobre mora. */
   moraPreviaPorCliente: Record<string, number>;
+  /** Capital vencido (base con PORCION_VENCIDA) y lo que ya pagó su recargo,
+   * por cliente. Ver `BasesMora`. */
+  basesMoraPorCliente: Record<string, BasesMora>;
   nombreComercio?: string | null;
   /** `configuracion_pos.mensaje_recordatorio_cc`; null = mensaje por defecto. */
   plantillaRecordatorio?: string | null;
@@ -98,6 +102,7 @@ export function ClientsView({
   recargoMoraConfig,
   vencidoPorCliente,
   moraPreviaPorCliente,
+  basesMoraPorCliente,
   nombreComercio = null,
   plantillaRecordatorio = null,
   isAdmin = false,
@@ -161,6 +166,7 @@ export function ClientsView({
           fecha_vencimiento: cliente.fecha_vencimiento_deuda,
           monto_vencido: vencidoPorCliente[cliente.id] ?? 0,
           mora_previa: moraPreviaPorCliente[cliente.id] ?? 0,
+          ...basesMoraPorCliente[cliente.id],
         },
         recargoMoraConfig,
       );
@@ -182,6 +188,7 @@ export function ClientsView({
     recargoMoraConfig,
     vencidoPorCliente,
     moraPreviaPorCliente,
+    basesMoraPorCliente,
     referenciaScoring,
     ahora,
   ]);
@@ -643,6 +650,9 @@ export function ClientsView({
         }
         moraPrevia={
           selectedClient ? (moraPreviaPorCliente[selectedClient.id] ?? 0) : 0
+        }
+        basesMora={
+          selectedClient ? basesMoraPorCliente[selectedClient.id] : undefined
         }
         nombreComercio={nombreComercio}
         plantillaRecordatorio={plantillaRecordatorio}

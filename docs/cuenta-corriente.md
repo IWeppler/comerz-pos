@@ -157,11 +157,25 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
 
 ## Mora
 
-- **La base es el SALDO COMPLETO, no la porción vencida** (5/9/2026): cláusula de
-  aceleración aceptada a sabiendas por la dueña. Cuesta mucho más al cliente (CELESTE
-  SCHOFER: $15.723,75 contra $26,25); el test de `calcular-saldo-con-recargo.test.ts`
-  guarda esos números para que nadie la "corrija" de vuelta. `estaVencido` ya no
-  exige `montoVencido > 0`; solo saldo cero apaga el recargo.
+- **La base la elige cada comercio** (`configuracion_pos.recargo_mora_base`,
+  `20261005120000`): `SALDO_COMPLETO` (default, cláusula de aceleración) o
+  `PORCION_VENCIDA` (solo `capital_vencido` de `deuda_cc_vencida`). Nació del
+  reclamo de Librería Colores (5/10/2026): NATI CORDOBA, $14.800 vencidos y una
+  compra de $302.150 de seis días, $47.542,50 de mora sobre el saldo contra
+  $2.220 sobre lo vencido; ROMI MANSILLA pagó $17.377,50 donde sobre lo vencido
+  eran $9.270.
+- **SALDO_COMPLETO** (5/9/2026): cláusula de aceleración aceptada a sabiendas por
+  la dueña de Evens, que quedó global hasta el 5/10. Cuesta mucho más al cliente
+  (CELESTE SCHOFER: $15.723,75 contra $26,25); el test de
+  `calcular-saldo-con-recargo.test.ts` guarda esos números. `estaVencido` no exige
+  `montoVencido > 0`; solo saldo cero apaga el recargo.
+- **El plazo (`cc_plazo_mora`) es >= 1** (CHECK). Con 0 una compra vence el día
+  que se hizo y al siguiente toda la cuenta está en mora. **Cambiar el plazo re-cachea `fecha_vencimiento_deuda`**
+  de todo el comercio (trigger `trg_recachear_vencimientos_por_plazo`); antes el
+  cache quedaba con el plazo viejo hasta el próximo movimiento de cada cliente.
+- **"Hoy" es el día comercial argentino también en TS** (`calcularDiasVencido`,
+  5/10/2026). Con el calendario del server (UTC) una deuda que vencía hoy cobraba
+  mora desde las 21:00.
 - **Pero sobre CAPITAL: el saldo NO incluye recargos anteriores**
   (`20260909170000`): base = `monto_pendiente − mora_previa` (de `mora_viva` en
   `deuda_cc_vencida`). Si no, interés compuesto, contra lo que promete Configuración
@@ -171,8 +185,18 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
   calcula al vuelo; `registrarPagoDeudaAction` inserta el DEBITO real antes del
   cobro con su `debito_origen_id`. Un cambio de criterio de RECARGO no necesita
   backfill; uno de VENCIMIENTO sí.
-- Configurable en Configuración > Clientes (`clients-panel.tsx`): `cc_plazo_mora` y
-  `recargo_mora_tipo` / `recargo_mora_valor` (NINGUNO | MONTO_FIJO | PORCENTAJE).
+- Configurable en Configuración > Clientes (`clients-panel.tsx`): `cc_plazo_mora`,
+  `recargo_mora_tipo` / `recargo_mora_valor` (NINGUNO | MONTO_FIJO | PORCENTAJE) y
+  `recargo_mora_base`.
+- **La mora se cobra UNA vez por venta** (`20261005120000`). Hasta el 5/10/2026
+  cada cobro con la cuenta vencida recargaba de nuevo el mismo capital (9 clientes
+  con 2 o 3 recargos; Evens, MARA MANSILLA: 4/9, 14/9 y 26/9). `deuda_cc_vencida`
+  devuelve el capital vivo que ya pagó su recargo y se resta de la base:
+  `recargado_saldo` (la venta existía cuando se cobró una mora; SALDO_COMPLETO) y
+  `recargado_vencido` (ya estaba vencida en ese momento; PORCION_VENCIDA). Vale
+  también para MONTO_FIJO: sin capital por recargar no hay otro fijo.
+- Librería Colores: plazo 32 días y PORCION_VENCIDA desde el 5/10/2026 (lo puso la
+  migración; antes tenía plazo 0).
 
 ## Recordatorio de deuda por WhatsApp (`20261004120000`)
 

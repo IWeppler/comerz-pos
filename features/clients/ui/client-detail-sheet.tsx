@@ -42,6 +42,7 @@ import { MetodoPagoPOS } from "@/shared/components/cart-sidebar/types";
 import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
 import { getSupabaseRelation, SupabaseRelation } from "@/entities/ventas/types";
 import {
+  BasesMora,
   calcularSaldoConRecargo,
   RecargoMoraConfig,
 } from "../lib/calcular-saldo-con-recargo";
@@ -81,6 +82,8 @@ interface ClientDetailSheetProps {
   montoVencido: number;
   /** Recargos anteriores impagos. Se restan de la base del recargo nuevo. */
   moraPrevia: number;
+  /** Capital vencido (base con PORCION_VENCIDA) y lo que ya pagó su recargo. */
+  basesMora?: BasesMora;
   nombreComercio?: string | null;
   /** Plantilla del comercio para el recordatorio; null = mensaje por defecto. */
   plantillaRecordatorio?: string | null;
@@ -96,6 +99,7 @@ export function ClientDetailSheet({
   recargoMoraConfig,
   montoVencido,
   moraPrevia,
+  basesMora,
   nombreComercio = null,
   plantillaRecordatorio = null,
   isAdmin = false,
@@ -180,6 +184,7 @@ export function ClientDetailSheet({
       fecha_vencimiento: cliente.fecha_vencimiento_deuda,
       monto_vencido: montoVencido,
       mora_previa: moraPrevia,
+      ...basesMora,
     },
     recargoMoraConfig,
   );

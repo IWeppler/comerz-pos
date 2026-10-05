@@ -8,6 +8,7 @@ import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import { parseClientesCSV } from "@/features/clients/lib/parse-clientes-csv";
 import {
   calcularSaldoConRecargo,
+  type BasesMora,
   RecargoMoraConfig,
 } from "@/features/clients/lib/calcular-saldo-con-recargo";
 import { validarPerdonDeuda } from "@/features/clients/lib/validar-perdon-deuda";
@@ -153,7 +154,7 @@ export async function getClientesPageDataAction() {
     supabase
       .from("configuracion_pos")
       .select(
-        "cc_anticipo_default, recargo_mora_tipo, recargo_mora_valor, posName, mensaje_recordatorio_cc",
+        "cc_anticipo_default, recargo_mora_tipo, recargo_mora_valor, recargo_mora_base, posName, mensaje_recordatorio_cc",
       )
       .single(),
     // Sin `p_cliente_id` devuelve todos los del negocio en UN viaje: la tabla
@@ -168,6 +169,7 @@ export async function getClientesPageDataAction() {
   const recargoMoraConfig: RecargoMoraConfig = {
     recargo_mora_tipo: configRes.data?.recargo_mora_tipo ?? "NINGUNO",
     recargo_mora_valor: configRes.data?.recargo_mora_valor ?? 0,
+    recargo_mora_base: configRes.data?.recargo_mora_base ?? "SALDO_COMPLETO",
   };
 
   // Mapa cliente → porción vencida, para que la tabla y el detalle calculen el
@@ -178,13 +180,21 @@ export async function getClientesPageDataAction() {
   // próximo recargo. Sale de la misma fila que el vencido, y va junto a
   // propósito: separarlos invita a que una pantalla pase uno y olvide el otro.
   const moraPreviaPorCliente: Record<string, number> = {};
-  for (const fila of (vencidoRes.data ?? []) as {
+  // Y las bases del recargo: el capital vencido (PORCION_VENCIDA) y lo que
+  // ya pagó su recargo, para que una venta recargue una sola vez.
+  const basesMoraPorCliente: Record<string, BasesMora> = {};
+  for (const fila of (vencidoRes.data ?? []) as ({
     cliente_id: string;
     vencido: number | string | null;
     mora_viva: number | string | null;
-  }[]) {
+  } & BasesMora)[]) {
     vencidoPorCliente[fila.cliente_id] = Number(fila.vencido ?? 0);
     moraPreviaPorCliente[fila.cliente_id] = Number(fila.mora_viva ?? 0);
+    basesMoraPorCliente[fila.cliente_id] = {
+      capital_vencido: Number(fila.capital_vencido ?? 0),
+      recargado_saldo: Number(fila.recargado_saldo ?? 0),
+      recargado_vencido: Number(fila.recargado_vencido ?? 0),
+    };
   }
 
   return {
@@ -195,6 +205,7 @@ export async function getClientesPageDataAction() {
       recargoMoraConfig,
       vencidoPorCliente,
       moraPreviaPorCliente,
+      basesMoraPorCliente,
       nombreComercio: (configRes.data?.posName as string | null) ?? null,
       plantillaRecordatorio:
         (configRes.data?.mensaje_recordatorio_cc as string | null) ?? null,
@@ -452,7 +463,7 @@ export async function registrarPagoDeudaAction(
         // Los cuatro últimos son la cabecera del recibo que se imprime: van
         // en la misma consulta para no pagar otro viaje.
         .select(
-          "recargo_mora_tipo, recargo_mora_valor, cc_plazo_mora, posName, direccion, whatsapp, ancho_ticket_mm",
+          "recargo_mora_tipo, recargo_mora_valor, recargo_mora_base, cc_plazo_mora, posName, direccion, whatsapp, ancho_ticket_mm",
         )
         .single(),
       supabase
@@ -465,6 +476,7 @@ export async function registrarPagoDeudaAction(
   const recargoConfig: RecargoMoraConfig = {
     recargo_mora_tipo: configPos?.recargo_mora_tipo ?? "NINGUNO",
     recargo_mora_valor: configPos?.recargo_mora_valor ?? 0,
+    recargo_mora_base: configPos?.recargo_mora_base ?? "SALDO_COMPLETO",
   };
   const { montoRecargo } = calcularSaldoConRecargo(
     {
@@ -480,6 +492,11 @@ export async function registrarPagoDeudaAction(
       // Configuración. Ver `mora_previa`.
       mora_previa: (deudaVencida as { mora_viva: number | null } | null)
         ?.mora_viva,
+      // Base si el comercio eligió PORCION_VENCIDA, y lo que ya pagó su
+      // recargo (una venta recarga una sola vez).
+      capital_vencido: (deudaVencida as BasesMora | null)?.capital_vencido,
+      recargado_saldo: (deudaVencida as BasesMora | null)?.recargado_saldo,
+      recargado_vencido: (deudaVencida as BasesMora | null)?.recargado_vencido,
     },
     recargoConfig,
   );
@@ -502,9 +519,13 @@ export async function registrarPagoDeudaAction(
   // (`debito_origen_id`): capital y mora del mismo ticket se imputan como una
   // unidad. Se DECLARA acá —no se deduce después— porque este es el único
   // momento en que se sabe con certeza cuál era la deuda más vieja viva.
+  // La leyenda dice sobre qué se calculó: con SALDO_COMPLETO decía "sobre la
+  // deuda vencida" y el número era sobre toda la cuenta.
   const detalleMora =
     recargoConfig.recargo_mora_tipo === "PORCENTAJE"
-      ? `${recargoConfig.recargo_mora_valor}% sobre la deuda vencida`
+      ? recargoConfig.recargo_mora_base === "PORCION_VENCIDA"
+        ? `${recargoConfig.recargo_mora_valor}% sobre la deuda vencida`
+        : `${recargoConfig.recargo_mora_valor}% sobre el saldo adeudado`
       : "monto fijo por deuda vencida";
 
   // El crédito va por la BASE, no por el bruto: el recargo por método es

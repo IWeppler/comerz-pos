@@ -12,7 +12,11 @@ import {
   VARIABLES_MENSAJE_DEUDA,
   variablesDesconocidas,
 } from "../lib/mensaje-deuda";
-import { ConfiguracionPOS, RecargoMoraTipo } from "@/entities/config/types";
+import {
+  ConfiguracionPOS,
+  RecargoMoraBase,
+  RecargoMoraTipo,
+} from "@/entities/config/types";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
@@ -61,6 +65,7 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
     crm_dias_inactivo: config.crm_dias_inactivo ?? 60,
     recargo_mora_tipo: config.recargo_mora_tipo ?? "NINGUNO",
     recargo_mora_valor: config.recargo_mora_valor ?? 0,
+    recargo_mora_base: config.recargo_mora_base ?? "SALDO_COMPLETO",
   });
   // Vacío = mensaje por defecto (se guarda NULL, no "").
   const [plantilla, setPlantilla] = useState(
@@ -125,6 +130,14 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
       toast.error(
         `El mensaje de recordatorio no puede pasar de ${LARGO_MAXIMO_PLANTILLA} caracteres.`,
       );
+      return;
+    }
+
+    // Con 0 una compra vence el mismo día y al siguiente toda la cuenta está
+    // en mora. La base lo rechaza igual (CHECK `cc_plazo_mora >= 1`); acá se
+    // avisa con un mensaje que se entiende.
+    if (!Number.isInteger(formData.cc_plazo_mora) || formData.cc_plazo_mora < 1) {
+      toast.error("El vencimiento de deuda tiene que ser de al menos 1 día.");
       return;
     }
 
@@ -476,6 +489,39 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
                       </span>
                     </div>
                   </div>
+                  {formData.recargo_mora_tipo === "PORCENTAJE" && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-muted-foreground">
+                        El porcentaje se calcula sobre
+                      </Label>
+                      <Select
+                        value={formData.recargo_mora_base}
+                        onValueChange={(val) =>
+                          handleChange(
+                            "recargo_mora_base",
+                            val as RecargoMoraBase,
+                          )
+                        }
+                      >
+                        <SelectTrigger className="w-full bg-muted/50 border-border">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="PORCION_VENCIDA">
+                            Solo lo vencido
+                          </SelectItem>
+                          <SelectItem value="SALDO_COMPLETO">
+                            Todo el saldo de la cuenta
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        {formData.recargo_mora_base === "PORCION_VENCIDA"
+                          ? "Las compras que todavía no vencieron no pagan recargo."
+                          : "Si una compra vence, el recargo se aplica a toda la cuenta, incluidas las compras recientes."}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

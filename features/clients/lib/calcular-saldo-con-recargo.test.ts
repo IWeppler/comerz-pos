@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
+import { calcularDiasVencido } from "./calcular-dias-vencido";
 import {
   calcularSaldoConRecargo,
   type RecargoMoraConfig,
@@ -20,20 +22,13 @@ const NINGUNO: RecargoMoraConfig = {
 /**
  * Fechas relativas a hoy, en ISO — es lo que guarda fecha_vencimiento_deuda.
  *
- * La fecha se arma con los componentes LOCALES, no con `toISOString()`.
- * `calcularDiasVencido` compara contra el calendario local
- * (`hoy.getFullYear/getMonth/getDate`), así que el helper tiene que hablar el
- * mismo idioma: con `toISOString()`, en Argentina (UTC−3) a partir de las
- * 21:00 el instante ya cayó en el día siguiente en UTC y `haceDias(1)`
- * devolvía HOY. El test daba 0 de recargo y fallaba — todas las noches, y solo
- * de noche.
+ * "Hoy" es el día comercial argentino, igual que en `calcularDiasVencido`: si
+ * el helper usara otro calendario (el local o `toISOString()`), de noche
+ * `haceDias(1)` caería en HOY y el test fallaría solo a esa hora.
  */
 function haceDias(dias: number): string {
-  const f = new Date();
-  f.setDate(f.getDate() - dias);
-  const mes = String(f.getMonth() + 1).padStart(2, "0");
-  const dia = String(f.getDate()).padStart(2, "0");
-  return `${f.getFullYear()}-${mes}-${dia}`;
+  const [a, m, d] = diaComercial(new Date()).split("-").map(Number);
+  return new Date(Date.UTC(a, m - 1, d - dias)).toISOString().slice(0, 10);
 }
 
 describe("calcularSaldoConRecargo", () => {
@@ -340,7 +335,9 @@ describe("la mora nunca se calcula sobre mora", () => {
     expect(r.estaVencido).toBe(true);
   });
 
-  it("el monto FIJO no depende de la base y no cambia", () => {
+  it("el monto FIJO no se cobra si lo único que debe es mora previa", () => {
+    // Hasta el 5/10/2026 acá se sumaba otro fijo: mora sobre mora. Desde que
+    // la mora es una vez por venta, sin capital por recargar no hay recargo.
     const r = calcularSaldoConRecargo(
       {
         monto_pendiente: 15000,
@@ -350,7 +347,7 @@ describe("la mora nunca se calcula sobre mora", () => {
       },
       FIJO,
     );
-    expect(r.montoRecargo).toBe(5000);
+    expect(r.montoRecargo).toBe(0);
   });
 
   it("una mora previa mayor al saldo no vuelve negativa la base", () => {
@@ -379,5 +376,165 @@ describe("la mora nunca se calcula sobre mora", () => {
       PORCENTAJE,
     );
     expect(r.montoRecargo).toBe(15000);
+  });
+});
+
+// La base la elige cada comercio (5/10/2026). El caso real: NATI CORDOBA en
+// Librería Colores, $14.800 vencidos y una compra de $302.150 de seis días.
+describe("calcularSaldoConRecargo — base configurable", () => {
+  const nati = {
+    monto_pendiente: 316950,
+    fecha_vencimiento: haceDias(1),
+    monto_vencido: 14800,
+    mora_previa: 0,
+    capital_vencido: 14800,
+  };
+
+  it("SALDO_COMPLETO: 15% de toda la cuenta (lo que se mostraba a Colores)", () => {
+    const r = calcularSaldoConRecargo(nati, {
+      ...PORCENTAJE,
+      recargo_mora_base: "SALDO_COMPLETO",
+    });
+    expect(r.montoRecargo).toBeCloseTo(47542.5, 2);
+  });
+
+  it("sin base configurada se comporta como SALDO_COMPLETO (el default)", () => {
+    expect(calcularSaldoConRecargo(nati, PORCENTAJE).montoRecargo).toBeCloseTo(
+      47542.5,
+      2,
+    );
+  });
+
+  it("PORCION_VENCIDA: 15% solo de lo vencido", () => {
+    const r = calcularSaldoConRecargo(nati, {
+      ...PORCENTAJE,
+      recargo_mora_base: "PORCION_VENCIDA",
+    });
+    expect(r.baseRecargo).toBe(14800);
+    expect(r.montoRecargo).toBeCloseTo(2220, 2);
+    expect(r.saldoConRecargo).toBeCloseTo(319170, 2);
+  });
+
+  it("PORCION_VENCIDA sin capital vencido no cobra recargo", () => {
+    const r = calcularSaldoConRecargo(
+      { ...nati, capital_vencido: 0 },
+      { ...PORCENTAJE, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.montoRecargo).toBe(0);
+  });
+
+  it("PORCION_VENCIDA no pasa del capital aunque el dato venga inflado", () => {
+    const r = calcularSaldoConRecargo(
+      { ...nati, mora_previa: 16950, capital_vencido: 999999 },
+      { ...PORCENTAJE, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.baseRecargo).toBe(300000);
+  });
+
+  it("MONTO_FIJO no depende de la base", () => {
+    const r = calcularSaldoConRecargo(nati, {
+      ...FIJO,
+      recargo_mora_base: "PORCION_VENCIDA",
+    });
+    expect(r.montoRecargo).toBe(5000);
+  });
+});
+
+describe("calcularDiasVencido — día comercial argentino", () => {
+  it("a las 22:00 de Argentina sigue siendo hoy, aunque en UTC sea mañana", () => {
+    // 5/10/2026 22:00 en Buenos Aires = 6/10 01:00 UTC.
+    const noche = new Date("2026-10-06T01:00:00Z");
+    expect(calcularDiasVencido("2026-10-05", noche)).toBe(0);
+    expect(calcularDiasVencido("2026-10-04", noche)).toBe(1);
+  });
+
+  it("a la medianoche argentina pasa al día siguiente", () => {
+    const medianoche = new Date("2026-10-06T03:00:00Z");
+    expect(calcularDiasVencido("2026-10-05", medianoche)).toBe(1);
+  });
+});
+
+// Una venta recarga UNA vez (5/10/2026). Antes cada cobro con la cuenta
+// vencida volvía a recargar el mismo capital (MARA MANSILLA en Evens: 4/9,
+// 14/9 y 26/9).
+describe("calcularSaldoConRecargo — una vez por venta", () => {
+  it("SALDO_COMPLETO: no recarga lo que ya pagó su recargo", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 100000,
+        fecha_vencimiento: haceDias(10),
+        mora_previa: 0,
+        recargado_saldo: 80000,
+      },
+      PORCENTAJE,
+    );
+    // Solo la compra nueva, la de $20.000 que no existía en la mora anterior.
+    expect(r.baseRecargo).toBe(20000);
+    expect(r.montoRecargo).toBe(3000);
+  });
+
+  it("SALDO_COMPLETO: si todo ya pagó su recargo, no hay otro", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 50000,
+        fecha_vencimiento: haceDias(10),
+        recargado_saldo: 50000,
+      },
+      PORCENTAJE,
+    );
+    expect(r.montoRecargo).toBe(0);
+    expect(r.saldoConRecargo).toBe(50000);
+  });
+
+  it("PORCION_VENCIDA: solo lo vencido que todavía no recargó", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 100000,
+        fecha_vencimiento: haceDias(10),
+        capital_vencido: 60000,
+        recargado_vencido: 40000,
+      },
+      { ...PORCENTAJE, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.baseRecargo).toBe(20000);
+    expect(r.montoRecargo).toBe(3000);
+  });
+
+  it("PORCION_VENCIDA ignora lo recargado con la otra base", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 100000,
+        fecha_vencimiento: haceDias(10),
+        capital_vencido: 60000,
+        recargado_saldo: 100000,
+        recargado_vencido: 0,
+      },
+      { ...PORCENTAJE, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.baseRecargo).toBe(60000);
+  });
+
+  it("MONTO_FIJO: tampoco se repite si no queda nada sin recargar", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 50000,
+        fecha_vencimiento: haceDias(10),
+        recargado_saldo: 50000,
+      },
+      FIJO,
+    );
+    expect(r.montoRecargo).toBe(0);
+  });
+
+  it("acepta los montos como string, que es como llegan de numeric", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: "100000.00",
+        fecha_vencimiento: haceDias(10),
+        recargado_saldo: "80000.00",
+      },
+      PORCENTAJE,
+    );
+    expect(r.montoRecargo).toBe(3000);
   });
 });
