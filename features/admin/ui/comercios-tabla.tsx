@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ExternalLink, Search, X } from "lucide-react";
+import { Archive, ExternalLink, Search, X } from "lucide-react";
 import {
   AccionesComercioMenu,
   type PlanOpcion,
@@ -43,69 +43,6 @@ const ESTADO_COLOR: Record<string, string> = {
  * estado desconocido no se pinta como si fuera bueno. */
 const ESTADO_COLOR_DEFECTO = "bg-white/5 text-white/40 border-white/10";
 
-/** Barra de consumo de un límite. El track es un paso más claro del mismo
- * color que el fill, no un gris: así el estado se lee a lo largo de toda la
- * barra y no solo en la parte llena. */
-function Medidor({
-  usado,
-  limite,
-}: Readonly<{ usado: number; limite: number | null }>) {
-  if (limite === null) {
-    return (
-      <span className="font-mono text-xs tabular-nums text-white/50">
-        {usado} <span className="text-white/25">/ ∞</span>
-      </span>
-    );
-  }
-
-  const proporcion = Math.min(1, usado / limite);
-  const lleno = usado >= limite;
-  const cerca = !lleno && proporcion >= 0.8;
-
-  return (
-    // `max-w-full` para que en la grilla de 3 de la tarjeta mobile se achique
-    // en vez de desbordar; en la tabla sigue midiendo los mismos 96px.
-    <div className="w-24 max-w-full">
-      <span
-        className={`font-mono text-xs tabular-nums ${
-          lleno ? "text-amber-400" : "text-white/60"
-        }`}
-      >
-        {usado} <span className="text-white/25">/ {limite}</span>
-      </span>
-      <div className="mt-1 h-1 overflow-hidden rounded-full bg-primary/15">
-        <div
-          className={`h-full rounded-full ${
-            lleno ? "bg-amber-400" : cerca ? "bg-amber-400/70" : "bg-primary"
-          }`}
-          style={{ width: `${proporcion * 100}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-/**
- * El mismo medidor con su nombre encima. Solo lo usa la tarjeta de mobile: en
- * la tabla el rótulo lo pone el `<th>`, acá no hay encabezado del que colgarse.
- */
-function MedidorRotulado({
-  rotulo,
-  usado,
-  limite,
-}: Readonly<{ rotulo: string; usado: number; limite: number | null }>) {
-  return (
-    <div className="min-w-0">
-      <p className="truncate text-[10px] uppercase tracking-wider text-white/40">
-        {rotulo}
-      </p>
-      <div className="mt-0.5">
-        <Medidor usado={usado} limite={limite} />
-      </div>
-    </div>
-  );
-}
-
 /**
  * La actividad de la última semana.
  *
@@ -134,14 +71,18 @@ function Actividad({
 }
 
 const TODOS = "todos";
+/** Valor del filtro de plan para los comercios sin plan asignado. */
+const SIN_PLAN = "sin_plan";
+/** El estado de baja en la base. No se borra: va a "Descartados". */
+const CANCELADO = "cancelado";
 
 /**
- * Los comercios, con sus límites y su actividad a la vista.
+ * Los comercios, con su plan y su actividad a la vista. La actividad de 7 días
+ * es la señal de baja.
  *
- * Los medidores están acá y no escondidos en un detalle porque son la señal de
- * upgrade: un comercio en 48 de 50 clientes es una conversación pendiente, y si
- * hay que abrir tres pantallas para verlo, no se ve nunca. La actividad de 7
- * días está por el motivo opuesto: es la señal de baja.
+ * Los cancelados NO están en la tabla principal: son ruido para el día a día,
+ * pero no se borran (tienen historia, pagos y pueden volver). Se ven con el
+ * botón "Descartados", que muestra solo esos.
  *
  * El filtrado es todo en el cliente: son decenas de comercios, no miles, y
  * hacerlo en la base sería un viaje de red por cada letra tipeada.
@@ -159,6 +100,23 @@ export function ComerciosTabla({
   const [estado, setEstado] = useState(TODOS);
   const [rubro, setRubro] = useState(TODOS);
   const [actividad, setActividad] = useState(TODOS);
+  const [plan, setPlan] = useState(TODOS);
+  const [verDescartados, setVerDescartados] = useState(false);
+
+  const cantidadDescartados = useMemo(
+    () => comercios.filter((c) => c.estado === CANCELADO).length,
+    [comercios],
+  );
+  // La vista elegida: los vigentes o solo los cancelados. Los filtros y sus
+  // opciones salen de acá, así no se ofrece filtrar por algo que la vista no
+  // tiene.
+  const enVista = useMemo(
+    () =>
+      comercios.filter((c) =>
+        verDescartados ? c.estado === CANCELADO : c.estado !== CANCELADO,
+      ),
+    [comercios, verDescartados],
+  );
 
   // Las opciones salen de los datos y no de una lista fija: si mañana hay un
   // rubro nuevo aparece solo, y no se ofrece filtrar por uno que no tiene
@@ -166,19 +124,34 @@ export function ComerciosTabla({
   const rubros = useMemo(
     () =>
       [
-        ...new Set(comercios.map((c) => c.rubro).filter(Boolean)),
+        ...new Set(enVista.map((c) => c.rubro).filter(Boolean)),
       ].sort() as string[],
-    [comercios],
+    [enVista],
   );
   const estados = useMemo(
-    () => [...new Set(comercios.map((c) => c.estado))].sort(),
-    [comercios],
+    () => [...new Set(enVista.map((c) => c.estado))].sort(),
+    [enVista],
   );
+  // Los planes que tiene algún comercio de la vista, por id (dos planes
+  // pueden llamarse parecido), más "Sin plan" si hay alguno sin asignar.
+  const planesEnUso = useMemo(() => {
+    const porId = new Map<string, string>();
+    let haySinPlan = false;
+    for (const c of enVista) {
+      if (c.plan_id) porId.set(c.plan_id, c.plan_nombre ?? c.plan_id);
+      else haySinPlan = true;
+    }
+    const opciones = [...porId]
+      .map(([valor, texto]) => ({ valor, texto }))
+      .sort((a, b) => a.texto.localeCompare(b.texto, "es"));
+    if (haySinPlan) opciones.push({ valor: SIN_PLAN, texto: "Sin plan" });
+    return opciones;
+  }, [enVista]);
 
   const filtrados = useMemo(() => {
     const q = busqueda.trim().toLowerCase();
 
-    return comercios.filter((c) => {
+    return enVista.filter((c) => {
       // Nombre, slug y mail del dueño: los tres son formas legítimas de buscar
       // un comercio, y cuál recordás depende de por dónde llegaste.
       const coincide =
@@ -190,25 +163,37 @@ export function ComerciosTabla({
       if (!coincide) return false;
       if (estado !== TODOS && c.estado !== estado) return false;
       if (rubro !== TODOS && c.rubro !== rubro) return false;
+      if (plan === SIN_PLAN && c.plan_id) return false;
+      if (plan !== TODOS && plan !== SIN_PLAN && c.plan_id !== plan)
+        return false;
       if (actividad === "activos" && c.ventas7d === 0) return false;
       if (actividad === "sin_ventas" && c.ventas7d > 0) return false;
       if (actividad === "vencidos" && !c.vencido) return false;
 
       return true;
     });
-  }, [comercios, busqueda, estado, rubro, actividad]);
+  }, [enVista, busqueda, estado, rubro, plan, actividad]);
 
   const hayFiltros =
     busqueda !== "" ||
     estado !== TODOS ||
     rubro !== TODOS ||
+    plan !== TODOS ||
     actividad !== TODOS;
 
   const limpiar = () => {
     setBusqueda("");
     setEstado(TODOS);
     setRubro(TODOS);
+    setPlan(TODOS);
     setActividad(TODOS);
+  };
+
+  // Cambiar de vista limpia los filtros: un estado o un plan elegido en una
+  // puede no existir en la otra y dejaría la tabla vacía sin motivo visible.
+  const alternarDescartados = () => {
+    limpiar();
+    setVerDescartados((v) => !v);
   };
 
   return (
@@ -233,10 +218,19 @@ export function ComerciosTabla({
           opciones={estados.map((e) => ({ valor: e, texto: e }))}
         />
         <Filtro
+          etiqueta="Plan"
+          valor={plan}
+          onChange={setPlan}
+          opciones={planesEnUso}
+        />
+        <Filtro
           etiqueta="Rubro"
           valor={rubro}
           onChange={setRubro}
-          opciones={rubros.map((r) => ({ valor: r, texto: etiquetaDeRubro(r) }))}
+          opciones={rubros.map((r) => ({
+            valor: r,
+            texto: etiquetaDeRubro(r),
+          }))}
         />
         <Filtro
           etiqueta="Actividad"
@@ -262,15 +256,39 @@ export function ComerciosTabla({
 
         <span className="ml-auto shrink-0 text-xs text-white/35">
           {filtrados.length}
-          {filtrados.length !== comercios.length && ` de ${comercios.length}`}
+          {filtrados.length !== enVista.length && ` de ${enVista.length}`}
         </span>
+
+        {(cantidadDescartados > 0 || verDescartados) && (
+          <button
+            type="button"
+            onClick={alternarDescartados}
+            aria-pressed={verDescartados}
+            className={`flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 text-xs ${
+              verDescartados
+                ? "border-primary/40 text-white"
+                : "border-white/10 text-white/50 hover:text-white"
+            }`}
+          >
+            {verDescartados ? (
+              <>
+                <X className="size-3" />
+                Volver a vigentes
+              </>
+            ) : (
+              <>
+                <Archive className="size-3" />
+                Descartados ({cantidadDescartados})
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* MOBILE: una tarjeta por comercio.
-          La tabla tiene 9 columnas y en un celular solo se veían las dos
-          primeras; el resto había que arrastrarlo, y los medidores —que son
-          justamente la señal de upgrade— quedaban del lado invisible. En
-          tarjeta entra todo sin scroll lateral. */}
+          La tabla tiene 8 columnas y en un celular solo se veían las dos
+          primeras; el resto había que arrastrarlo. En tarjeta entra todo sin
+          scroll lateral. */}
       <div className="space-y-2 md:hidden">
         {filtrados.map((c) => (
           <div
@@ -356,30 +374,12 @@ export function ComerciosTabla({
                 <Actividad ventas={c.ventas7d} monto={c.monto7d} />
               </span>
             </div>
-
-            {/* Los tres medidores en fila: son el dato que decide si hay una
-                conversación de upgrade pendiente. */}
-            <div className="mt-3 grid grid-cols-3 gap-3">
-              <MedidorRotulado
-                rotulo="Usuarios"
-                usado={c.usuarios}
-                limite={c.maxUsuarios}
-              />
-              <MedidorRotulado
-                rotulo="Cta. cte."
-                usado={c.clientesCuentaCorriente}
-                limite={c.maxClientesCuentaCorriente}
-              />
-              <MedidorRotulado
-                rotulo="Productos"
-                usado={c.productos}
-                limite={c.maxProductos}
-              />
-            </div>
           </div>
         ))}
 
-        {filtrados.length === 0 && <Vacio hayFiltros={hayFiltros} />}
+        {filtrados.length === 0 && (
+          <Vacio hayFiltros={hayFiltros} verDescartados={verDescartados} />
+        )}
       </div>
 
       {/* DESKTOP: la tabla. */}
@@ -395,9 +395,6 @@ export function ComerciosTabla({
                 <th className="px-4 py-3 font-semibold">Acceso</th>
                 <th className="px-4 py-3 font-semibold">Onboarding</th>
                 <th className="px-4 py-3 font-semibold">7 días</th>
-                <th className="px-4 py-3 font-semibold">Usuarios</th>
-                <th className="px-4 py-3 font-semibold">Cta. corriente</th>
-                <th className="px-4 py-3 font-semibold">Productos</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -480,19 +477,6 @@ export function ComerciosTabla({
                     <Actividad ventas={c.ventas7d} monto={c.monto7d} />
                   </td>
 
-                  <td className="px-4 py-3">
-                    <Medidor usado={c.usuarios} limite={c.maxUsuarios} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Medidor
-                      usado={c.clientesCuentaCorriente}
-                      limite={c.maxClientesCuentaCorriente}
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Medidor usado={c.productos} limite={c.maxProductos} />
-                  </td>
-
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <BotonWhatsapp whatsapp={c.whatsapp} nombre={c.nombre} />
@@ -513,8 +497,11 @@ export function ComerciosTabla({
 
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="px-4 py-10 text-center">
-                    <Vacio hayFiltros={hayFiltros} />
+                  <td colSpan={8} className="px-4 py-10 text-center">
+                    <Vacio
+                      hayFiltros={hayFiltros}
+                      verDescartados={verDescartados}
+                    />
                   </td>
                 </tr>
               )}
@@ -584,12 +571,17 @@ const textoDe = (opciones: { valor: string; texto: string }[], valor: string) =>
 
 /** Distingue "no hay comercios" de "no hay resultados": son dos situaciones
  * distintas y la segunda tiene solución. */
-function Vacio({ hayFiltros }: Readonly<{ hayFiltros: boolean }>) {
+function Vacio({
+  hayFiltros,
+  verDescartados,
+}: Readonly<{ hayFiltros: boolean; verDescartados: boolean }>) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-10 text-center text-sm text-white/40 md:border-0 md:bg-transparent md:p-0">
       {hayFiltros
         ? "Ningún comercio coincide con la búsqueda."
-        : "Todavía no hay comercios."}
+        : verDescartados
+          ? "No hay comercios descartados."
+          : "Todavía no hay comercios."}
     </div>
   );
 }
