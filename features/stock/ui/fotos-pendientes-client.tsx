@@ -1,11 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ArrowLeft, Camera, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Camera, Check, Loader2, Search } from "lucide-react";
 import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { normalizarBusqueda } from "@/shared/lib/normalizar-busqueda";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import {
@@ -15,6 +17,10 @@ import {
 import { subirImagenesProductoDesdeCliente } from "../lib/subir-imagenes-cliente";
 import { actualizarFotosProductoAction } from "../actions/actualizar-fotos-producto";
 import type { ProductoSinFoto } from "../actions/get-productos-sin-foto";
+
+/** Cuántas tarjetas se dibujan de entrada: con 800 sin foto la pantalla
+ * tardaba en aparecer y nadie scrollea tanto; para llegar a uno, se busca. */
+const POR_TANDA = 60;
 
 /**
  * Fotos pendientes: la contracara de haber sacado la foto del camino crítico.
@@ -39,6 +45,20 @@ export function FotosPendientesClient({
   const [listos, setListos] = useState<Set<string>>(new Set());
   const [subiendo, setSubiendo] = useState<string | null>(null);
   const inputs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [busqueda, setBusqueda] = useState("");
+  const [visibles, setVisibles] = useState(POR_TANDA);
+
+  // Nombre, marca y categoría, sin tildes (igual que el resto de los
+  // buscadores de la app).
+  const filtrados = useMemo(() => {
+    const q = normalizarBusqueda(busqueda);
+    if (!q) return pendientes;
+    return pendientes.filter((p) =>
+      [p.nombre, p.marca, p.tipo].some(
+        (t) => t && normalizarBusqueda(t).includes(q),
+      ),
+    );
+  }, [pendientes, busqueda]);
 
   async function subirFotos(producto: ProductoSinFoto, archivos: File[]) {
     if (archivos.length === 0 || subiendo) return;
@@ -121,8 +141,35 @@ export function FotosPendientesClient({
         </div>
       </div>
 
+      <div className="relative sm:max-w-sm">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          placeholder="Buscar producto, marca o categoría"
+          value={busqueda}
+          onChange={(e) => {
+            setBusqueda(e.target.value);
+            setVisibles(POR_TANDA);
+          }}
+          className="pl-9"
+          aria-label="Buscar producto sin foto"
+        />
+      </div>
+
+      {total > pendientes.length && (
+        <p className="text-xs text-muted-foreground">
+          Se muestran los {pendientes.length} más recientes de {total}.
+        </p>
+      )}
+
+      {filtrados.length === 0 && (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          Ningún producto sin foto coincide con «{busqueda.trim()}».
+        </p>
+      )}
+
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-        {pendientes.map((producto) => {
+        {filtrados.slice(0, visibles).map((producto) => {
           const listo = listos.has(producto.id);
           const enCurso = subiendo === producto.id;
 
@@ -131,7 +178,7 @@ export function FotosPendientesClient({
               key={producto.id}
               className={`flex items-center gap-3 rounded-xl border p-3 ${
                 listo
-                  ? "border-success/40 bg-success/5"
+                  ? "border-success/40 bg-success-subtle"
                   : "border-border bg-card"
               }`}
             >
@@ -139,7 +186,7 @@ export function FotosPendientesClient({
                 <p className="truncate text-sm font-medium text-foreground">
                   {producto.nombre}
                 </p>
-                <p className="truncate text-[11px] text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {[producto.marca, producto.tipo]
                     .filter(Boolean)
                     .join(" · ") || "Sin categoría"}
@@ -188,6 +235,17 @@ export function FotosPendientesClient({
           );
         })}
       </div>
+
+      {filtrados.length > visibles && (
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => setVisibles((v) => v + POR_TANDA)}
+        >
+          Ver {Math.min(POR_TANDA, filtrados.length - visibles)} más (quedan{" "}
+          {filtrados.length - visibles})
+        </Button>
+      )}
 
       {listos.size > 0 && (
         <Button

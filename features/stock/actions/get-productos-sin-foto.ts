@@ -23,8 +23,12 @@ export type ProductoSinFoto = {
  * `imagen_url` guarda un JSON array serializado, y los productos viejos
  * guardaron un string suelto; el filtro cubre null, cadena vacía y el array
  * vacío, que son las tres formas reales de "no tiene foto" en esta base.
+ *
+ * Trae hasta 1000 (el tope de PostgREST) y no 200: la pantalla busca en
+ * memoria, y con 200 no encontraba la mayoría (Colores tenía 852 sin foto el
+ * 6/10/2026). Son seis columnas de texto, ~85 KB.
  */
-export async function getProductosSinFotoAction(limite = 200): Promise<{
+export async function getProductosSinFotoAction(limite = 1000): Promise<{
   productos: ProductoSinFoto[];
   total: number;
   error: string | null;
