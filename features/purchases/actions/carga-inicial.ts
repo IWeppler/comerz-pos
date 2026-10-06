@@ -24,7 +24,10 @@ export type GrupoParaCrear = {
   categoriaNombreNueva: string | null;
   marca: string | null;
   precio: number;
-  costo: number;
+  /** null = no tocar el costo de las líneas (un grupo con costos distintos
+   * por variante no tiene UN costo; pisarlos todos con el primero era perder
+   * el dato). El costo del producto lo pone después la aprobación. */
+  costo: number | null;
 };
 
 export type ResultadoCreacionLote = {

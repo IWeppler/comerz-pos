@@ -3,10 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  aprobarOrdenAction,
-  crearProductoAlVueloAction,
-} from "../actions/merge-purchase";
+import { aprobarOrdenAction } from "../actions/merge-purchase";
 import {
   getMergeDraft,
   saveMergeDraft,
@@ -14,11 +11,23 @@ import {
 } from "../lib/merge-draft-db";
 import {
   borrarBorradorOrdenAction,
+  crearProductosDesdeRemitoAction,
   guardarBorradorOrdenAction,
+  type GrupoParaCrear,
 } from "../actions/carga-inicial";
+import {
+  cantidadEfectiva,
+  completarConFaltantes,
+  conCantidadRecibida,
+  entraAlStock,
+  grupoNoVino,
+  MOTIVO_CANTIDAD_CORREGIDA,
+  MOTIVO_NO_VINO,
+} from "../lib/recepcion";
+import { subirImagenesProductoDesdeCliente } from "@/features/stock/lib/subir-imagenes-cliente";
+import { actualizarFotosProductoAction } from "@/features/stock/actions/actualizar-fotos-producto";
+import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { queryKeys } from "@/shared/lib/query-keys";
-import { withTimeout, TimeoutError } from "@/shared/utils/with-timeout";
-import { runWithConcurrencyLimit } from "@/shared/utils/concurrency";
 import { toast } from "sonner";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -72,6 +81,7 @@ import { ProgresoOverlay } from "./progreso-overlay";
 import {
   ImagenError,
   optimizarImagenesProducto,
+  type ProductoOptimizado,
 } from "@/shared/utils/image-optimizer";
 import {
   clasificarDesconocido,
@@ -116,18 +126,44 @@ type ItemResueltoConCategoria = ItemResuelto & {
   raw_categoria?: string | null;
 };
 
-// Timeout de UI para las acciones de red disparadas desde esta pantalla:
-// si no responden a tiempo, se tratan como error y el botón se destraba
-// en vez de quedar "cargando" para siempre.
-//
-// OJO: NO se usa para aprobar la orden, a propósito. `withTimeout` rechaza
-// la promesa del cliente pero el server action sigue corriendo hasta el
-// final — destrabar el botón por timeout es exactamente lo que multiplicó
-// el stock ×8 en Estilo Bonito el 27/07 (8 apretadas = 8 impactos). Acá
-// solo cubre acciones seguras de reintentar: crear producto al vuelo
-// (INSERT que, si duplica, deja un producto de más visible y borrable, no
-// stock inflado en silencio).
-const ACTION_TIMEOUT_MS = 100_000;
+// Crear productos desde esta pantalla NO lleva timeout de UI (6/10/2026).
+// Antes `crearProductoAlVueloAction` iba envuelto en `withTimeout`: el
+// timeout destrababa el botón, el server seguía y el producto se creaba igual;
+// el "reintentalo" que seguía fabricaba el duplicado que esta pantalla existe
+// para evitar. Ahora se crea con `crear_productos_desde_remito`, idempotente
+// por `ordenes_items.producto_id`: reintentar devuelve el mismo producto.
+
+/** Las unidades que entran de un renglón, editables: "vinieron 8, no 10".
+ * Volver al número del remito limpia el ajuste. */
+function CantidadRecibidaInput({
+  item,
+  onChange,
+}: Readonly<{ item: ItemResuelto; onChange: (valor: number) => void }>) {
+  const efectiva = cantidadEfectiva(item);
+  const corregida = efectiva !== Number(item.cantidad);
+  return (
+    <label className="flex items-center gap-1 text-xs">
+      <span className="sr-only">Unidades que entraron de {item.raw_variante}</span>
+      <Input
+        type="number"
+        inputMode="decimal"
+        min={0}
+        value={efectiva}
+        onChange={(e) =>
+          onChange(e.target.value === "" ? 0 : Number(e.target.value))
+        }
+        className={`h-8 w-16 px-2 text-center text-xs ${
+          corregida ? "border-warning text-warning" : ""
+        }`}
+      />
+      {corregida && (
+        <span className="whitespace-nowrap text-muted-foreground">
+          de {item.cantidad}
+        </span>
+      )}
+    </label>
+  );
+}
 
 /**
  * El precio y el costo que este producto tiene HOY EN LA CAJA.
@@ -283,6 +319,7 @@ export function MergeTable({
 }: Readonly<MergeTableProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const negocioId = useNegocioActivo()?.id ?? null;
   // No usamos el total de cabecera: el valor histórico del remito es la suma
   // congelada de cantidad × costo de cada línea, aunque luego cambie el costo
   // actual de los productos o una carga vieja tenga un total presupuestado
@@ -353,10 +390,6 @@ export function MergeTable({
   // Progreso determinado de la creación masiva: se puede contar cuántos
   // grupos terminaron. La aprobación, en cambio, es una sola RPC —
   // ahí el overlay muestra solo el cronómetro.
-  const [bulkProgreso, setBulkProgreso] = useState<{
-    hechos: number;
-    total: number;
-  } | null>(null);
 
   // Borrador local (IndexedDB) de esta conciliación
   const [draftState, setDraftState] = useState<"checking" | "prompt" | "ready">(
@@ -439,6 +472,19 @@ export function MergeTable({
     return Array.from(map.entries());
   }, [items]);
 
+  // Lo que de verdad entra al stock. Un renglón marcado "no vino" no necesita
+  // producto, y no cuenta para fusiones ni para lo que falta resolver.
+  const itemsQueEntran = useMemo(() => items.filter(entraAlStock), [items]);
+  const gruposNoVinieron = useMemo(
+    () =>
+      new Set(
+        groupedItems
+          .filter(([, group]) => grupoNoVino(group))
+          .map(([rawNombre]) => rawNombre),
+      ),
+    [groupedItems],
+  );
+
   // Candidatos de "posible match" (similitud de texto), 1 por raw_nombre.
   const similaresMap = useMemo(
     () => construirMapaSimilares(sugerenciasSimilitud),
@@ -496,7 +542,8 @@ export function MergeTable({
     () =>
       groupedItems
         .filter(([rawNombre, group]) => {
-          if (group[0].producto_id) return false;
+          if (group[0].producto_id || gruposNoVinieron.has(rawNombre))
+            return false;
           const bucket = clasificacionPorGrupo.get(rawNombre);
           if (bucket?.tipo === "NUEVO_SUGERIDO") return true;
           return (
@@ -504,7 +551,7 @@ export function MergeTable({
           );
         })
         .map(([rawNombre]) => rawNombre),
-    [groupedItems, clasificacionPorGrupo, categoriaIdPorGrupo],
+    [groupedItems, clasificacionPorGrupo, categoriaIdPorGrupo, gruposNoVinieron],
   );
 
   /** Los que la pantalla NO puede resolver sola y siguen siendo trabajo
@@ -513,11 +560,12 @@ export function MergeTable({
   const gruposQueQuedanAMano = useMemo(
     () =>
       groupedItems.filter(([rawNombre, group]) => {
-        if (group[0].producto_id) return false;
+        if (group[0].producto_id || gruposNoVinieron.has(rawNombre))
+          return false;
         if (group[0].estado_match !== "DESCONOCIDO") return false;
         return !gruposCreablesEnLote.includes(rawNombre);
       }).length,
-    [groupedItems, gruposCreablesEnLote],
+    [groupedItems, gruposCreablesEnLote, gruposNoVinieron],
   );
 
   // Grupo activo del modal "Crear Producto Múltiple" y si tiene costos
@@ -620,7 +668,15 @@ export function MergeTable({
 
   const handleRestaurarDraft = () => {
     if (pendingDraft) {
-      setItems(pendingDraft.items);
+      // Un borrador de antes de 20261006130000 puede no tener los renglones
+      // "descartados" (se sacaban de la lista). Vuelven como no recibidos:
+      // la aprobación exige que viajen todos.
+      setItems(
+        completarConFaltantes(
+          pendingDraft.items as ItemResueltoConCategoria[],
+          itemsOriginales as ItemResueltoConCategoria[],
+        ),
+      );
       if (pendingDraft.productosCreados.length > 0) {
         setLocalProductos((prev) => {
           const existentes = new Set(prev.map((p) => p.id));
@@ -662,9 +718,9 @@ export function MergeTable({
    * esto es lo que evita llegar hasta ahí.
    */
   const fusiones = useMemo(
-    () => detectarFusiones(items, (id) => productoReal(id)?.nombre),
+    () => detectarFusiones(itemsQueEntran, (id) => productoReal(id)?.nombre),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, localProductos],
+    [itemsQueEntran, localProductos],
   );
 
   /**
@@ -681,9 +737,9 @@ export function MergeTable({
    * distinción el aviso saldría en casos buenos y se aprende a ignorarlo.
    */
   const compartidos = useMemo(
-    () => clasificarProductosCompartidos(items, (id) => productoReal(id)?.nombre),
+    () => clasificarProductosCompartidos(itemsQueEntran, (id) => productoReal(id)?.nombre),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [items, localProductos],
+    [itemsQueEntran, localProductos],
   );
 
   /** Los que de verdad hay que mirar: nombres distintos en un mismo producto. */
@@ -824,14 +880,47 @@ export function MergeTable({
     toast.info(`Asignación deshecha para "${rawNombre}".`);
   };
 
+  /**
+   * "Descartar" ya no saca las filas: las marca como NO RECIBIDAS (cantidad 0,
+   * motivo "No vino") y viajan igual a la aprobación, que lo deja escrito en
+   * `ordenes_items`. Antes salían de la lista: si no tenían producto la
+   * aprobación se trababa, y si ya lo tenían no entraban al stock sin dejar
+   * rastro de por qué.
+   */
   const confirmRemoveGroup = () => {
     if (!groupToRemoveName) return;
 
     setItems((prevItems) =>
-      prevItems.filter((item) => item.raw_nombre !== groupToRemoveName),
+      prevItems.map((item) =>
+        item.raw_nombre === groupToRemoveName
+          ? conCantidadRecibida(item, 0, MOTIVO_NO_VINO)
+          : item,
+      ),
     );
     setGroupToRemoveName(null);
-    toast.info("Agrupación descartada de la conciliación.");
+    toast.info("Marcado como no recibido. Queda registrado en el remito.");
+  };
+
+  const handleRestaurarGrupo = (rawNombre: string) => {
+    setItems((prevItems) =>
+      prevItems.map((item) =>
+        item.raw_nombre === rawNombre
+          ? { ...item, cantidad_recibida: null, motivo_ajuste: null }
+          : item,
+      ),
+    );
+  };
+
+  /** "Vinieron 8, no 10": la diferencia se guarda al aprobar, con el motivo. */
+  const handleCantidadLinea = (itemId: string | undefined, valor: number) => {
+    if (!itemId) return;
+    setItems((prevItems) =>
+      prevItems.map((item) =>
+        item.id === itemId
+          ? conCantidadRecibida(item, valor, MOTIVO_CANTIDAD_CORREGIDA)
+          : item,
+      ),
+    );
   };
 
   const handleAplicarRecargoGlobal = () => {
@@ -850,76 +939,159 @@ export function MergeTable({
     );
   };
 
-  // --- Crear al Vuelo (compartido por el modal manual, el 1-click y el masivo) ---
-  // Nunca throwea — siempre resuelve a un resultado, así los callers (loop
-  // masivo incluido) no necesitan try/catch propio.
-  async function crearYAsignarProducto(params: {
+  // --- Crear productos (modal manual, 1-click y lote) ---
+
+  type GrupoACrear = {
     rawNombre: string;
     nombreProducto: string;
     categoriaId?: string;
     precio: number;
     marca?: string;
-    archivosMain?: File[];
-    archivosThumb?: File[];
-    archivosGrid?: File[];
-    archivosMaster?: File[];
-  }): Promise<{ ok: true; producto: Producto } | { ok: false; error: string }> {
-    const itemActual = items.find((i) => i.raw_nombre === params.rawNombre);
-    if (!itemActual) {
-      return { ok: false, error: "No se encontró el ítem en la conciliación." };
-    }
+  };
 
-    try {
-      const res = await withTimeout(
-        crearProductoAlVueloAction(
-          params.nombreProducto,
-          itemActual.precio_costo,
-          params.precio,
-          params.archivosMain || [],
-          params.archivosThumb || [],
-          params.archivosGrid || [],
-          params.categoriaId,
-          params.marca,
-          params.archivosMaster || [],
-        ),
-        ACTION_TIMEOUT_MS,
-      );
-
-      if (res.error || !res.producto) {
-        return { ok: false, error: res.error || "Ocurrió un error al crear." };
+  /**
+   * Crea los productos de uno o varios grupos con `crear_productos_desde_remito`
+   * (la misma RPC que Carga inicial): una transacción, idempotente por
+   * `ordenes_items.producto_id`, y el vínculo queda escrito en la BASE antes
+   * de seguir. Si se corta en el medio, reintentar devuelve los mismos
+   * productos en vez de crear otros; y cerrar la pestaña ya no deja un
+   * producto creado que la orden no conoce.
+   *
+   * Nunca tira: devuelve lo que se creó y, si algo faltó, el error.
+   */
+  async function crearProductosDeGrupos(
+    grupos: GrupoACrear[],
+  ): Promise<{ productos: Record<string, Producto>; error: string | null }> {
+    const payload: GrupoParaCrear[] = [];
+    for (const g of grupos) {
+      const lineas = items.filter((i) => i.raw_nombre === g.rawNombre);
+      const itemIds = lineas
+        .map((i) => i.id)
+        .filter((id): id is string => Boolean(id));
+      if (itemIds.length === 0) {
+        return {
+          productos: {},
+          error: `No se encontraron los renglones de "${g.rawNombre}".`,
+        };
       }
-
-      const nuevoProd = res.producto as Producto;
-      setLocalProductos((prevProductos) => [...prevProductos, nuevoProd]);
-      queryClient.invalidateQueries({ queryKey: queryKeys.catalogo });
-
-      const precioUnificado = Number(params.precio || nuevoProd.precio || 0);
-      setItems((prevItems) =>
-        prevItems.map((item) => {
-          if (item.raw_nombre !== params.rawNombre) return item;
-
-          return {
-            ...item,
-            producto_id: nuevoProd.id,
-            precio_venta_actualizado: precioUnificado,
-            estado_match:
-              item.estado_match === "DESCONOCIDO"
-                ? "NUEVO_ALIAS"
-                : item.estado_match,
-          };
-        }),
-      );
-
-      return { ok: true, producto: nuevoProd };
-    } catch (err) {
-      const message =
-        err instanceof TimeoutError
-          ? "La creación tardó demasiado y se canceló. Probá de nuevo."
-          : err instanceof Error
-            ? err.message
-            : "Ocurrió un error inesperado al crear el producto.";
-      return { ok: false, error: message };
+      // Un grupo con costos distintos por variante no tiene UN costo: se
+      // manda null para no pisar el de cada línea con el primero.
+      const costos = new Set(lineas.map((i) => Number(i.precio_costo) || 0));
+      payload.push({
+        rawNombre: g.rawNombre,
+        itemIds,
+        nombre: g.nombreProducto,
+        categoriaId: g.categoriaId || null,
+        categoriaNombreNueva: null,
+        marca: g.marca?.trim() || null,
+        precio: g.precio,
+        costo: costos.size === 1 ? [...costos][0] : null,
+      });
     }
+
+    let res: Awaited<ReturnType<typeof crearProductosDesdeRemitoAction>>;
+    try {
+      res = await crearProductosDesdeRemitoAction(orden.id, payload);
+    } catch (err) {
+      return {
+        productos: {},
+        error:
+          err instanceof Error
+            ? `${err.message}. Reintentá: no se duplica nada.`
+            : "Se cortó la conexión. Reintentá: no se duplica nada.",
+      };
+    }
+    if (res.error) return { productos: {}, error: res.error };
+
+    const productos: Record<string, Producto> = {};
+    for (const g of payload) {
+      const id = res.productosPorRawNombre[g.rawNombre];
+      if (!id) continue;
+      productos[g.rawNombre] = {
+        id,
+        nombre: g.nombre,
+        precio: g.precio,
+        precio_costo: g.costo ?? 0,
+        categoria_id: g.categoriaId,
+        tipo: (g.categoriaId && nombrePorIdCategoria(g.categoriaId)) || "General",
+      } as Producto;
+    }
+
+    setLocalProductos((prev) => {
+      const yaEstan = new Set(prev.map((p) => p.id));
+      return [
+        ...prev,
+        ...Object.values(productos).filter((p) => !yaEstan.has(p.id)),
+      ];
+    });
+    setItems((prev) =>
+      prev.map((item) => {
+        const producto = productos[item.raw_nombre];
+        if (!producto) return item;
+        return {
+          ...item,
+          producto_id: producto.id,
+          precio_venta_actualizado: Number(producto.precio) || 0,
+          estado_match:
+            item.estado_match === "DESCONOCIDO"
+              ? "NUEVO_ALIAS"
+              : item.estado_match,
+        };
+      }),
+    );
+    queryClient.invalidateQueries({ queryKey: queryKeys.catalogo });
+
+    const sinVolver = payload.filter((g) => !productos[g.rawNombre]);
+    return {
+      productos,
+      error:
+        sinVolver.length > 0
+          ? `No se pudo crear ${sinVolver.map((g) => `"${g.rawNombre}"`).join(", ")}. Reintentá: no se duplica nada.`
+          : null,
+    };
+  }
+
+  /** Las fotos van DESPUÉS de crear el producto, como en Fotos pendientes: el
+   * alta no puede depender de que la foto suba. */
+  async function subirFotosDe(
+    productoId: string,
+    imagenes: ProductoOptimizado[],
+  ): Promise<boolean> {
+    if (!negocioId) return false;
+    try {
+      const urls = await subirImagenesProductoDesdeCliente(
+        negocioId,
+        imagenes,
+        imagenes.length,
+      );
+      if (urls.mains.length === 0) return false;
+      const res = await actualizarFotosProductoAction(productoId, {
+        agregar: urls,
+      });
+      return res.success;
+    } catch {
+      return false;
+    }
+  }
+
+  async function crearYAsignarProducto(
+    params: GrupoACrear & { imagenes?: ProductoOptimizado[] },
+  ): Promise<{ ok: true; producto: Producto } | { ok: false; error: string }> {
+    const { productos, error } = await crearProductosDeGrupos([params]);
+    const producto = productos[params.rawNombre];
+    if (!producto) {
+      return { ok: false, error: error ?? "No se pudo crear el producto." };
+    }
+
+    if (params.imagenes && params.imagenes.length > 0) {
+      const fotoOk = await subirFotosDe(producto.id, params.imagenes);
+      if (!fotoOk) {
+        toast.warning(`"${producto.nombre}" se creó, pero la foto no subió.`, {
+          description: "Cargala desde Inventario > Fotos pendientes.",
+        });
+      }
+    }
+    return { ok: true, producto };
   }
 
   const handleCrearAlVuelo = async () => {
@@ -937,20 +1109,13 @@ export function MergeTable({
           ? await optimizarImagenesProducto(archivosNuevoProducto)
           : [];
 
-      const archivosMain = imagenesProcesadas.map((img) => img.main);
-      const archivosThumb = imagenesProcesadas.map((img) => img.thumbnail);
-      const archivosGrid = imagenesProcesadas.map((img) => img.grid);
-      const archivosMaster = imagenesProcesadas.map((img) => img.master);
-
       const resultado = await crearYAsignarProducto({
         rawNombre: groupToCreateName,
         nombreProducto: nuevoProductoData.nombre,
         categoriaId: nuevoProductoData.categoriaId,
         precio: nuevoProductoData.precio,
         marca: nuevoProductoData.marca,
-        archivosMain,
-        archivosThumb,
-        archivosGrid,
+        imagenes: imagenesProcesadas,
       });
 
       if (!resultado.ok) {
@@ -1057,65 +1222,71 @@ export function MergeTable({
   const handleCrearTodosSugeridos = async () => {
     if (gruposCreablesEnLote.length === 0 || bulkCrearLoading) return;
 
+    const lote = [...gruposCreablesEnLote];
     setBulkCrearLoading(true);
-    setBulkProgreso({ hechos: 0, total: gruposCreablesEnLote.length });
     setLoadingPorGrupo((prev) => {
       const next = { ...prev };
-      for (const rawNombre of gruposCreablesEnLote) next[rawNombre] = true;
+      for (const rawNombre of lote) next[rawNombre] = true;
       return next;
     });
 
-    const tareas = gruposCreablesEnLote.map((rawNombre) => async () => {
+    // UNA llamada para todo el lote, en una transacción e idempotente. Antes
+    // eran N creaciones de a tres, cada una con su timeout y sin guard.
+    const grupos: GrupoACrear[] = lote.map((rawNombre) => {
       const bucket = clasificacionPorGrupo.get(rawNombre);
       const categoriaIdSugerida =
         bucket?.tipo === "NUEVO_SUGERIDO"
           ? (bucket.categoriaId ??
             idPorNombreCategoria(bucket.categoriaSugerida.categoriaNombre))
           : undefined;
-      const categoriaId = categoriaIdPorGrupo[rawNombre] ?? categoriaIdSugerida;
       const itemActual = items.find((i) => i.raw_nombre === rawNombre);
-      const precio = precioParaCrear(itemActual);
-
-      const resultado = await crearYAsignarProducto({
+      return {
         rawNombre,
         nombreProducto: rawNombre,
-        categoriaId,
-        precio,
+        categoriaId: categoriaIdPorGrupo[rawNombre] ?? categoriaIdSugerida,
+        precio: precioParaCrear(itemActual),
         marca: itemActual?.raw_marca || undefined,
-      });
-
-      setLoadingPorGrupo((prev) => ({ ...prev, [rawNombre]: false }));
-      setErrorPorGrupo((prev) => ({
-        ...prev,
-        [rawNombre]: resultado.ok ? null : resultado.error,
-      }));
-      // Cuenta los terminados, con éxito o no: el progreso mide avance del
-      // proceso, no cuántos salieron bien (eso ya lo dice el toast final).
-      setBulkProgreso((prev) =>
-        prev ? { ...prev, hechos: prev.hechos + 1 } : prev,
-      );
-
-      return resultado.ok;
+      };
     });
 
-    const resultados = await runWithConcurrencyLimit(tareas, 3);
+    const { productos, error } = await crearProductosDeGrupos(grupos);
+
+    setLoadingPorGrupo((prev) => {
+      const next = { ...prev };
+      for (const rawNombre of lote) next[rawNombre] = false;
+      return next;
+    });
+    setErrorPorGrupo((prev) => {
+      const next = { ...prev };
+      for (const rawNombre of lote) {
+        next[rawNombre] = productos[rawNombre]
+          ? null
+          : (error ?? "No se pudo crear.");
+      }
+      return next;
+    });
     setBulkCrearLoading(false);
-    setBulkProgreso(null);
 
-    const exitosos = resultados.filter(Boolean).length;
-    const fallidos = resultados.length - exitosos;
-
+    const exitosos = Object.keys(productos).length;
+    const fallidos = lote.length - exitosos;
     if (fallidos === 0) {
-      toast.success(`Se crearon ${exitosos} productos sugeridos.`);
+      toast.success(`Se crearon ${exitosos} productos.`);
     } else {
       toast.warning(
-        `Creados ${exitosos}/${resultados.length}. ${fallidos} fallaron — reintentalos individualmente (quedaron marcados en rojo).`,
+        `Creados ${exitosos}/${lote.length}. Reintentá los ${fallidos} marcados en rojo: no se duplica nada.`,
       );
     }
   };
 
   const handleAprobar = async () => {
-    const sinResolver = items.some((i) => !i.producto_id);
+    if (itemsQueEntran.length === 0) {
+      toast.error(
+        "Marcaste todo como no recibido: no hay nada para ingresar al stock.",
+      );
+      return;
+    }
+
+    const sinResolver = itemsQueEntran.some((i) => !i.producto_id);
     if (sinResolver) {
       toast.error(
         "Debes asignar un producto a todas las agrupaciones desconocidas (Rojas).",
@@ -1230,8 +1401,7 @@ export function MergeTable({
       <ProgresoOverlay
         abierto={bulkCrearLoading}
         titulo="Creando productos sugeridos"
-        descripcion="Se crean de a tres por vez para no saturar la conexión."
-        progreso={bulkProgreso ?? undefined}
+        descripcion="Se crean todos juntos, en una sola operación. Si se corta, reintentá: no se duplica nada."
       />
 
       {/* Header */}
@@ -1262,7 +1432,7 @@ export function MergeTable({
             disabled={
               aprobarLoading ||
               crearLoading ||
-              items.length === 0 ||
+              itemsQueEntran.length === 0 ||
               fusiones.length > 0
             }
           >
@@ -1529,9 +1699,10 @@ export function MergeTable({
                 const isAmbiguo =
                   isDesconocido && !posibleMatch && !nuevoSugerido;
                 const totalGroupStock = group.reduce(
-                  (sum, i) => sum + i.cantidad,
+                  (sum, i) => sum + cantidadEfectiva(i),
                   0,
                 );
+                const noVino = gruposNoVinieron.has(rawNombre);
 
                 // Este grupo choca con otro en la misma variante: gana sobre
                 // cualquier otro estado, porque es lo único que impide
@@ -1546,7 +1717,8 @@ export function MergeTable({
                   : [];
 
                 let rowClassName = "hover:bg-muted/30";
-                if (enFusion)
+                if (noVino) rowClassName = "bg-muted/40 text-muted-foreground";
+                else if (enFusion)
                   rowClassName = "bg-danger/20 hover:bg-danger/30";
                 else if (isInflacion)
                   rowClassName = "bg-warning/10 hover:bg-warning/20";
@@ -1661,6 +1833,7 @@ export function MergeTable({
 
                           return (
                             <div key={idx} className="flex flex-col gap-1">
+                              <div className="flex items-center gap-1">
                               <button
                                 type="button"
                                 disabled={!expandible}
@@ -1675,9 +1848,6 @@ export function MergeTable({
                                 <span className="truncate max-w-37">
                                   {item.raw_variante}
                                 </span>
-                                <span className="font-semibold text-success ">
-                                  +{item.cantidad}
-                                </span>
                                 {expandible &&
                                   (expandida ? (
                                     <ChevronDown className="w-3 h-3 shrink-0 opacity-60" />
@@ -1685,6 +1855,13 @@ export function MergeTable({
                                     <ChevronRight className="w-3 h-3 shrink-0 opacity-60" />
                                   ))}
                               </button>
+                              <CantidadRecibidaInput
+                                item={item}
+                                onChange={(valor) =>
+                                  handleCantidadLinea(item.id, valor)
+                                }
+                              />
+                              </div>
                               {expandida && (
                                 <div className="flex flex-wrap gap-1 pl-1">
                                   {segmentosDetectados.map(
@@ -1704,7 +1881,7 @@ export function MergeTable({
                         })}
                       </div>
                       <div className="mt-2 text-xs font-semibold text-muted-foreground">
-                        Total a ingresar:{" "}
+                        {noVino ? "No vino · " : ""}Total a ingresar:{" "}
                         <span className="text-foreground">
                           {totalGroupStock} u.
                         </span>
@@ -1716,6 +1893,13 @@ export function MergeTable({
                       data-label="Vinculación en sistema"
                       className={`px-6 py-4 align-top pt-5 ${CELDA_APILADA}`}
                     >
+                      {noVino ? (
+                        <p className="text-xs text-muted-foreground">
+                          No vino: no entra al stock y queda registrado en el
+                          remito.
+                        </p>
+                      ) : (
+                      <>
                       {(() => {
                         const abrirModalManual = () => {
                           setGroupToCreateName(rawNombre);
@@ -2125,6 +2309,8 @@ export function MergeTable({
                           </Button>
                         </div>
                       )}
+                      </>
+                      )}
                     </td>
 
                     {/* COSTO UNITARIO */}
@@ -2231,15 +2417,27 @@ export function MergeTable({
 
                     {/* DESCARTAR GRUPO */}
                     <td className="px-4 py-4 text-center align-top pt-5 max-md:block max-md:w-full max-md:px-4 max-md:py-1 max-md:text-right">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-danger hover:bg-danger/10"
-                        onClick={() => setGroupToRemoveName(rawNombre)}
-                        title="Descartar todo este grupo"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      {noVino ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground"
+                          onClick={() => handleRestaurarGrupo(rawNombre)}
+                        >
+                          <Undo2 className="mr-1.5 h-4 w-4" /> Sí vino
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-danger"
+                          onClick={() => setGroupToRemoveName(rawNombre)}
+                          title="Marcar como no recibido"
+                          aria-label={`Marcar "${rawNombre}" como no recibido`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -2401,12 +2599,12 @@ export function MergeTable({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar grupo completo?</AlertDialogTitle>
+            <AlertDialogTitle>¿Marcar como no recibido?</AlertDialogTitle>
             <AlertDialogDescription>
-              Estás a punto de ignorar{" "}
-              <strong className="text-foreground">{groupToRemoveName}</strong> y
-              todas sus variantes de este remito. No se impactará stock ni
-              precios para este producto.
+              <strong className="text-foreground">{groupToRemoveName}</strong>{" "}
+              y todas sus variantes no van a entrar al stock ni cambiar precios.
+              Queda registrado en el remito como &quot;No vino&quot;, y lo
+              podés deshacer antes de aprobar.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2417,7 +2615,7 @@ export function MergeTable({
               onClick={confirmRemoveGroup}
               className="bg-danger hover:bg-danger text-white"
             >
-              Descartar
+              Marcar como no recibido
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

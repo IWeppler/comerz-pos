@@ -30,7 +30,12 @@ export interface ItemResuelto {
   /** Número de serie de esta línea (electro). Un aparato por fila. */
   raw_imei?: string | null;
   variante_match: string;
+  /** Lo que facturó el proveedor. No se toca nunca. */
   cantidad: number;
+  /** Lo que de verdad entró: null = lo del remito, 0 = no vino, otro número
+   * = corregido en pantalla. Ver `features/purchases/lib/recepcion.ts`. */
+  cantidad_recibida?: number | null;
+  motivo_ajuste?: string | null;
   precio_costo: number;
   /** Lo que dijo la planilla del proveedor (columna precio_venta). Solo
    * siembra el precio de la conciliación; lo que se escribe es

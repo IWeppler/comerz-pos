@@ -4,7 +4,6 @@ import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { ItemResuelto, SugerenciaSimilitud } from "@/entities/compras/types";
-import { slugify } from "@/shared/utils/slugify";
 import { traerTodo } from "@/shared/lib/traer-todo";
 import {
   resolverAudienciaCategoria,
@@ -16,6 +15,7 @@ import {
   canonicalizarValores,
   type AtributoCache,
 } from "@/features/stock/lib/normalize-atributo";
+import { cantidadEfectiva, entraAlStock } from "../lib/recepcion";
 
 type SupabaseDb = ReturnType<typeof createClient>;
 
@@ -252,199 +252,26 @@ export async function getOrdenParaMergeAction(ordenId: string) {
   };
 }
 
-export async function crearProductoAlVueloAction(
-  nombre: string,
-  costo: number,
-  precio: number,
-  archivosMain: File[],
-  archivosThumb: File[],
-  archivosGrid: File[],
-  categoriaId?: string,
-  marca?: string,
-  /** Copias de mayor calidad (1600px @0.9), para poder regenerar derivadas.
-   * Va al final y opcional para no romper llamadas viejas, pero un producto
-   * creado sin master es uno que no se va a poder reoptimizar nunca — ver la
-   * migración 20260812140000. */
-  archivosMaster: File[] = [],
-) {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createClient(cookieStore);
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { error: "No autorizado." };
+// `crearProductoAlVueloAction` se eliminó el 6/10/2026: creaba productos sin
+// idempotencia y la pantalla lo envolvía en un timeout que fabricaba
+// duplicados. La conciliación crea con `crearProductosDesdeRemitoAction`.
 
-    // Las imágenes se guardan bajo la carpeta del negocio: es lo que la policy
-    // de storage exige para poder escribir.
-    const { data: negocioId } = await supabase.rpc("negocio_actual");
-    if (!negocioId)
-      return { error: "No hay un negocio activo en esta sesión." };
-
-    const slug = `${slugify(nombre)}-${Math.random().toString(36).substring(2, 6)}`;
-    let categoria_id: string | null = null;
-    let categoriaTipoLabel = "General";
-
-    // Se recibe el id directo (viene de un <Select> poblado desde
-    // `categorias`, o del árbol resuelto en el import) — NUNCA se busca
-    // por nombre acá. El árbol permite nombres repetidos bajo padres
-    // distintos ("Remeras" en Ropa Mujer y en Ropa Niña), así que una
-    // búsqueda por texto sería ambigua por diseño; un lookup por id de PK
-    // no puede serlo. El SELECT solo valida que el id siga existiendo
-    // (defensivo contra estado de cliente desactualizado), no busca nada.
-    if (categoriaId) {
-      const { data: catExistente, error: categoriaSelectError } = await supabase
-        .from("categorias")
-        .select("id, nombre")
-        .eq("id", categoriaId)
-        .maybeSingle();
-
-      if (categoriaSelectError) {
-        console.error("Error buscando categoria:", categoriaSelectError);
-        return { error: "Error buscando la categoría del producto." };
-      }
-
-      if (!catExistente) {
-        return {
-          error:
-            "La categoría seleccionada ya no existe. Elegí una categoría real antes de crear el producto.",
-        };
-      }
-
-      categoria_id = catExistente.id;
-      categoriaTipoLabel = catExistente.nombre;
-    }
-
-    // Subir imágenes Main, Thumbnail y Grid
-    let imagen_url: string | null = null;
-    let thumbnail_url: string | null = null;
-    let grid_url: string | null = null;
-    let master_url: string | null = null;
-    const urlsMain: string[] = [];
-    const urlsThumb: string[] = [];
-    const urlsGrid: string[] = [];
-    const urlsMaster: (string | null)[] = [];
-
-    for (let i = 0; i < archivosMain.length; i++) {
-      const fileMain = archivosMain[i];
-      const fileThumb = archivosThumb[i];
-      const fileGrid = archivosGrid[i];
-      const fileMaster = archivosMaster[i];
-
-      if (fileMain && fileMain.size > 0) {
-        const fileExt = fileMain.name.split(".").pop();
-        const baseFileName = crypto.randomUUID();
-
-        // 1. Subir Main
-        const mainName = `${negocioId}/${baseFileName}.${fileExt}`;
-        const { error: uploadMainError } = await supabase.storage
-          .from("productos")
-          .upload(mainName, fileMain, { cacheControl: "31536000" });
-
-        if (!uploadMainError) {
-          const {
-            data: { publicUrl: urlMain },
-          } = supabase.storage.from("productos").getPublicUrl(mainName);
-          urlsMain.push(urlMain);
-        }
-
-        // 2. Subir Thumbnail (si existe en el mismo índice)
-        if (fileThumb && fileThumb.size > 0) {
-          const thumbName = `${negocioId}/thumbs/${baseFileName}-thumb.${fileExt}`;
-          const { error: uploadThumbError } = await supabase.storage
-            .from("productos")
-            .upload(thumbName, fileThumb, { cacheControl: "31536000" });
-
-          if (!uploadThumbError) {
-            const {
-              data: { publicUrl: urlThumb },
-            } = supabase.storage.from("productos").getPublicUrl(thumbName);
-            urlsThumb.push(urlThumb);
-          }
-        }
-
-        // 3. Subir Grid (si existe en el mismo índice)
-        if (fileGrid && fileGrid.size > 0) {
-          const gridName = `${negocioId}/grids/${baseFileName}-grid.${fileExt}`;
-          const { error: uploadGridError } = await supabase.storage
-            .from("productos")
-            .upload(gridName, fileGrid, { cacheControl: "31536000" });
-
-          if (!uploadGridError) {
-            const {
-              data: { publicUrl: urlGrid },
-            } = supabase.storage.from("productos").getPublicUrl(gridName);
-            urlsGrid.push(urlGrid);
-          }
-        }
-
-        // 4. Subir Master — la copia desde la que se van a poder regenerar las
-        // otras tres. Si falla se guarda `null` y NO se cae al main: decir que
-        // hay master cuando no lo hay haría que una futura reoptimización
-        // recomprima desde una copia ya degradada.
-        let urlMaster: string | null = null;
-        if (fileMaster && fileMaster.size > 0) {
-          const masterName = `${negocioId}/masters/${baseFileName}-master.${fileMaster.name.split(".").pop()}`;
-          const { error: uploadMasterError } = await supabase.storage
-            .from("productos")
-            .upload(masterName, fileMaster, { cacheControl: "31536000" });
-
-          if (uploadMasterError) {
-            console.error("[MERGE MASTER ERROR]", {
-              archivo: fileMain.name,
-              indice: i,
-              error: uploadMasterError,
-            });
-          } else {
-            urlMaster = supabase.storage
-              .from("productos")
-              .getPublicUrl(masterName).data.publicUrl;
-          }
-        }
-        urlsMaster.push(urlMaster);
-      }
-    }
-
-    if (urlsMain.length > 0) imagen_url = JSON.stringify(urlsMain);
-    if (urlsThumb.length > 0) thumbnail_url = JSON.stringify(urlsThumb);
-    if (urlsGrid.length > 0) grid_url = JSON.stringify(urlsGrid);
-    if (urlsMaster.some(Boolean)) master_url = JSON.stringify(urlsMaster);
-
-    const { data: nuevoProducto, error } = await supabase
-      .from("productos")
-      .insert({
-        nombre,
-        precio_costo: costo || 0,
-        precio: precio || 0,
-        slug,
-        tipo: categoriaTipoLabel,
-        categoria_id: categoria_id,
-        marca: marca?.trim() || null,
-        publicado: true,
-        atributos_globales: {},
-        imagen_url,
-        master_url,
-        thumbnail_url,
-        grid_url,
-      })
-      .select("*")
-      .single();
-
-    if (error || !nuevoProducto) {
-      console.error("Error creando producto al vuelo:", error);
-      return { error: "Error de BD al crear." };
-    }
-
-    return { success: true, producto: nuevoProducto };
-  } catch (error) {
-    console.error("Error interno al crear el producto:", error);
-    return {
-      error:
-        error instanceof Error
-          ? error.message
-          : "Error interno al crear el producto.",
-    };
+/**
+ * Los guards de `aprobar_orden_compra` (20261006130000) traducidos para el
+ * dueño. null = no es uno de estos, se muestra el error crudo.
+ */
+function mensajeGuardRemito(mensaje: string | undefined): string | null {
+  if (!mensaje) return null;
+  if (mensaje.includes("REMITO_LINEAS_FALTANTES")) {
+    return "Faltan renglones del remito en esta pantalla, y no entrarían al stock. Recargá la página y volvé a aprobar.";
   }
+  if (mensaje.includes("REMITO_LINEAS_INVALIDAS")) {
+    return "La lista de renglones no coincide con el remito (hay repetidos o de otro remito). Recargá la página y volvé a aprobar.";
+  }
+  if (mensaje.includes("REMITO_CANTIDAD_INVALIDA")) {
+    return "Hay renglones sin cantidad o con cantidad negativa. Corregilos y volvé a aprobar.";
+  }
+  return null;
 }
 
 // 2. Aprobar e Impactar la Orden en la BD (Agrupada y Optimizada)
@@ -461,7 +288,7 @@ export async function aprobarOrdenAction(
     // resolver el cache de canonicalización de una sola vez.
     const valoresPorPropiedad: Record<string, Set<string>> = {};
     for (const item of itemsResueltos) {
-      if (!item.producto_id) continue;
+      if (!item.producto_id || !entraAlStock(item)) continue;
       const variante = item.variante_match || item.raw_variante || "Unico";
       const atributosRaw = parseVarianteAtributos(variante);
       Object.entries(atributosRaw).forEach(([nombre, valor]) => {
@@ -494,7 +321,11 @@ export async function aprobarOrdenAction(
     // freno que cuenta, porque un server action es un endpoint), pero eso
     // llega como una excepción de Postgres arriba de todo. Acá se corta antes
     // y con los nombres puestos.
-    const sinProducto = itemsResueltos.filter((item) => !item.producto_id);
+    // Solo cuenta lo que entra: un renglón marcado "no vino" (cantidad 0) no
+    // necesita producto, y se manda igual para que quede registrado.
+    const sinProducto = itemsResueltos.filter(
+      (item) => !item.producto_id && entraAlStock(item),
+    );
     if (sinProducto.length > 0) {
       const nombres = Array.from(
         new Set(sinProducto.map((item) => item.raw_nombre)),
@@ -508,9 +339,11 @@ export async function aprobarOrdenAction(
       };
     }
 
-    const itemsPayload = itemsResueltos
-      .filter((item) => item.producto_id)
-      .map((item) => {
+    // TODOS los renglones, también los que no vinieron: la RPC exige que la
+    // orden viaje entera (`REMITO_LINEAS_FALTANTES`). Antes se filtraban los
+    // sin producto, y un renglón que se caía de la lista no entraba al stock
+    // sin un solo error.
+    const itemsPayload = itemsResueltos.map((item) => {
         const variante = item.variante_match || item.raw_variante || "Unico";
         return {
           // Con esto la RPC puede escribir en la línea del remito a qué
@@ -531,7 +364,10 @@ export async function aprobarOrdenAction(
           // `unidades_serie`. Es lo que permite que una planilla de electro
           // entre por conciliación sin perder los IMEI.
           imei: item.raw_imei?.trim() || null,
-          cantidad: item.cantidad,
+          // Lo que de verdad entró (corregido o "no vino"); la RPC lo compara
+          // con lo del remito y guarda la diferencia con su motivo.
+          cantidad: cantidadEfectiva(item),
+          motivo_ajuste: item.motivo_ajuste ?? null,
           precio_costo: item.precio_costo ?? null,
           precio_venta_actualizado: item.precio_venta_actualizado ?? null,
         };
@@ -546,6 +382,10 @@ export async function aprobarOrdenAction(
       },
     );
 
+    if (aprobarError) {
+      const amigable = mensajeGuardRemito(aprobarError.message);
+      if (amigable) return { error: amigable };
+    }
     throwIfSupabaseError("Error impactando la orden", aprobarError);
 
     // La RPC es idempotente: si la orden ya estaba aprobada no tocó nada y

@@ -186,6 +186,23 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   categoría inferida (`inferir-categoria-fila.ts`, cuatro escalones; diccionario
   genérico `terminos-por-rubro.ts`), precio = costo × recargo (default 100%). Costo y
   cantidad se editan.
+- **Cada renglón viaja exactamente una vez** (`20261006130000`): `aprobar_orden_compra`
+  rechaza con `REMITO_LINEAS_FALTANTES` / `REMITO_LINEAS_INVALIDAS` (repetido, de otra
+  orden, sin `item_id`) / `REMITO_CANTIDAD_INVALIDA` (negativa). Antes solo controlaba
+  los renglones con `producto_id is null`: uno que ya tenía producto y no venía en el
+  payload no entraba al stock sin error.
+- **Lo recibido contra lo facturado**: `ordenes_items.cantidad` no se toca;
+  `cantidad_recibida` (NULL = igual, 0 = no vino, otro = corregido) y `motivo_ajuste`
+  los escribe la RPC al aprobar. "Descartar agrupación" marca "No vino" (cantidad 0) en
+  vez de sacar las filas, y se deshace con "Sí vino"; la cantidad se corrige por línea.
+  Un renglón en 0 no necesita producto ni mueve stock. Criterio único:
+  `features/purchases/lib/recepcion.ts` (con tests); un borrador viejo sin los
+  descartados los recupera como no recibidos (`completarConFaltantes`).
+- **La conciliación crea con la misma RPC que Carga inicial** (6/10/2026):
+  `crearProductoAlVueloAction` (sin idempotencia, envuelto en `withTimeout`, el
+  reintento duplicaba) se eliminó. El lote es UNA llamada; las fotos del modal se suben
+  después del alta, como en Fotos pendientes. Si el grupo tiene costos distintos por
+  variante se manda `costo: null` para no pisar el de cada línea.
 - **Creación en lote idempotente por `ordenes_items.producto_id`**
   (`crear_productos_desde_remito`, `20260904120000`), escrito ANTES del stock; el
   stock lo sigue impactando `aprobar_orden_compra`. Row lock sobre la orden.
