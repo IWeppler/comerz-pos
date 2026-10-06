@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Lock, Sparkles } from "lucide-react";
 import { ConfiguracionPOS } from "@/entities/config/types";
@@ -121,7 +121,7 @@ const SECTIONS = [
     id: "clientes",
     label: "Clientes (CRM)",
     icon: UserCog,
-    description: "Cajeros, administradores y roles",
+    description: "Vencimientos, mora y recordatorios",
   },
   {
     id: "preferencias",
@@ -129,6 +129,16 @@ const SECTIONS = [
     icon: Settings,
     description: "Moneda, zona horaria, colores",
   },
+];
+
+// Los grupos del menú lateral. Once secciones en una sola lista se leían
+// como una pared; agrupadas por tema se encuentran de un vistazo. Una sección
+// que no figura acá no se pierde: cae en "Otros".
+const GRUPOS: { titulo: string; ids: string[] }[] = [
+  { titulo: "Negocio", ids: ["comercio", "catalogo", "preferencias"] },
+  { titulo: "Ventas", ids: ["caja", "pagos", "ticketConfig", "presupuestos"] },
+  { titulo: "Productos", ids: ["categoria", "listasPrecios", "promociones"] },
+  { titulo: "Personas", ids: ["clientes", "empleados"] },
 ];
 
 interface SettingsManagerProps {
@@ -212,6 +222,26 @@ export function SettingsManager({
   const tieneRoles = useTieneFeature("roles");
   const seccionBloqueada = (id: string) => id === "empleados" && !tieneRoles;
 
+  const gruposVisibles = useMemo(() => {
+    const agrupados = new Set(GRUPOS.flatMap((g) => g.ids));
+    const grupos = GRUPOS.map((g) => ({
+      titulo: g.titulo,
+      secciones: g.ids
+        .map((id) => visibleSections.find((s) => s.id === id))
+        .filter((s): s is (typeof SECTIONS)[number] => Boolean(s)),
+    }));
+    const sueltas = visibleSections.filter((s) => !agrupados.has(s.id));
+    if (sueltas.length > 0) grupos.push({ titulo: "Otros", secciones: sueltas });
+    return grupos.filter((g) => g.secciones.length > 0);
+  }, [visibleSections]);
+
+  // El contenido scrollea en su propio contenedor (en desktop): al cambiar de
+  // sección vuelve arriba, si no la sección nueva abría a mitad de página.
+  const contenidoRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    contenidoRef.current?.scrollTo({ top: 0 });
+  }, [activeSection]);
+
   const renderPanel = () => {
     switch (activeSection) {
       case "comercio":
@@ -267,9 +297,14 @@ export function SettingsManager({
   };
 
   return (
-    <div className="flex flex-col md:flex-row gap-6 lg:gap-8">
+    // Desktop: segundo sidebar a la Supabase. El menú y el contenido ocupan el
+    // alto de la pantalla y scrollean CADA UNO en su contenedor. Antes el menú
+    // era `sticky` dentro del mismo scroll que el contenido: la rueda sobre el
+    // menú no bajaba el panel y, con la ventana baja, el menú quedaba cortado.
+    // Mobile: el select arriba y la página scrollea entera, como siempre.
+    <div className="flex flex-col md:h-full md:flex-row">
       {/* SIDEBAR DE NAVEGACIÓN */}
-      <aside className="w-full md:w-64 shrink-0">
+      <aside className="w-full shrink-0 md:w-60 md:h-full md:overflow-y-auto md:border-r md:border-border">
         {/* Selector Mobile (Se oculta en Desktop) */}
         <div className="md:hidden mb-4">
           <Select value={activeSection} onValueChange={setActiveSection}>
@@ -293,50 +328,63 @@ export function SettingsManager({
         </div>
 
         {/* Menú Lateral Desktop */}
-        <nav className="hidden md:flex flex-col gap-1.5 sticky top-24">
-          {visibleSections.map((section) => {
-            const isActive = activeSection === section.id;
-            const Icon = section.icon;
+        <nav
+          aria-label="Secciones de configuración"
+          className="hidden md:flex flex-col gap-5 px-3 py-4"
+        >
+          <p className="px-2 text-base font-semibold text-foreground">
+            Configuración
+          </p>
+          {gruposVisibles.map((grupo) => (
+            <div key={grupo.titulo} className="flex flex-col gap-0.5">
+              <p className="px-2 pb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+                {grupo.titulo}
+              </p>
+              {grupo.secciones.map((section) => {
+                const isActive = activeSection === section.id;
+                const Icon = section.icon;
 
-            return (
-              <button
-                key={section.id}
-                onClick={() => setActiveSection(section.id)}
-                className={`flex items-start gap-3 p-3 rounded-xl transition-all text-left w-full cursor-pointer ${
-                  isActive
-                    ? "bg-card text-foreground border border-border font-semibold"
-                    : "hover:bg-muted/50 text-muted-foreground hover:text-foreground border border-transparent font-medium"
-                }`}
-              >
-                <Icon
-                  className={`w-5 h-5 shrink-0 mt-0.5 ${isActive ? "text-primary" : "opacity-70"}`}
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-1.5 text-sm">
-                    {section.label}
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setActiveSection(section.id)}
+                    title={section.description}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2 text-left text-sm transition-colors ${
+                      isActive
+                        ? "bg-muted text-foreground font-medium"
+                        : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    }`}
+                  >
+                    <Icon
+                      className={`h-4 w-4 shrink-0 ${isActive ? "text-primary" : "opacity-70"}`}
+                    />
+                    <span className="truncate">{section.label}</span>
                     {seccionBloqueada(section.id) && (
-                      <>
+                      <span className="ml-auto flex items-center gap-1">
                         <Lock className="h-3 w-3 shrink-0 text-muted-foreground/70" />
                         <Sparkles className="h-3 w-3 shrink-0 text-amber-500" />
-                      </>
+                      </span>
                     )}
-                  </p>
-                  {isActive && (
-                    <p className="text-[10px] text-muted-foreground leading-tight mt-0.5 animate-in fade-in slide-in-from-top-1">
-                      {section.description}
-                    </p>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </nav>
       </aside>
 
-      {/* ÁREA PRINCIPAL */}
-      <main className="flex-1 min-w-0 animate-in fade-in-50 duration-300">
-        {renderPanel()}
-      </main>
+      {/* ÁREA PRINCIPAL — en desktop scrollea sola, con la barra a la vista
+          (la del layout está oculta). */}
+      <div
+        ref={contenidoRef}
+        className="flex-1 min-w-0 md:h-full md:overflow-y-auto"
+      >
+        <div key={activeSection} className="md:p-6 animate-in fade-in-50 duration-200">
+          {renderPanel()}
+        </div>
+      </div>
     </div>
   );
 }

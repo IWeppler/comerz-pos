@@ -48,6 +48,7 @@ import {
   scoringDesdeCliente,
 } from "../lib/scoring-desde-cliente";
 import { ScoringBadges } from "./scoring-badges";
+import { normalizarBusqueda } from "@/shared/lib/normalizar-busqueda";
 import {
   ClienteEstadoBadge,
   ESTADO_CLIENTE_CONFIG,
@@ -57,7 +58,7 @@ type SortConfig = {
   key: "nombre" | "deuda" | "ltv" | "vencimiento" | "scoring";
   direction: "asc" | "desc";
 };
-const CLIENTS_PER_PAGE = 10;
+const CLIENTS_PER_PAGE = 25;
 
 type ClienteVentaResumen = {
   total?: number | string | null;
@@ -128,8 +129,8 @@ export function ClientsView({
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<ClientStatusFilter>("todos");
   const [sortConfig, setSortConfig] = useState<SortConfig>({
-    key: "ltv",
-    direction: "desc",
+    key: "nombre",
+    direction: "asc",
   });
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -231,10 +232,15 @@ export function ClientsView({
   );
 
   const clientesFiltrados = useMemo(() => {
+    // Nombre sin tildes ("maria" encuentra "María") y teléfono solo por
+    // dígitos: "1145678901" tiene que encontrar "11 4567-8901".
+    const query = normalizarBusqueda(searchQuery);
+    const queryDigitos = searchQuery.replace(/\D/g, "");
     let result = clientesMapeados.filter(
       (cliente) =>
-        cliente.nombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (cliente.telefono && cliente.telefono.includes(searchQuery)),
+        normalizarBusqueda(cliente.nombre).includes(query) ||
+        (queryDigitos.length > 0 &&
+          (cliente.telefono ?? "").replace(/\D/g, "").includes(queryDigitos)),
     );
 
     if (filterStatus !== "todos") {
@@ -247,8 +253,8 @@ export function ClientsView({
     result.sort((a, b) => {
       if (sortConfig.key === "nombre") {
         return sortConfig.direction === "asc"
-          ? a.nombre.localeCompare(b.nombre)
-          : b.nombre.localeCompare(a.nombre);
+          ? a.nombre.trim().localeCompare(b.nombre.trim(), "es", { sensitivity: "base" })
+          : b.nombre.trim().localeCompare(a.nombre.trim(), "es", { sensitivity: "base" });
       }
 
       if (sortConfig.key === "ltv") {
@@ -337,6 +343,16 @@ export function ClientsView({
     setCurrentPage(1);
   };
 
+  const hayFiltros =
+    searchQuery.trim() !== "" || filterStatus !== "todos" || cicloActivo;
+
+  const limpiarFiltros = () => {
+    setSearchQuery("");
+    setFilterStatus("todos");
+    setCicloPedido(false);
+    setCurrentPage(1);
+  };
+
   // El mismo envío que el botón "Resumen" del detalle (useRecordatorioCc),
   // con el total que muestra la fila. Si el cliente está en el ciclo, queda
   // registrado como avisado.
@@ -352,6 +368,7 @@ export function ClientsView({
         saldoConRecargo: cliente.saldoConRecargo,
         fechaVencimiento: cliente.fecha_vencimiento_deuda ?? null,
         diasVencido: cliente.diasVencido,
+        montoCiclo: enCiclo.get(cliente.id)?.monto,
       });
       await marcar(cliente.id);
     } finally {
@@ -373,17 +390,46 @@ export function ClientsView({
     setCurrentPage(1);
   };
 
-  const renderSortIcon = (columna: SortConfig["key"]) => {
-    if (sortConfig.key !== columna) {
-      return (
-        <ArrowUpDown className="w-3.5 h-3.5 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity" />
-      );
-    }
+  // El ícono de las columnas sin orden activo queda SIEMPRE visible (tenue):
+  // escondido detrás de un hover, nadie sabía que se podía ordenar, y en el
+  // celular no hay hover.
+  const ariaSort = (columna: SortConfig["key"]) =>
+    sortConfig.key !== columna
+      ? undefined
+      : sortConfig.direction === "asc"
+        ? ("ascending" as const)
+        : ("descending" as const);
 
-    return sortConfig.direction === "asc" ? (
-      <ArrowUp className="w-3.5 h-3.5 shrink-0 text-foreground" />
-    ) : (
-      <ArrowDown className="w-3.5 h-3.5 shrink-0 text-foreground" />
+  const renderSortButton = (
+    columna: SortConfig["key"],
+    etiqueta: string,
+    align: "start" | "center" | "end" = "start",
+  ) => {
+    const activa = sortConfig.key === columna;
+    const Icono = !activa
+      ? ArrowUpDown
+      : sortConfig.direction === "asc"
+        ? ArrowUp
+        : ArrowDown;
+
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(columna)}
+        className={`inline-flex min-h-11 w-full cursor-pointer items-center gap-1.5 uppercase tracking-wide transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md ${
+          align === "end"
+            ? "justify-end"
+            : align === "center"
+              ? "justify-center"
+              : "justify-start"
+        } ${activa ? "text-foreground" : ""}`}
+      >
+        {etiqueta}
+        <Icono
+          className={`h-3.5 w-3.5 shrink-0 ${activa ? "" : "opacity-40"}`}
+          aria-hidden
+        />
+      </button>
     );
   };
 
@@ -459,9 +505,9 @@ export function ClientsView({
               </div>
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
                 <div
-                  className="h-full rounded-full bg-success transition-all"
+                  className="h-full w-full origin-left rounded-full bg-success transition-transform duration-300 ease-out"
                   style={{
-                    width: `${kpiCiclo.cuentas ? (kpiCiclo.avisados / kpiCiclo.cuentas) * 100 : 0}%`,
+                    transform: `scaleX(${kpiCiclo.cuentas ? kpiCiclo.avisados / kpiCiclo.cuentas : 0})`,
                   }}
                 />
               </div>
@@ -513,7 +559,7 @@ export function ClientsView({
           <Card className="min-w-[82vw] border-border shadow-none bg-card snap-start sm:min-w-0">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Clientes activos
+                Clientes
               </CardTitle>
               <Users className="w-4 h-4 text-info" />
             </CardHeader>
@@ -522,7 +568,7 @@ export function ClientsView({
                 {totalClientes}
               </div>
               <p className="font-mono uppercase text-xs text-muted-foreground mt-1">
-                En tu base de datos
+                Total registrados
               </p>
             </CardContent>
           </Card>
@@ -534,10 +580,10 @@ export function ClientsView({
         <div className="relative w-full sm:w-80 shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Buscar por nombre o telefono..."
+            placeholder="Buscar por nombre o teléfono"
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-9 h-10 bg-muted border border-border rounded-xl"
+            className="pl-9 h-11 bg-muted border border-border rounded-xl"
           />
         </div>
 
@@ -563,11 +609,14 @@ export function ClientsView({
               variant="outline"
               size="sm"
               onClick={() => setIsImportOpen(true)}
-              className="h-10 shadow-none border-border"
+              className="h-11 rounded-xl px-3 shadow-none border-border"
             >
               <UploadCloud className="w-5 h-5 mr-2" /> Importar CSV
             </Button>
-            <CreateClientModal entregaMinimaActiva={entregaMinimaActiva} />
+            <CreateClientModal
+              buttonClassName="h-11 rounded-xl px-3"
+              entregaMinimaActiva={entregaMinimaActiva}
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-2 sm:hidden">
@@ -575,12 +624,12 @@ export function ClientsView({
               variant="outline"
               size="sm"
               onClick={() => setIsImportOpen(true)}
-              className="h-10 w-full justify-center"
+              className="h-11 w-full justify-center rounded-xl"
             >
               <UploadCloud className="w-4 h-4 mr-2" /> Importar
             </Button>
             <CreateClientModal
-              buttonClassName="h-10 w-full justify-center"
+              buttonClassName="h-11 w-full justify-center rounded-xl"
               labelClassName="flex whitespace-nowrap"
               entregaMinimaActiva={entregaMinimaActiva}
             />
@@ -595,48 +644,38 @@ export function ClientsView({
             <thead className="bg-muted text-muted-foreground text-[10px] md:text-xs uppercase font-medium tracking-wide border-b border-border/60">
               <tr>
                 <th
-                  className="px-3 py-3 md:px-5 md:py-4 text-left"
-                  onClick={() => handleSort("nombre")}
+                  className="px-3 py-0.5 md:px-5 md:py-1.5 text-left"
+                  aria-sort={ariaSort("nombre")}
                 >
-                  <div className="flex items-center gap-1.5">
-                    Cliente {renderSortIcon("nombre")}
-                  </div>
+                  {renderSortButton("nombre", "Cliente")}
                 </th>
                 <th className="py-3 md:px-2 md:py-4">Estado</th>
                 <th className="px-3 py-3 md:px-5 md:py-4 hidden sm:table-cell">
                   Contacto
                 </th>
                 <th
-                  className="px-3 py-3 md:px-5 md:py-4 hidden md:table-cell text-right"
-                  onClick={() => handleSort("ltv")}
+                  className="px-3 py-0.5 md:px-5 md:py-1.5 hidden md:table-cell text-right"
+                  aria-sort={ariaSort("ltv")}
                 >
-                  <div className="flex items-center justify-end gap-1.5">
-                    Total comprado {renderSortIcon("ltv")}
-                  </div>
+                  {renderSortButton("ltv", "Total comprado", "end")}
                 </th>
                 <th
-                  className="px-3 py-3 md:px-5 md:py-4 text-center"
-                  onClick={() => handleSort("scoring")}
+                  className="px-3 py-0.5 md:px-5 md:py-1.5 text-center"
+                  aria-sort={ariaSort("scoring")}
                 >
-                  <div className="flex items-center justify-center gap-1.5">
-                    Scoring {renderSortIcon("scoring")}
-                  </div>
+                  {renderSortButton("scoring", "Scoring", "center")}
                 </th>
                 <th
-                  className="px-3 py-3 md:px-5 md:py-4 text-right"
-                  onClick={() => handleSort("deuda")}
+                  className="px-3 py-0.5 md:px-5 md:py-1.5 text-right"
+                  aria-sort={ariaSort("deuda")}
                 >
-                  <div className="flex items-center justify-end gap-1.5">
-                    Deuda Actual {renderSortIcon("deuda")}
-                  </div>
+                  {renderSortButton("deuda", "Deuda Actual", "end")}
                 </th>
                 <th
-                  className="px-3 py-3 md:px-5 md:py-4 hidden lg:table-cell text-right"
-                  onClick={() => handleSort("vencimiento")}
+                  className="px-3 py-0.5 md:px-5 md:py-1.5 hidden lg:table-cell text-right"
+                  aria-sort={ariaSort("vencimiento")}
                 >
-                  <div className="flex items-center justify-end gap-1.5">
-                    Fecha de vencimiento {renderSortIcon("vencimiento")}
-                  </div>
+                  {renderSortButton("vencimiento", "Fecha de vencimiento", "end")}
                 </th>
                 <th className="px-2 py-3 md:px-4 md:py-4 text-center">
                   Resumen
@@ -646,10 +685,31 @@ export function ClientsView({
             <tbody className="divide-y divide-border/60">
               {clientesFiltrados.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-2 py-12 text-center">
+                  <td colSpan={8} className="px-2 py-12 text-center">
                     <div className="flex flex-col items-center justify-center text-muted-foreground">
                       <Users className="w-8 h-8 opacity-20 mb-2" />
-                      <p className="font-medium">No se encontraron clientes.</p>
+                      {hayFiltros ? (
+                        <>
+                          <p className="font-medium whitespace-normal">
+                            {searchQuery.trim()
+                              ? `Sin resultados para «${searchQuery.trim()}».`
+                              : "Ningún cliente coincide con los filtros."}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={limpiarFiltros}
+                            className="mt-3 h-10 shadow-none border-border"
+                          >
+                            Limpiar filtros
+                          </Button>
+                        </>
+                      ) : (
+                        <p className="font-medium">
+                          Todavía no hay clientes cargados.
+                        </p>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -663,7 +723,18 @@ export function ClientsView({
                     <tr
                       key={cliente.id}
                       onClick={() => setSelectedClientId(cliente.id)}
-                      className="hover:bg-muted/30 transition-colors group cursor-pointer"
+                      onKeyDown={(e) => {
+                        // Solo la fila: Enter sobre el botón de WhatsApp o el
+                        // badge no tiene que abrir además el detalle.
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedClientId(cliente.id);
+                        }
+                      }}
+                      tabIndex={0}
+                      aria-label={`Ver detalle de ${cliente.nombre}`}
+                      className="hover:bg-muted/30 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:bg-muted/50"
                     >
                       <td className="px-3 py-3 md:px-5 md:py-4">
                         <div className="flex flex-col">
@@ -776,7 +847,7 @@ export function ClientsView({
                                 ? "Resumen ya enviado en este ciclo. Tocá para mandarlo de nuevo."
                                 : "Enviar resumen de cuenta por WhatsApp"
                             }
-                            className="relative inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
+                            className="relative inline-flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-[color,background-color,transform] duration-150 ease-out active:scale-[0.97] hover:bg-muted hover:text-success disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {enviandoResumen === cliente.id ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
@@ -862,6 +933,9 @@ export function ClientsView({
         puedeCorregirCobro={puedeCorregirCobro}
         onClose={() => setSelectedClientId(null)}
         onResumenEnviado={marcar}
+        montoCiclo={
+          selectedClient ? enCiclo.get(selectedClient.id)?.monto : undefined
+        }
       />
       <ImportClientsCsvModal
         open={isImportOpen}

@@ -14,6 +14,11 @@ export interface DatosRecordatorioCc
   extends Omit<DatosMensajeDeuda, "urlResumen" | "nombreComercio"> {
   clienteId: string;
   telefono: string | null | undefined;
+  /** Comercios con cierre mensual: el capital que vence hasta el ciclo
+   * vigente (`enCiclo` de `useAvisosCc`). Si viene, el mensaje cobra ESO y no
+   * el saldo entero: lo comprado después del cierre vence el mes que viene
+   * (ver `corteResumenCc`). undefined = el saldo entero, como siempre. */
+  montoCiclo?: number;
 }
 
 /**
@@ -41,12 +46,21 @@ export function useRecordatorioCc({
       const { url, error } = await obtenerLinkResumenAction(datos.clienteId);
       if (error) toast.error("No se pudo generar el link del resumen.");
 
+      // La mora es toda del ciclo: solo existe sobre lo vencido, y lo vencido
+      // vence a más tardar en el ciclo vigente. Por eso se suma entera.
+      const recortar =
+        datos.montoCiclo !== undefined && datos.montoCiclo < datos.saldo;
+      const saldo = recortar ? datos.montoCiclo! : datos.saldo;
+      const saldoConRecargo = recortar
+        ? Math.round((saldo + datos.montoRecargo) * 100) / 100
+        : datos.saldoConRecargo;
+
       const mensaje = construirMensajeDeuda(
         {
           nombreCliente: datos.nombreCliente,
-          saldo: datos.saldo,
+          saldo,
           montoRecargo: datos.montoRecargo,
-          saldoConRecargo: datos.saldoConRecargo,
+          saldoConRecargo,
           fechaVencimiento: datos.fechaVencimiento,
           diasVencido: datos.diasVencido,
           urlResumen: url,

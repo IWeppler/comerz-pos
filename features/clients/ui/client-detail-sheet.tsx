@@ -86,6 +86,9 @@ interface ClientDetailSheetProps {
   /** Después de mandar el resumen: lo registra en el ciclo de cobro si el
    * cliente está en él (ver `useAvisosCc`). */
   onResumenEnviado?: (clienteId: string) => Promise<void> | void;
+  /** Cierre mensual: lo que vence hasta el ciclo vigente; el resumen manda
+   * eso y no el saldo entero (ver `useRecordatorioCc`). */
+  montoCiclo?: number;
 }
 
 export function ClientDetailSheet({
@@ -102,6 +105,7 @@ export function ClientDetailSheet({
   puedeCorregirCobro = false,
   onClose,
   onResumenEnviado,
+  montoCiclo,
 }: Readonly<ClientDetailSheetProps>) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -229,6 +233,7 @@ export function ClientDetailSheet({
         saldoConRecargo,
         fechaVencimiento,
         diasVencido,
+        montoCiclo,
       });
       await onResumenEnviado?.(cliente.id);
     });

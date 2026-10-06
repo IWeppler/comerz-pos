@@ -167,9 +167,11 @@ export default async function ConfiguracionPage() {
     .order("nombre", { ascending: true });
 
   return (
-    <div className="space-y-6 mx-auto px-4 p-2">
+    // En desktop ocupa todo el alto: el menú y el contenido scrollean cada uno
+    // en su contenedor (ver SettingsManager). En mobile, la página entera.
+    <div className="mx-auto px-4 p-2 md:h-full md:p-0">
       {configError || !config ? (
-        <div className="p-4 rounded-md bg-destructive/10 border border-destructive/20 text-destructive font-medium">
+        <div className="m-4 p-4 rounded-md bg-destructive/10 border border-destructive/20 text-destructive font-medium">
           {configError ||
             "No se encontró la configuración en la base de datos."}
         </div>

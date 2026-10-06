@@ -8,6 +8,13 @@ import {
   type FilaDeudaViva,
 } from "@/features/clients/lib/deuda-por-mes";
 import { DeudaPorMesLista } from "@/features/clients/ui/deuda-por-mes-lista";
+import {
+  corteResumenCc,
+  montoHastaCorte,
+  movimientosHastaCorte,
+  type MovimientoResumenCc,
+} from "@/features/clients/lib/resumen-ciclo";
+import type { CcVencimientoModo } from "@/features/clients/lib/calcular-fecha-vencimiento";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +24,7 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type MovimientoResumen = {
-  fecha: string;
-  concepto: string;
-  tipo: "DEBITO" | "CREDITO";
-  monto: number;
-  saldo: number;
-};
+type MovimientoResumen = MovimientoResumenCc;
 
 type Resumen = {
   comercio: { nombre: string | null; direccion: string | null; whatsapp: string | null };
@@ -38,6 +39,14 @@ type Resumen = {
    * (`cc_deudas_vivas_detalle`). Opcional: un deploy con la base vieja no lo
    * trae. */
   deudas?: FilaDeudaViva[];
+  /** La regla de vencimiento del comercio (`20261006120000`). Opcional como
+   * `deudas`: sin ella no se recorta. */
+  regla_vencimiento?: {
+    modo: CcVencimientoModo | null;
+    plazo_dias: number | null;
+    dia_cierre: number | null;
+    dia_vencimiento: number | null;
+  };
   movimientos: MovimientoResumen[];
 };
 
@@ -91,17 +100,45 @@ export default async function ResumenCuentaPage({
     );
   }
 
-  const { comercio, cliente, movimientos } = resumen;
-  const alDia = resumen.saldo_actual <= 0;
+  const { comercio, cliente } = resumen;
+  const hoy = diaComercial(new Date());
+  const deudas = (resumen.deudas ?? []).map(deudaVivaDesdeFila);
+
+  // Cierre mensual: el resumen es lo que hay que pagar en este ciclo (deuda
+  // vieja incluida); lo comprado después del cierre vence el mes que viene y
+  // no aparece (ver `corteResumenCc`). Es el mismo monto que manda el
+  // mensaje de WhatsApp.
+  const regla = resumen.regla_vencimiento;
+  const corte = regla
+    ? corteResumenCc(
+        {
+          modo: regla.modo,
+          plazoDias: regla.plazo_dias,
+          diaCierre: regla.dia_cierre,
+          diaVencimiento: regla.dia_vencimiento,
+        },
+        hoy,
+        deudas,
+      )
+    : null;
+
+  const saldoMostrado = corte
+    ? montoHastaCorte(deudas, corte)
+    : resumen.saldo_actual;
+  const movimientos = corte
+    ? movimientosHastaCorte(resumen.movimientos, resumen.saldo_anterior, corte)
+    : resumen.movimientos;
+
+  const alDia = saldoMostrado <= 0;
   // Saldo con signo: negativo es plata de la clienta (seña, pago de más, vale).
-  const aFavor = resumen.saldo_actual < 0;
+  const aFavor = saldoMostrado < 0;
   // Qué vence cada mes, con la misma regla y la misma lista que el detalle
   // del cliente adentro. Un solo "vence el" mentía: es el vencimiento MÁS
   // VIEJO, y la clienta leía que todo el saldo vencía ese día (EESO 405 en
   // Colores: $276.450 "vence el 10/10" cuando ese día vencían $98.850).
   const grupos = agruparDeudaPorMes(
-    (resumen.deudas ?? []).map(deudaVivaDesdeFila),
-    diaComercial(new Date()),
+    corte ? deudas.filter((d) => d.venceEl <= corte) : deudas,
+    hoy,
   );
 
   return (
@@ -204,13 +241,13 @@ export default async function ResumenCuentaPage({
                 alDia ? "text-success" : "text-foreground"
               }`}
             >
-              {formatearMoneda(Math.abs(resumen.saldo_actual))}
+              {formatearMoneda(Math.abs(saldoMostrado))}
             </span>
           </div>
 
           {aFavor ? (
             <p className="text-xs text-success mt-1">
-              Tenés {formatearMoneda(-resumen.saldo_actual)} a favor para tu
+              Tenés {formatearMoneda(-saldoMostrado)} a favor para tu
               próxima compra.
             </p>
           ) : alDia ? (

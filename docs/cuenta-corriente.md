@@ -234,6 +234,17 @@ Botón "Recordar" del detalle del cliente; arma el texto `construirMensajeDeuda`
   "vence el" (el vencimiento más viejo) para todo el saldo: EESO 405 en Colores leía
   $276.450 "vence el 10/10" cuando ese día vencían $98.850. Sin botón "Escribirle al
   comercio" ni pie de emisión (pedido del 5/10/2026).
+- **Con cierre mensual, el resumen es el del ciclo** (`20261006120000`, pedido del
+  6/10/2026 para Colores): el mensaje y el link muestran lo que vence hasta el
+  vencimiento del ciclo vigente, deuda vieja incluida (cada mes en su renglón);
+  lo comprado después del cierre vence el mes que viene y no aparece. Si no debe
+  nada del ciclo, el corte es su próximo vencimiento. Una regla:
+  `corteResumenCc` (`features/clients/lib/resumen-ciclo.ts`, con tests). El
+  mensaje usa el `monto` de `useAvisosCc` (capital del ciclo) + la mora entera
+  (la mora es solo sobre lo vencido, que siempre cae en el ciclo). La RPC
+  devuelve `regla_vencimiento` y `movimientos[].vence_el` (de `cc_deudas_vivas`:
+  la mora pegada a un ticket vence con su ticket); la página saca los cargos que
+  vencen después del corte, deja TODOS los pagos y recalcula el saldo corriente.
 - Una línea que usa un dato que no hay (sin vencimiento, sin link) no se manda. Una
   variable desconocida no se puede guardar; si llegara, queda literal (no se borra
   texto en silencio).

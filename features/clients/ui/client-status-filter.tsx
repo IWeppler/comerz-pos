@@ -39,7 +39,7 @@ export function ClientStatusFilterControl({
     >
       <SelectTrigger
         aria-label="Estado del cliente"
-        className="h-10 w-full sm:w-40 bg-muted border border-border rounded-xl"
+        className="h-11 w-full sm:w-40 bg-muted border border-border rounded-xl"
       >
         <SelectValue />
       </SelectTrigger>

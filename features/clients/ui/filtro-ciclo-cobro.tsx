@@ -29,7 +29,7 @@ export function FiltroCicloCobro({
       onClick={() => onCambiar(!activo)}
       aria-pressed={activo}
       className={cn(
-        "flex h-10 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors sm:w-auto",
+        "flex h-11 w-full shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 text-sm font-medium transition-colors sm:w-auto",
         activo
           ? "border-primary/50 bg-primary/10 text-foreground"
           : "border-border bg-muted text-muted-foreground hover:text-foreground",
