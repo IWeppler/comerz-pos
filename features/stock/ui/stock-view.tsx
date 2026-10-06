@@ -7,11 +7,15 @@ import {
   resolverAtributosVariante,
 } from "@/entities/productos/lib/build-propiedades-filtro";
 import { StockTable } from "./stock-table";
-import { StockGrid } from "./stock-grid";
 import { Button } from "@/shared/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { StockFiltersToolbar } from "./stock-filters-toolbar";
 import { getTotalStock } from "../lib/stock-product-utils";
+import {
+  coincideBusquedaInventario,
+  compararTexto,
+} from "../lib/inventario";
+import { resolverCategoriaDisplayPartes } from "@/shared/utils/category-tree";
 import { createClient } from "@/shared/config/supabase/client";
 import { construirArbolCategorias } from "@/shared/utils/category-tree";
 import type { Rubro } from "@/entities/config/types";
@@ -42,7 +46,9 @@ interface CategoriaDB {
   parent_id: string | null;
 }
 
-const ITEMS_POR_PAGINA = 12;
+// 50 y no 12: con 994 productos eran 83 páginas. La tabla es liviana (una
+// miniatura por fila) y el filtrado ya corre en memoria.
+const ITEMS_POR_PAGINA = 50;
 const SEARCH_DEBOUNCE_MS = 300;
 
 export function StockView({
@@ -53,7 +59,6 @@ export function StockView({
   rubro,
   productosDelNegocio,
 }: Readonly<StockViewProps>) {
-  const [view, setView] = useState<"table" | "grid">("table");
   const [paginaActual, setPaginaActual] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDebounced, setSearchDebounced] = useState("");
@@ -108,9 +113,7 @@ export function StockView({
 
   const matchSearchYVariantes = useCallback(
     (p: ProductoIndice) => {
-      const matchSearch = p.nombre
-        ?.toLowerCase()
-        .includes(searchDebounced.toLowerCase());
+      const matchSearch = coincideBusquedaInventario(p, searchDebounced);
 
       const matchVariantes = Object.entries(filtrosVariantes).every(
         ([propiedad, valor]) => {
@@ -246,6 +249,16 @@ export function StockView({
     );
   }, [categoriaActiva, productosFiltradosSinCategoria, productosFiltrados]);
 
+  const nombreCategoria = useCallback(
+    (p: ProductoIndice) => {
+      const partes = resolverCategoriaDisplayPartes(categoriasDB, p.categoria_id);
+      return partes
+        ? [partes.padre, partes.nombre].filter(Boolean).join(" ")
+        : (p.categoria?.nombre ?? p.tipo ?? "");
+    },
+    [categoriasDB],
+  );
+
   // El sort corre acá, sobre TODO el set filtrado, antes de paginar. Antes
   // vivía adentro de stock-table.tsx y solo reordenaba los 10 productos de
   // la página visible — cambiar de página no respetaba el orden elegido.
@@ -254,9 +267,9 @@ export function StockView({
     arr.sort((a, b) => {
       switch (orden) {
         case "nombre_asc":
-          return a.nombre.localeCompare(b.nombre);
+          return compararTexto(a.nombre, b.nombre);
         case "nombre_desc":
-          return b.nombre.localeCompare(a.nombre);
+          return compararTexto(b.nombre, a.nombre);
         case "stock_desc":
           return getTotalStock(b) - getTotalStock(a);
         case "stock_asc":
@@ -269,16 +282,19 @@ export function StockView({
           return b.precio - a.precio;
         case "precio_asc":
           return a.precio - b.precio;
+        // Por la categoría que se VE (la columna), no por `tipo`: ese texto
+        // viejo falta en los productos con categoria_id y los mandaba a todos
+        // al principio.
         case "categoria_asc":
-          return (a.tipo || "").localeCompare(b.tipo || "");
+          return compararTexto(nombreCategoria(a), nombreCategoria(b));
         case "categoria_desc":
-          return (b.tipo || "").localeCompare(a.tipo || "");
+          return compararTexto(nombreCategoria(b), nombreCategoria(a));
         default:
           return 0;
       }
     });
     return arr;
-  }, [productosFiltrados, orden]);
+  }, [productosFiltrados, orden, nombreCategoria]);
 
   const totalPaginas = Math.ceil(productosOrdenados.length / ITEMS_POR_PAGINA);
 
@@ -416,8 +432,6 @@ export function StockView({
       ) : (
         <StockFiltersToolbar
           rubro={rubro}
-          view={view}
-          onViewChange={setView}
           searchQuery={searchQuery}
           onSearchChange={handleSearchChange}
           categoriaActiva={categoriaActiva}
@@ -438,31 +452,23 @@ export function StockView({
         />
       )}
 
-      {/* 3. VISTAS */}
+      {/* Solo lista: la grilla se sacó el 6/10/2026 (no mostraba el stock y
+          en el celular ni siquiera se podía elegir). */}
       <div className="bg-background rounded-xl border border-border overflow-hidden min-h-100 relative">
-        {view === "table" ? (
-          <StockTable
-            productos={productosPagina}
-            userRole={userRole}
-            nombreComercio={nombreComercio}
-            mostrarSinStock={mostrarSinStock}
-            orden={orden}
-            onSort={handleSort}
-            categoriasArbol={categoriasDB}
-            rubro={rubro}
-            seleccion={seleccion}
-          />
-        ) : (
-          <StockGrid
-            productos={productosPagina}
-            userRole={userRole}
-            nombreComercio={nombreComercio}
-            mostrarSinStock={mostrarSinStock}
-            categorias={categoriasDB}
-            rubro={rubro}
-            seleccion={seleccion}
-          />
-        )}
+        <StockTable
+          productos={productosPagina}
+          userRole={userRole}
+          nombreComercio={nombreComercio}
+          mostrarSinStock={mostrarSinStock}
+          orden={orden}
+          onSort={handleSort}
+          categoriasArbol={categoriasDB}
+          rubro={rubro}
+          seleccion={seleccion}
+          hayFiltrosActivos={hayFiltrosActivos}
+          busqueda={searchQuery}
+          onLimpiarFiltros={limpiarFiltros}
+        />
       </div>
 
       {/* Paginación */}
@@ -485,7 +491,6 @@ export function StockView({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 shadow-none"
               onClick={() => setPaginaActual((p) => Math.max(1, p - 1))}
               disabled={paginaActual === 1}
             >
@@ -498,7 +503,6 @@ export function StockView({
             <Button
               variant="outline"
               size="sm"
-              className="h-8 shadow-none"
               onClick={() =>
                 setPaginaActual((p) => Math.min(totalPaginas, p + 1))
               }

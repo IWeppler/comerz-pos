@@ -28,6 +28,11 @@ import { toast } from "sonner";
 interface BajaModalProps {
   producto: ProductoIndice;
   children?: React.ReactNode;
+  /** Controlado desde afuera: lo abre un ítem de menú que vive afuera del
+   * modal (si el modal viviera adentro del menú, cerrar el menú lo
+   * desmontaría). Sin esto maneja su estado y muestra su trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 type BajaActionState = {
@@ -36,9 +41,20 @@ type BajaActionState = {
   timestamp?: number;
 };
 
-export function BajaModal({ producto, children }: Readonly<BajaModalProps>) {
+export function BajaModal({
+  producto,
+  children,
+  open,
+  onOpenChange,
+}: Readonly<BajaModalProps>) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [abiertoInterno, setAbiertoInterno] = useState(false);
+  const esControlado = open !== undefined;
+  const isOpen = esControlado ? open : abiertoInterno;
+  const setIsOpen = (v: boolean) => {
+    if (!esControlado) setAbiertoInterno(v);
+    onOpenChange?.(v);
+  };
   const [variante, setVariante] = useState("");
   const [motivo, setMotivo] = useState("");
 
@@ -77,16 +93,18 @@ export function BajaModal({ producto, children }: Readonly<BajaModalProps>) {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        {children ? (
-          children
-        ) : (
-          <Button variant="ghost" size="icon" title="Registrar Baja">
-            <MinusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="sr-only">Registrar Baja</span>
-          </Button>
-        )}
-      </DialogTrigger>
+      {!esControlado && (
+        <DialogTrigger asChild>
+          {children ? (
+            children
+          ) : (
+            <Button variant="ghost" size="icon" title="Registrar Baja">
+              <MinusCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span className="sr-only">Registrar Baja</span>
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent aria-describedby="baja-description">
         <DialogHeader>
           <DialogTitle>Registrar Baja</DialogTitle>

@@ -32,6 +32,7 @@ import {
   ChevronRight,
   Check,
   Star,
+  SearchX,
 } from "lucide-react";
 import { ShareButton } from "@/shared/components/share-button";
 import {
@@ -45,9 +46,11 @@ import { BajaModal } from "@/features/baja/ui/baja-modal";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
+import { COLOR_NIVEL_STOCK, nivelStock } from "../lib/inventario";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { useStockCartActions } from "../hooks/use-stock-cart-actions";
 import {
@@ -85,7 +88,19 @@ interface StockTableProps {
    * vista). Acá solo se pinta y se togglea — las acciones masivas viven en
    * la barra de selección, no en la tabla. */
   seleccion: SeleccionProductos;
+  /** Para la lista vacía: con filtros activos no es "no hay productos", es
+   * "tu búsqueda no encontró nada", y tiene que ofrecer la salida. */
+  hayFiltrosActivos?: boolean;
+  busqueda?: string;
+  onLimpiarFiltros?: () => void;
 }
+
+/** Lo que abrió el menú de una fila. Los modales viven AFUERA del menú: si
+ * vivieran adentro, cerrar el menú al elegir el ítem los desmontaría. */
+type AccionFila = {
+  tipo: "baja" | "fusionar" | "eliminar";
+  producto: ProductoIndice;
+} | null;
 
 const obtenerPrimeraImagen = (imagenUrl: unknown): string | null => {
   return getPrimeraImagen(imagenUrl);
@@ -154,6 +169,9 @@ export function StockTable({
   categoriasArbol,
   rubro,
   seleccion,
+  hayFiltrosActivos = false,
+  busqueda = "",
+  onLimpiarFiltros,
 }: Readonly<StockTableProps>) {
   const { isAdmin } = useStockCartActions(userRole);
   // El link del catálogo necesita el negocio, no solo el origen: cada
@@ -164,6 +182,10 @@ export function StockTable({
   >({});
   const [productoEnEdicion, setProductoEnEdicion] =
     useState<ProductoIndice | null>(null);
+  const [accionFila, setAccionFila] = useState<AccionFila>(null);
+  const cerrarAccion = (abierto: boolean) => {
+    if (!abierto) setAccionFila(null);
+  };
 
   const toggleVariantes = (id: string) => {
     setVariantesAbiertas((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -185,17 +207,34 @@ export function StockTable({
       return <ArrowUp className="w-3.5 h-3.5 shrink-0" />;
     if (orden === `${columna}_desc`)
       return <ArrowDown className="w-3.5 h-3.5 shrink-0" />;
-    return (
-      <ArrowUpDown className="w-3.5 h-3.5 shrink-0 opacity-0 group-hover:opacity-50 transition-opacity" />
-    );
+    // Siempre visible (tenue): escondido detrás de un hover, en el celular
+    // nadie sabía que las columnas se ordenan.
+    return <ArrowUpDown className="w-3.5 h-3.5 shrink-0 opacity-40" />;
   };
 
   if (productos.length === 0) {
+    const termino = busqueda.trim();
     return (
-      <div className="text-center py-12">
-        <p className="text-muted-foreground">
-          No hay productos disponibles en este momento.
-        </p>
+      <div className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center">
+        <SearchX className="h-8 w-8 text-muted-foreground/40" />
+        {hayFiltrosActivos ? (
+          <>
+            <p className="text-sm font-medium text-foreground">
+              {termino
+                ? `Sin resultados para «${termino}».`
+                : "Ningún producto coincide con los filtros."}
+            </p>
+            {onLimpiarFiltros && (
+              <Button variant="outline" onClick={onLimpiarFiltros}>
+                Limpiar filtros
+              </Button>
+            )}
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Todavía no hay productos cargados.
+          </p>
+        )}
       </div>
     );
   }
@@ -212,6 +251,31 @@ export function StockTable({
             if (!open) setProductoEnEdicion(null);
           }}
           hideTrigger
+        />
+      )}
+
+      {accionFila?.tipo === "baja" && (
+        <BajaModal
+          producto={accionFila.producto}
+          open
+          onOpenChange={cerrarAccion}
+        />
+      )}
+      {accionFila?.tipo === "fusionar" && (
+        <FusionarProductoModal
+          id={accionFila.producto.id}
+          nombre={accionFila.producto.nombre}
+          open
+          onOpenChange={cerrarAccion}
+        />
+      )}
+      {accionFila?.tipo === "eliminar" && (
+        <EliminarProductoModal
+          id={accionFila.producto.id}
+          nombre={accionFila.producto.nombre}
+          tipo={accionFila.producto.tipo}
+          open
+          onOpenChange={cerrarAccion}
         />
       )}
 
@@ -353,11 +417,10 @@ export function StockTable({
               const preciosVarian =
                 !mostrableCosto.uniforme || !mostrablePrecio.uniforme;
 
-              // 3. Status Dot (Puntito) para el stock
-              let dotColor = "bg-success"; // Normal
-              if (totalUnidades === 0)
-                dotColor = "bg-danger"; // Agotado
-              else if (totalUnidades < 5) dotColor = "bg-warning"; // Stock Bajo
+              // Mismo criterio para el producto y para sus variantes.
+              const dotColor = COLOR_NIVEL_STOCK[nivelStock(totalUnidades)];
+              const abreviaturaUnidad =
+                ABREVIATURA_UNIDAD[normalizarUnidadMedida(producto.unidad_medida)];
 
               return (
                 <Fragment key={producto.id}>
@@ -401,8 +464,16 @@ export function StockTable({
                             e.stopPropagation();
                             if (hasVariantes) toggleVariantes(producto.id);
                           }}
-                          className={`p-0.5 sm:p-1 rounded hover:bg-muted/80 transition-colors shrink-0 ${
-                            !hasVariantes && "opacity-0 cursor-default"
+                          aria-label={
+                            variantesEstanAbiertas
+                              ? "Ocultar variantes"
+                              : "Ver variantes"
+                          }
+                          aria-expanded={
+                            hasVariantes ? !!variantesEstanAbiertas : undefined
+                          }
+                          className={`flex size-(--control-h-sm) items-center justify-center rounded-lg hover:bg-muted transition-colors shrink-0 ${
+                            !hasVariantes && "invisible"
                           }`}
                           disabled={!hasVariantes}
                         >
@@ -466,7 +537,7 @@ export function StockTable({
                               />
                             )}
                             {producto.marca && (
-                              <span className="text-[9px] sm:text-[10px] uppercase font-medium tracking-wider bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border/50 truncate max-w-24">
+                              <span className="text-xs uppercase font-medium tracking-wide bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border/50 truncate max-w-24">
                                 {producto.marca}
                               </span>
                             )}
@@ -478,7 +549,7 @@ export function StockTable({
                               <span
                                 key={badge.clave}
                                 title={badge.titulo}
-                                className="text-[9px] sm:text-[10px] uppercase font-medium tracking-wider bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border/50 truncate max-w-32"
+                                className="text-xs uppercase font-medium tracking-wide bg-muted px-1.5 py-0.5 rounded text-muted-foreground border border-border/50 truncate max-w-32"
                               >
                                 {badge.texto}
                               </span>
@@ -499,7 +570,7 @@ export function StockTable({
                           title={categoriaTitulo}
                         >
                           {categoriaPartes.padre && (
-                            <span className="truncate text-[10px] uppercase tracking-wider text-muted-foreground/70 leading-tight">
+                            <span className="truncate text-xs text-muted-foreground leading-tight">
                               {categoriaPartes.padre}
                             </span>
                           )}
@@ -521,12 +592,8 @@ export function StockTable({
                             totalUnidades,
                             producto.unidad_medida,
                           )}{" "}
-                          <span className="text-[10px] font-medium opacity-70 uppercase tracking-widest">
-                            {
-                              ABREVIATURA_UNIDAD[
-                                normalizarUnidadMedida(producto.unidad_medida)
-                              ]
-                            }
+                          <span className="text-xs font-medium opacity-70">
+                            {abreviaturaUnidad}
                           </span>
                         </span>
                       </div>
@@ -568,15 +635,28 @@ export function StockTable({
                           mostrablePrecio.difiereDeCabecera && (
                             <span
                               title={`El producto tiene cargado ${formatearMoneda(precio)}, pero se vende al precio de sus variantes. Corregilo en cada variante, dentro de la ficha del producto.`}
-                              className="text-[9px] sm:text-[10px] font-sans font-medium leading-none px-1.5 py-0.5 rounded border bg-warning/10 text-warning border-warning/20"
+                              className="text-xs font-sans font-medium leading-none px-1.5 py-0.5 rounded-full border bg-warning-subtle text-warning border-warning/25"
                             >
                               precio por variante
                             </span>
                           )}
+                        {/* Stock en el celular: ahí la columna Stock no
+                            entra, y sin esto el inventario no mostraba
+                            cuántas unidades quedan. */}
+                        <span className="flex items-center gap-1 font-sans text-xs text-muted-foreground sm:hidden">
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${dotColor}`}
+                          />
+                          {formatearNumeroCantidad(
+                            totalUnidades,
+                            producto.unidad_medida,
+                          )}{" "}
+                          {abreviaturaUnidad}
+                        </span>
                         {isAdmin && !preciosVarian && costoEfectivo > 0 && (
                           <span
                             title={`Recargo sobre el costo: +${formatearMoneda(gananciaEfectiva)}`}
-                            className="text-[9px] sm:text-[10px] font-sans font-medium leading-none px-1.5 py-0.5 rounded border bg-success/10 text-success border-success/20"
+                            className="text-xs font-sans font-medium leading-none px-1.5 py-0.5 rounded-full border bg-success-subtle text-success border-success/20"
                           >
                             +{recargoEfectivo}%
                           </span>
@@ -595,8 +675,8 @@ export function StockTable({
                           disabled={compartirDeshabilitado}
                           disabledReason={motivoCompartirDeshabilitado}
                           variant="ghost"
-                          size="icon-sm"
-                          className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0 rounded-md hover:bg-muted"
+                          size="icon"
+                          className="text-muted-foreground hover:text-foreground shrink-0"
                         />
                         {isAdmin && (
                           <DropdownMenu>
@@ -604,68 +684,51 @@ export function StockTable({
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground cursor-pointer shrink-0 rounded-md hover:bg-muted"
+                                aria-label={`Acciones de ${producto.nombre}`}
+                                className="text-muted-foreground hover:text-foreground shrink-0"
                               >
                                 <MoreVertical className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              align="end"
-                              className="w-52 p-1.5 rounded-xl border-border/60 shadow-md bg-card z-40"
-                            >
-                              <div className="flex flex-col gap-0.5">
-                                <Button
-                                  variant="ghost"
-                                  className="w-full justify-start h-9 px-2 text-sm font-medium cursor-pointer rounded-lg hover:bg-muted transition-colors"
-                                  onClick={() => setProductoEnEdicion(producto)}
-                                >
-                                  <Edit2 className="w-4 h-4 mr-2.5 text-success" />
-                                  Editar producto
-                                </Button>
-
-                                <BajaModal producto={producto}>
-                                  <Button
-                                    variant="ghost"
-                                    className="w-full justify-start h-9 px-2 text-sm font-medium cursor-pointer rounded-lg hover:bg-muted transition-colors"
-                                  >
-                                    <MinusCircle className="w-4 h-4 mr-2.5 text-warning" />
-                                    Registrar baja
-                                  </Button>
-                                </BajaModal>
-
-                                {/* Combinar va ANTES de Eliminar y separado de
-                                    él: es lo que hay que hacer con un
-                                    duplicado, y borrarlo —que es lo que se
-                                    hacía hasta hoy— se lleva puesto su stock. */}
-                                <FusionarProductoModal
-                                  id={producto.id}
-                                  nombre={producto.nombre}
-                                >
-                                  <Button
-                                    variant="ghost"
-                                    className="w-full justify-start h-9 px-2 text-sm font-medium cursor-pointer rounded-lg transition-colors"
-                                  >
-                                    <Merge className="w-4 h-4 mr-2.5 text-muted-foreground" />
-                                    Combinar con otro
-                                  </Button>
-                                </FusionarProductoModal>
-
-                                <DropdownMenuSeparator className="my-1 bg-border/60" />
-
-                                <EliminarProductoModal
-                                  id={producto.id}
-                                  nombre={producto.nombre}
-                                  tipo={producto.tipo}
-                                >
-                                  <Button
-                                    variant="ghost"
-                                    className="w-full justify-start h-9 px-2 text-sm font-medium cursor-pointer text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                                  >
-                                    <Trash2 className="w-4 h-4 mr-2.5 text-destructive" />
-                                    Eliminar producto
-                                  </Button>
-                                </EliminarProductoModal>
-                              </div>
+                            {/* Íconos neutros: el color queda para lo que
+                                significa algo (rojo = eliminar). */}
+                            <DropdownMenuContent align="end" className="w-52 z-40">
+                              <DropdownMenuItem
+                                onSelect={() => setProductoEnEdicion(producto)}
+                              >
+                                <Edit2 className="text-muted-foreground" />
+                                Editar producto
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() =>
+                                  setAccionFila({ tipo: "baja", producto })
+                                }
+                              >
+                                <MinusCircle className="text-muted-foreground" />
+                                Registrar baja
+                              </DropdownMenuItem>
+                              {/* Combinar va ANTES de Eliminar y separado de
+                                  él: es lo que hay que hacer con un
+                                  duplicado, y borrarlo se lleva puesto su
+                                  stock. */}
+                              <DropdownMenuItem
+                                onSelect={() =>
+                                  setAccionFila({ tipo: "fusionar", producto })
+                                }
+                              >
+                                <Merge className="text-muted-foreground" />
+                                Combinar con otro
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() =>
+                                  setAccionFila({ tipo: "eliminar", producto })
+                                }
+                              >
+                                <Trash2 />
+                                Eliminar producto
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}
@@ -678,10 +741,10 @@ export function StockTable({
                     <TableRow className="bg-muted/5 hover:bg-muted/5 border-b border-border/40">
                       {/* Usamos colSpan 100 para asegurar que ocupe todo sin importar cuántas columnas estén ocultas */}
                       <TableCell colSpan={100} className="p-0">
-                        <div className="py-2 sm:py-3 pl-8 sm:pl-[4.5rem] pr-2 sm:pr-8 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="py-2 sm:py-3 pl-8 sm:pl-[4.5rem] pr-2 sm:pr-8">
                           <div className="rounded-lg border border-border/50 bg-background/50 overflow-hidden">
                             <table className="w-full text-sm">
-                              <thead className="bg-muted/40 text-[10px] sm:text-xs text-muted-foreground uppercase tracking-wider border-b border-border/40">
+                              <thead className="bg-muted/40 text-xs text-muted-foreground uppercase tracking-wider border-b border-border/40">
                                 <tr>
                                   <th className="px-2 sm:px-4 py-2 sm:py-2.5 text-left font-semibold">
                                     Variante
@@ -730,16 +793,19 @@ export function StockTable({
                                         <td className="px-2 py-1 text-center">
                                           <div className="flex items-center justify-center gap-1 sm:gap-1.5">
                                             <div
-                                              className={`w-1.5 h-1.5 rounded-full font-mono ${
-                                                varStock === 0
-                                                  ? "bg-danger"
-                                                  : "bg-success"
+                                              className={`w-1.5 h-1.5 rounded-full ${
+                                                COLOR_NIVEL_STOCK[
+                                                  nivelStock(Number(varStock))
+                                                ]
                                               }`}
                                             />
                                             <span className="font-semibold text-xs sm:text-sm font-mono text-foreground">
-                                              {varStock}{" "}
-                                              <span className="text-[9px] sm:text-[10px] font-medium opacity-70 uppercase tracking-widest">
-                                                u.
+                                              {formatearNumeroCantidad(
+                                                Number(varStock),
+                                                producto.unidad_medida,
+                                              )}{" "}
+                                              <span className="text-xs font-medium opacity-70">
+                                                {abreviaturaUnidad}
                                               </span>
                                             </span>
                                           </div>

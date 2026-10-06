@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -53,10 +53,35 @@ export function FusionarProductoModal({
   id,
   nombre,
   children,
-}: Readonly<{ id: string; nombre: string; children?: React.ReactNode }>) {
+  open,
+  onOpenChange,
+}: Readonly<{
+  id: string;
+  nombre: string;
+  children?: React.ReactNode;
+  /** Controlado desde afuera: lo abre un ítem de menú que vive afuera del
+   * modal (si el modal viviera adentro del menú, cerrar el menú lo
+   * desmontaría). Sin esto maneja su estado y muestra su trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}>) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [abierto, setAbierto] = useState(false);
+  const [abiertoInterno, setAbiertoInterno] = useState(false);
+  const esControlado = open !== undefined;
+  const abierto = esControlado ? open : abiertoInterno;
+  const setAbierto = (v: boolean) => {
+    if (!esControlado) setAbiertoInterno(v);
+    onOpenChange?.(v);
+    if (!v) {
+      // Al cerrar se limpia todo: reabrir con un destino elegido de la vez
+      // anterior es la forma más fácil de fusionar el producto equivocado.
+      setDestino(null);
+      setPreview(null);
+      setCandidatos(null);
+      setBusqueda("");
+    }
+  };
   const [pendiente, startTransition] = useTransition();
 
   const [busqueda, setBusqueda] = useState("");
@@ -97,27 +122,19 @@ export function FusionarProductoModal({
     });
   };
 
+  // Al abrir se buscan candidatos. En un efecto y no en onOpenChange porque,
+  // abierto desde un menú (controlado), onOpenChange(true) no se dispara.
+  useEffect(() => {
+    if (abierto) buscar("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [abierto]);
+
   const distintos =
     preview?.ok && (!preview.mismaCategoria || !preview.mismaMarca);
 
   return (
-    <Dialog
-      open={abierto}
-      onOpenChange={(v) => {
-        setAbierto(v);
-        if (!v) {
-          // Al cerrar se limpia todo: reabrir con un destino elegido de la vez
-          // anterior es la forma más fácil de fusionar el producto equivocado.
-          setDestino(null);
-          setPreview(null);
-          setCandidatos(null);
-          setBusqueda("");
-        } else {
-          buscar("");
-        }
-      }}
-    >
-      <DialogTrigger asChild>{children}</DialogTrigger>
+    <Dialog open={abierto} onOpenChange={setAbierto}>
+      {!esControlado && <DialogTrigger asChild>{children}</DialogTrigger>}
 
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>

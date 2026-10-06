@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -64,9 +64,22 @@ function tituloLote(lote: AjustePrecioHistorialItem): string {
   return `${LABEL_OPERACION[lote.tipo_operacion] ?? lote.tipo_operacion} — ${lote.valor}%`;
 }
 
-export function PriceHistoryModal() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+export function PriceHistoryModal({
+  open,
+  onOpenChange,
+}: Readonly<{
+  /** Controlado desde afuera: lo abre un ítem de menú que vive afuera del
+   * modal (si el modal viviera adentro del menú, cerrar el menú lo
+   * desmontaría). Sin esto maneja su estado y muestra su trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}> = {}) {
+  const [abiertoInterno, setAbiertoInterno] = useState(false);
+  const esControlado = open !== undefined;
+  const isOpen = esControlado ? open : abiertoInterno;
+  // Abierto de entrada (controlado) arranca cargando: el efecto de abajo trae
+  // el historial.
+  const [loading, setLoading] = useState(open === true);
   const [historial, setHistorial] = useState<AjustePrecioHistorialItem[]>([]);
 
   const [loteSeleccionado, setLoteSeleccionado] =
@@ -76,8 +89,8 @@ export function PriceHistoryModal() {
   const [reverting, setReverting] = useState(false);
   const [confirmadoRevertir, setConfirmadoRevertir] = useState(false);
 
+  /** Quien la llama prende `loading` antes (o arranca prendido). */
   const cargarHistorial = async () => {
-    setLoading(true);
     const res = await listarHistorialPreciosAction();
     setLoading(false);
     if ("error" in res) {
@@ -93,14 +106,31 @@ export function PriceHistoryModal() {
     setConfirmadoRevertir(false);
   };
 
-  const handleOpenChange = (open: boolean) => {
-    setIsOpen(open);
-    if (open) {
-      cargarHistorial();
-    } else {
-      resetSeleccion();
-    }
+  const handleOpenChange = (v: boolean) => {
+    if (!esControlado) setAbiertoInterno(v);
+    onOpenChange?.(v);
+    if (v) setLoading(true);
+    else resetSeleccion();
   };
+
+  // Al abrir carga el historial. En un efecto porque, abierto desde un menú
+  // (controlado), handleOpenChange(true) no se dispara.
+  useEffect(() => {
+    if (!isOpen) return;
+    let vigente = true;
+    listarHistorialPreciosAction().then((res) => {
+      if (!vigente) return;
+      setLoading(false);
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      setHistorial(res.data);
+    });
+    return () => {
+      vigente = false;
+    };
+  }, [isOpen]);
 
   const handleSeleccionarLote = async (lote: AjustePrecioHistorialItem) => {
     setLoteSeleccionado(lote);
@@ -127,23 +157,26 @@ export function PriceHistoryModal() {
     }
     toast.success("Ajuste revertido con éxito.");
     resetSeleccion();
-    cargarHistorial();
+    setLoading(true);
+    void cargarHistorial();
   };
 
   const itemsQueCambian = preview.filter((p) => p.cambia);
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          title="Historial de Precios"
-        >
-          <History className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
-          <span>Historial de Precios</span>
-        </Button>
-      </DialogTrigger>
+      {!esControlado && (
+        <DialogTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            title="Historial de Precios"
+          >
+            <History className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
+            <span>Historial de Precios</span>
+          </Button>
+        </DialogTrigger>
+      )}
 
       <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden bg-card border-border">
         <DialogHeader className="p-6 pb-4 border-b border-border bg-muted/20">

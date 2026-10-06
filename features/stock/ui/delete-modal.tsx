@@ -25,6 +25,11 @@ interface EliminarProductoModalProps {
   nombre: string;
   tipo: string;
   children?: React.ReactNode;
+  /** Controlado desde afuera: lo abre un ítem de menú que vive afuera del
+   * modal (si el modal viviera adentro del menú, cerrar el menú lo
+   * desmontaría). Sin esto maneja su estado y muestra su trigger. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function EliminarProductoModal({
@@ -32,10 +37,18 @@ export function EliminarProductoModal({
   nombre,
   tipo,
   children,
+  open,
+  onOpenChange,
 }: Readonly<EliminarProductoModalProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [isOpen, setIsOpen] = useState(false);
+  const [abiertoInterno, setAbiertoInterno] = useState(false);
+  const esControlado = open !== undefined;
+  const isOpen = esControlado ? open : abiertoInterno;
+  const setIsOpen = (v: boolean) => {
+    if (!esControlado) setAbiertoInterno(v);
+    onOpenChange?.(v);
+  };
 
   const [isPending, startTransition] = useTransition();
 
@@ -56,6 +69,7 @@ export function EliminarProductoModal({
 
   return (
     <AlertDialog open={isOpen} onOpenChange={setIsOpen}>
+      {!esControlado && (
       <AlertDialogTrigger asChild>
         {children ? (
           children
@@ -71,6 +85,7 @@ export function EliminarProductoModal({
           </Button>
         )}
       </AlertDialogTrigger>
+      )}
 
       <AlertDialogContent>
         <AlertDialogHeader>

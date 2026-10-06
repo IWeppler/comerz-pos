@@ -657,9 +657,6 @@ export function PosTerminal({
         {/* Toolbar POS */}
         <StockFiltersToolbar
           rubro={rubro}
-          view="grid"
-          onViewChange={() => undefined}
-          showViewToggle={false}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           categoriaActiva={tipo}

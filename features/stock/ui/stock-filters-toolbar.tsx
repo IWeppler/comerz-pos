@@ -13,14 +13,14 @@ import {
   Filter,
   FilterX,
   HandCoins,
-  LayoutGrid,
-  List,
+  History,
   MoreHorizontal,
   PackagePlus,
   Plus,
   ScanBarcode,
   Search,
   Lock,
+  TrendingUp,
 } from "lucide-react";
 import { useLimiteLleno } from "@/features/planes/lib/use-limite-lleno";
 import { Button } from "@/shared/ui/button";
@@ -37,9 +37,11 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
+import { MEDIA_MOBILE, useMediaQuery } from "@/shared/lib/use-media-query";
 /**
  * Los modales pesados se cargan cuando se abren, no cuando se monta la barra.
  *
@@ -83,9 +85,8 @@ const IngresarMercaderiaModal = dynamic(
   { ssr: false },
 );
 
-// Este vive adentro del DropdownMenu, y Radix desmonta el contenido cerrado,
-// así que no hace falta gatearlo a mano: no se renderiza hasta que se abre el
-// menú.
+// Se montan recién cuando se abren (ver los estados de abajo), igual que los
+// otros tres.
 const UpdatePricesModal = dynamic(
   () => import("./update-prices-modal").then((m) => m.UpdatePricesModal),
   { ssr: false },
@@ -110,9 +111,6 @@ interface StockFiltersToolbarProps {
   /** Decide POR CUÁL de los dos flujos entra la mercadería (ver
    * metodoIngresoStock): remito en indumentaria, planilla en electro. */
   rubro: Rubro;
-  view: "table" | "grid";
-  onViewChange: (view: "table" | "grid") => void;
-  showViewToggle?: boolean;
   searchQuery: string;
   onSearchChange: (value: string) => void;
   categoriaActiva: string;
@@ -172,9 +170,6 @@ interface StockFiltersToolbarProps {
 
 export function StockFiltersToolbar({
   rubro,
-  view,
-  onViewChange,
-  showViewToggle = true,
   searchQuery,
   onSearchChange,
   categoriaActiva,
@@ -232,6 +227,9 @@ export function StockFiltersToolbar({
   // cambia por rubro es la plantilla que se descarga, no el camino: los dos
   // orígenes —proveedor y planilla propia— terminan en la conciliación.
   const [isIngresoOpen, setIsIngresoOpen] = useState(false);
+  const [isPreciosOpen, setIsPreciosOpen] = useState(false);
+  const [isHistorialOpen, setIsHistorialOpen] = useState(false);
+  const esMobile = useMediaQuery(MEDIA_MOBILE);
   // La fila de categorías se puede arrastrar con el mouse, como ya se
   // arrastra con el dedo. Se declara acá arriba y no adentro de la rama que
   // la dibuja porque esa rama es condicional (filaSecundaria) y un hook no
@@ -281,6 +279,18 @@ export function StockFiltersToolbar({
           />
         )}
 
+        {isAdmin && isPreciosOpen && (
+          <UpdatePricesModal
+            open
+            onOpenChange={setIsPreciosOpen}
+            hideTrigger
+          />
+        )}
+
+        {isAdmin && isHistorialOpen && (
+          <PriceHistoryModal open onOpenChange={setIsHistorialOpen} />
+        )}
+
         {isAdmin && isIngresoOpen && (
           <IngresarMercaderiaModal
             open
@@ -328,7 +338,7 @@ export function StockFiltersToolbar({
               >
                 <Filter className="h-4 w-4" />
                 {hayFiltrosVariantesActivos && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                  <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-primary ring-2 ring-background" />
                 )}
               </Button>
             </SheetTrigger>
@@ -369,7 +379,7 @@ export function StockFiltersToolbar({
                               }
                               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                                 isActive
-                                  ? "border-primary bg-primary text-white ring-2 ring-primary/30"
+                                  ? "border-transparent bg-foreground text-background"
                                   : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
                               }`}
                             >
@@ -458,30 +468,6 @@ export function StockFiltersToolbar({
             </Button>
           )}
 
-          {/* Toggle View (Oculto en celular para ahorrar valioso espacio) */}
-          {showViewToggle && (
-            <div className="hidden sm:flex items-center bg-muted border border-border/80 p-0.5 rounded-lg shrink-0">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onViewChange("table")}
-                className={`h-8 px-2.5 rounded-md ${view === "table" ? "bg-background font-bold" : "text-muted-foreground hover:text-foreground"}`}
-                title="Vista de lista"
-              >
-                <List className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onViewChange("grid")}
-                className={`h-8 px-2.5 rounded-md ${view === "grid" ? "bg-background font-bold" : "text-muted-foreground hover:text-foreground"}`}
-                title="Vista de grilla (agrupada)"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-            </div>
-          )}
-
           {/* Botonera de Acciones. El dropdown NO está gateado por isAdmin
               porque en mobile es el único acceso a Carga rápida, que es para
               todos los roles; para un vendedor el menú tiene solo esa entrada
@@ -508,105 +494,87 @@ export function StockFiltersToolbar({
                   <span className="hidden sm:inline font-medium">Acciones</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="w-48 p-1.5 rounded-xl border-border/60 shadow-lg bg-card z-50"
-              >
-                <div className="flex flex-col gap-0.5 [&_button]:w-full [&_button]:justify-start [&_button]:h-9 [&_button]:px-2 [&_button]:bg-transparent [&_button]:border-0 [&_button]:shadow-none [&_button]:font-medium [&_button]:text-sm [&_button:hover]:bg-muted [&_button]:rounded-md [&_button_span.hidden]:!inline-block [&_button_svg]:mr-2 [&_button_svg]:w-4 [&_button_svg]:h-4 [&_button_svg]:shrink-0">
-                  {/* Las dos cargas solo aparecen acá en mobile: en desktop
-                      siguen siendo botones sueltos de la barra. */}
-                  {onCargaRapida ? (
-                    <button
-                      type="button"
-                      onClick={onCargaRapida}
-                      className="w-full flex sm:hidden items-center justify-start h-9 px-2 text-sm font-medium cursor-pointer text-foreground hover:bg-muted rounded-md transition-colors"
-                    >
-                      <ScanBarcode className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
-                      {cargaRapidaActiva ? "Volver a vender" : "Carga rápida"}
-                    </button>
-                  ) : (
-                    <Link
-                      href="/stock/carga-rapida"
-                      className="w-full block sm:hidden"
-                    >
-                      <button className="w-full flex items-center justify-start h-9 px-2 text-sm font-medium cursor-pointer text-muted-foreground hover:bg-muted rounded-md transition-colors">
-                        <ScanBarcode className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
-                        Carga rápida
-                      </button>
-                    </Link>
-                  )}
-
-                  {/* En mobile el dropdown es el único acceso, igual que
-                      Carga rápida: en la barra no entra sin comerse el
-                      buscador. */}
-                  {onCobrarCuentaCorriente && (
-                    <button
-                      type="button"
-                      onClick={onCobrarCuentaCorriente}
-                      className="w-full flex sm:hidden items-center justify-start h-9 px-2 text-sm font-medium cursor-pointer text-foreground hover:bg-muted rounded-md transition-colors"
-                    >
-                      <HandCoins className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
-                      Cobrar deuda
-                    </button>
-                  )}
-
-                  {isAdmin && (
-                    <>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="sm:hidden"
-                        onClick={abrirAltaProducto}
-                      >
+              {/* Ítems de menú reales (`DropdownMenuItem`): se recorren con
+                  las flechas y el menú se cierra al elegir. Los modales que
+                  abren viven AFUERA del menú, controlados por estado: adentro,
+                  cerrar el menú los desmontaba. Lo que solo existe en mobile
+                  se monta solo en mobile (con `sm:hidden` el foco del
+                  teclado se trababa en un ítem invisible). */}
+              <DropdownMenuContent align="end" className="w-56 z-50">
+                {esMobile && (
+                  <>
+                    {onCargaRapida ? (
+                      <DropdownMenuItem onSelect={onCargaRapida}>
+                        <ScanBarcode className="text-muted-foreground" />
+                        {cargaRapidaActiva ? "Volver a vender" : "Carga rápida"}
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem asChild>
+                        <Link href="/stock/carga-rapida">
+                          <ScanBarcode className="text-muted-foreground" />
+                          Carga rápida
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
+                    {onCobrarCuentaCorriente && (
+                      <DropdownMenuItem onSelect={onCobrarCuentaCorriente}>
+                        <HandCoins className="text-muted-foreground" />
+                        Cobrar deuda
+                      </DropdownMenuItem>
+                    )}
+                    {isAdmin && (
+                      <DropdownMenuItem onSelect={abrirAltaProducto}>
                         {catalogoLleno ? (
-                          <Lock className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
+                          <Lock className="text-muted-foreground" />
                         ) : (
-                          <Plus className="w-4 h-4 mr-2 text-primary shrink-0" />
+                          <Plus className="text-muted-foreground" />
                         )}
-                        <span>Carga manual</span>
-                      </Button>
-                      <DropdownMenuSeparator className="my-1 bg-border/60 sm:hidden" />
-                    </>
-                  )}
+                        Carga manual
+                      </DropdownMenuItem>
+                    )}
+                    {isAdmin && <DropdownMenuSeparator />}
+                  </>
+                )}
 
-                  {isAdmin && (
-                    <>
-                      <UpdatePricesModal />
-                      <PriceHistoryModal />
-                      {/* Un solo ítem para todos los rubros: adentro se elige
-                          el origen del archivo. */}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        onClick={() =>
-                          catalogoLleno
-                            ? avisarCatalogoLleno()
-                            : setIsIngresoOpen(true)
-                        }
-                      >
-                        {catalogoLleno ? (
-                          <Lock className="w-4 h-4 mr-2 text-muted-foreground shrink-0" />
-                        ) : (
-                          <PackagePlus className="w-4 h-4 mr-2 text-success shrink-0" />
-                        )}
-                        <span>Ingresar mercadería</span>
-                      </Button>
-                      <DropdownMenuSeparator className="my-1 bg-border/60" />
-                      <Link href="/stock/bajas" className="w-full block">
-                        <button className="w-full flex items-center justify-start h-9 px-2 text-sm font-medium text-foreground hover:bg-warning/10 rounded-md hover:text-warning/90 transition-colors">
-                          <ClipboardList className="w-4 h-4 mr-2 text-warning shrink-0" />
-                          Bajas de Inventario
-                        </button>
+                {isAdmin && (
+                  <>
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        catalogoLleno
+                          ? avisarCatalogoLleno()
+                          : setIsIngresoOpen(true)
+                      }
+                    >
+                      {catalogoLleno ? (
+                        <Lock className="text-muted-foreground" />
+                      ) : (
+                        <PackagePlus className="text-muted-foreground" />
+                      )}
+                      Ingresar mercadería
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setIsPreciosOpen(true)}>
+                      <TrendingUp className="text-muted-foreground" />
+                      Actualizar precios
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => setIsHistorialOpen(true)}>
+                      <History className="text-muted-foreground" />
+                      Historial de precios
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem asChild>
+                      <Link href="/stock/bajas">
+                        <ClipboardList className="text-muted-foreground" />
+                        Bajas de inventario
                       </Link>
-                      <Link href="/stock/movimientos" className="w-full block">
-                        <button className="w-full flex items-center justify-start h-9 px-2 text-sm font-medium text-foreground hover:bg-muted rounded-md transition-colors">
-                          <ArrowRightLeft className="w-4 h-4 mr-2 text-primary shrink-0" />
-                          Movimientos Stock
-                        </button>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href="/stock/movimientos">
+                        <ArrowRightLeft className="text-muted-foreground" />
+                        Movimientos de stock
                       </Link>
-                    </>
-                  )}
-                </div>
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -678,7 +646,7 @@ export function StockFiltersToolbar({
                         <Button
                           key={hijo.value}
                           variant={isActive ? "default" : "outline"}
-                          className={`rounded-full bg-primary h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
+                          className={`rounded-full h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
                             isActive
                               ? "bg-foreground text-background border-transparent"
                               : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -696,7 +664,7 @@ export function StockFiltersToolbar({
                           ? "default"
                           : "outline"
                       }
-                      className={`rounded-full bg-red-500 h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
+                      className={`rounded-full h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none border-border/60 ${
                         categoriaActiva === padreEnVista.value
                           ? "bg-foreground text-background border-transparent"
                           : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -712,7 +680,7 @@ export function StockFiltersToolbar({
                       variant={
                         categoriaActiva === "todos" ? "default" : "outline"
                       }
-                      className={`rounded-full bg-green-500 h-10 px-4 text-xs font-semibold shrink-0 shadow-none border-border/60 ${
+                      className={`rounded-full h-10 px-4 text-xs font-semibold shrink-0 shadow-none border-border/60 ${
                         categoriaActiva === "todos"
                           ? "bg-foreground text-background border-transparent"
                           : "bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -734,7 +702,7 @@ export function StockFiltersToolbar({
                         <Button
                           key={categoria.value}
                           variant="outline"
-                          className={`rounded-full h-10 px-4 text-xs font-semibold bg-primary shrink-0 transition-colors shadow-none gap-1.5 ${
+                          className={`rounded-full h-10 px-4 text-xs font-semibold shrink-0 transition-colors shadow-none gap-1.5 ${
                             esPadre
                               ? "border-primary/30 bg-background text-foreground font-bold hover:bg-primary/10"
                               : isActive
@@ -758,7 +726,7 @@ export function StockFiltersToolbar({
                     variant="ghost"
                     size="sm"
                     onClick={() => onCategoriaChange("todos")}
-                    className="h-8 mt-0 text-xs font-semibold text-muted-foreground hover:text-foreground shrink-0 hidden sm:flex items-center"
+                    className="h-10 mt-0 text-xs font-semibold text-muted-foreground hover:text-foreground shrink-0 flex items-center"
                   >
                     Ver {resultadosFueraDeCategoria} más
                   </Button>
@@ -780,7 +748,7 @@ export function StockFiltersToolbar({
                   variant="ghost"
                   size="sm"
                   onClick={onLimpiarFiltros}
-                  className="h-8 mt-0 text-xs font-bold text-muted-foreground hover:text-foreground shrink-0 hidden sm:flex items-center"
+                  className="h-10 mt-0 text-xs font-bold text-muted-foreground hover:text-foreground shrink-0 flex items-center"
                 >
                   <FilterX className="w-3.5 h-3.5 mr-1.5" /> Limpiar
                 </Button>
