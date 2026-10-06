@@ -76,6 +76,13 @@ import { Button } from "@/shared/ui/button";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { bloquearVendedor } from "@/shared/config/supabase/guard-rol";
+import {
+  aRelojComercial,
+  conFechasComerciales,
+  desfaseRelojComercial,
+} from "@/features/dashboard/lib/reloj-comercial";
+import { getPosicionDineroAction } from "@/features/caja/actions/get-posicion-dinero";
+import { PlataHoy } from "@/features/dashboard/ui/plata-hoy";
 
 export const dynamic = "force-dynamic";
 
@@ -124,6 +131,16 @@ const INSIGHTS_EN_PANEL = 5;
 // ventanas que el panel mira: es lo que decide desde qué fecha se piden las
 // ventas.
 
+// El título dice lo que muestran los números: con "semana" decía "Operación de
+// hoy" arriba de siete días de datos.
+const TITULO_PERIODO: Record<PeriodoPanel, string> = {
+  hoy: "Hoy",
+  semana: "Últimos 7 días",
+  mes: "Últimos 28 días",
+  trimestre: "Últimos 3 meses",
+  anio: "Último año",
+};
+
 type ReservaActivaRow = {
   id: string;
   creado_en: string;
@@ -149,7 +166,12 @@ export default async function DashboardPage({
 
   // La ventana de Insights se resuelve acá arriba porque una de sus señales se
   // pide a la base y entra en el mismo Promise.all que el resto.
-  const ahora = new Date();
+  // Todo el panel calcula en el RELOJ COMERCIAL: "ahora" y cada fecha de los
+  // datos corridos a la hora de Buenos Aires. Con el reloj del server (UTC en
+  // Vercel) el día cortaba a las 21:00. Ver `reloj-comercial.ts`.
+  const ahoraReal = new Date();
+  const desfase = desfaseRelojComercial(ahoraReal);
+  const ahora = aRelojComercial(ahoraReal, desfase);
   const rangoInsights = resolverRangoRolling(DIAS_INSIGHTS, ahora);
 
   // Desde cuándo se piden ventas, egresos, bajas y cobros de CC. Antes era
@@ -173,6 +195,7 @@ export default async function DashboardPage({
     estadoActivacion,
     senales,
     configResponse,
+    posicionDinero,
   ] = await Promise.all([
     getVentasAction({ desde: desdeIso }),
     // Sin variantes ni fotos: el panel no las lee. Ver `ProductoPanel`.
@@ -206,19 +229,34 @@ export default async function DashboardPage({
     // React devuelve la fila sin viajar de nuevo. Antes era una consulta
     // propia, o sea la segunda lectura de la misma fila en la misma request.
     leerConfigPos(),
+    // La plata de ahora, de la MISMA fuente que /caja (`posicion_dinero`).
+    // Sin permiso devuelve error y la franja no se dibuja.
+    getPosicionDineroAction("hoy"),
   ]);
 
-  const ventas = (ventasResponse.data || []) as unknown as Venta[];
+  const ventasOriginales = (ventasResponse.data || []) as unknown as Venta[];
+  const ventas = conFechasComerciales(ventasOriginales, ["fecha_venta"], desfase);
   // Cobros de deuda: aportan comisión y recargo a las métricas, no ingresos.
-  const pagosCuentaCorriente = (pagosCuentaCorrienteResponse.data ||
-    []) as unknown as VentaPago[];
+  const pagosCuentaCorriente = conFechasComerciales(
+    (pagosCuentaCorrienteResponse.data || []) as unknown as VentaPago[],
+    ["creado_en"],
+    desfase,
+  );
   const ventasOperativas = ventas.filter(
     (venta) =>
       venta.estado_operacion !== "ANULADA" && venta.estado_pago !== "ANULADA",
   );
   const productos = productosResponse.data || [];
-  const egresos = egresosResponse.data || [];
-  const bajas = bajasResponse.data || [];
+  const egresos = conFechasComerciales(
+    egresosResponse.data || [],
+    ["fecha"],
+    desfase,
+  );
+  const bajas = conFechasComerciales(
+    bajasResponse.data || [],
+    ["creado_en"],
+    desfase,
+  );
 
   const bajasAprobadas = bajas.filter((b) => b.estado === "APROBADA");
   const cantidadBajasPendientes = bajas.filter(
@@ -455,7 +493,12 @@ export default async function DashboardPage({
       f.getFullYear() === hoy.getFullYear()
     );
   });
-  const ultimasVentas = ventasDeHoy.slice(0, 4);
+  // Elegidas en reloj comercial, pero se muestran las ORIGINALES: la hora que
+  // se ve sale del formateador, que ya trabaja en hora argentina.
+  const ventaOriginalPorId = new Map(ventasOriginales.map((v) => [v.id, v]));
+  const ultimasVentas = ventasDeHoy
+    .slice(0, 4)
+    .map((v) => ventaOriginalPorId.get(v.id) ?? v);
 
   const reservasActivasRaw = (reservasResponse.data ||
     []) as unknown as ReservaActivaRow[];
@@ -465,7 +508,7 @@ export default async function DashboardPage({
     const cliente = getSupabaseRelation(r.cliente);
     const vendedora = getSupabaseRelation(r.vendedora);
     const horasActiva =
-      (hoy.getTime() - new Date(r.creado_en).getTime()) / (1000 * 3600);
+      (ahoraReal.getTime() - new Date(r.creado_en).getTime()) / (1000 * 3600);
 
     return {
       id: r.id,
@@ -491,7 +534,7 @@ export default async function DashboardPage({
       <div className="flex items-center justify-between gap-3 pb-3 border-b border-border">
         <div className="min-w-0">
           <h1 className="text-sm font-medium text-foreground">
-            Operación de hoy
+            {TITULO_PERIODO[periodo]}
           </h1>
           <p className="text-xs text-muted-foreground mt-0.5 truncate">
             {new Intl.DateTimeFormat("es-AR", {
@@ -513,6 +556,25 @@ export default async function DashboardPage({
             se va sola cuando está completa (el estado es derivado, no un flag).
             Solo ADMIN: la RPC devuelve null para el resto. */}
       {estadoActivacion && <ChecklistActivacion estado={estadoActivacion} />}
+
+      {/* PLATA — la primera pregunta del día. Fija, no sigue al período: es
+            la plata de AHORA. Sin permiso para verla no se dibuja. */}
+      {posicionDinero.data && (
+        <PlataHoy
+          efectivo={Number(posicionDinero.data.efectivo.total) || 0}
+          cajasAbiertas={posicionDinero.data.efectivo.cajas.length}
+          porAcreditar={
+            Number(
+              posicionDinero.data.por_acreditar_real?.saldo ??
+                posicionDinero.data.por_acreditar.reduce(
+                  (total, c) => total + Number(c.neto),
+                  0,
+                ),
+            ) || 0
+          }
+          deudaVencida={deudaVencida}
+        />
+      )}
 
       {/* ACCIONES — solo mobile: en desktop el POS está siempre a la vista en
             el sidebar, acá el menú está detrás de la hamburguesa y vender
@@ -585,7 +647,7 @@ export default async function DashboardPage({
               }
             />
             <KpiMiniCard
-              label="Ganancia"
+              label="Ganancia bruta"
               value={formatearMoneda(metricasActuales.gananciaBrutaVentas)}
               sublabel={`Margen ${metricasActuales.margenPorcentaje.toFixed(1)}%`}
               rightSlot={
@@ -628,6 +690,7 @@ export default async function DashboardPage({
             <div className="lg:col-span-2 min-w-0 min-h-[280px] lg:min-h-0">
               <AtencionRequeridaCard
                 quiebres={quiebres}
+                ventanaQuiebreDias={VENTANA_ROTACION_DIAS}
                 stockCritico={metricasActuales.stockCriticoDetallado}
                 cantidadBajasPendientes={cantidadBajasPendientes}
                 reservasActivas={reservasActivas}
@@ -643,6 +706,7 @@ export default async function DashboardPage({
                 topProductosRentables={metricasRanking.topProductosRentables}
                 etiquetaRanking={ETIQUETA_RANKING[periodo]}
                 ultimasVentas={ultimasVentas}
+                cantidadVentasHoy={ventasDeHoy.length}
               />
             </div>
           </div>

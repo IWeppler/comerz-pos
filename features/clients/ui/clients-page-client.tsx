@@ -12,9 +12,11 @@ const CATALOG_STALE_TIME_MS = 3 * 60 * 1000;
 export function ClientsPageClient({
   isAdmin,
   puedeCorregirCobro,
+  puedeCrearCliente,
 }: {
   isAdmin: boolean;
   puedeCorregirCobro: boolean;
+  puedeCrearCliente: boolean;
 }) {
   const negocioActivo = useNegocioActivo();
   const { data, isLoading, error } = useQuery({
@@ -60,6 +62,7 @@ export function ClientsPageClient({
         plantillaRecordatorio={data?.data?.plantillaRecordatorio ?? null}
         isAdmin={isAdmin}
         puedeCorregirCobro={puedeCorregirCobro}
+        puedeCrearCliente={puedeCrearCliente}
       />
     </div>
   );

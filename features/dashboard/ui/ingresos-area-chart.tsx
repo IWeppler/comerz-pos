@@ -16,6 +16,7 @@ import type { MetricaSerie, PuntoSerieChart } from "../lib/build-chart-series";
 import { VENTANA_MEDIA_MOVIL } from "../lib/build-chart-series";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { MEDIA_MOBILE, useMediaQuery } from "@/shared/lib/use-media-query";
+import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 
 const TABS: { value: MetricaSerie; label: string }[] = [
   { value: "ingresos", label: "Facturación" },
@@ -23,10 +24,11 @@ const TABS: { value: MetricaSerie; label: string }[] = [
   { value: "ganancia", label: "Ganancia" },
 ];
 
+// Tokens y no hex: siguen al tema (claro/oscuro) y al sistema de color.
 const COLOR_POR_METRICA: Record<MetricaSerie, string> = {
-  ingresos: "var(--color-primary, #6366f1)",
-  unidades: "#0ea5e9",
-  ganancia: "#10b981",
+  ingresos: "var(--color-primary)",
+  unidades: "var(--color-info)",
+  ganancia: "var(--color-success)",
 };
 
 const compactFormatter = new Intl.NumberFormat("es-AR", {
@@ -116,7 +118,7 @@ export function IngresosAreaChart({
           <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Tendencia
           </span>
-          <div className="flex items-center gap-3 text-[11px] text-muted-foreground flex-wrap">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
             <span className="inline-flex items-center gap-1.5">
               <span
                 className="h-2.5 w-2 rounded-[2px]"
@@ -142,22 +144,18 @@ export function IngresosAreaChart({
             </span>
           </div>
         </div>
-        <div className="inline-flex items-center gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5">
-          {TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => setMetrica(tab.value)}
-              className={`h-7 rounded-md px-2.5 text-xs font-semibold transition-colors cursor-pointer ${
-                metrica === tab.value
-                  ? "bg-card text-foreground shadow-sm border border-border"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <Tabs
+          value={metrica}
+          onValueChange={(valor) => setMetrica(valor as MetricaSerie)}
+        >
+          <TabsList>
+            {TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {/* flex-1, no alto fijo: en el bento la card se estira hasta la altura de

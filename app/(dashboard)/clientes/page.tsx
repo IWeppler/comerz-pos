@@ -17,14 +17,17 @@ export default async function ClientesPage() {
   const userRole = rolActual || "VENDEDOR";
   const isAdmin = userRole === "ADMIN";
   const supabase = createClient(await cookies());
-  const { data: puedeCorregirCobro } = await supabase.rpc("tiene_permiso", {
-    clave: "clientes.corregir_cobro_cc",
-  });
+  const [{ data: puedeCorregirCobro }, { data: puedeCrearCliente }] =
+    await Promise.all([
+      supabase.rpc("tiene_permiso", { clave: "clientes.corregir_cobro_cc" }),
+      supabase.rpc("tiene_permiso", { clave: "clientes.crear" }),
+    ]);
 
   return (
     <ClientsPageClient
       isAdmin={isAdmin}
       puedeCorregirCobro={Boolean(puedeCorregirCobro)}
+      puedeCrearCliente={Boolean(puedeCrearCliente)}
     />
   );
 }

@@ -18,6 +18,8 @@ interface RendimientoCardProps {
   topProductosRentables: ProductoRanking[];
   etiquetaRanking: string;
   ultimasVentas: Venta[];
+  /** Ventas de HOY en total (las de la lista son solo las últimas 4). */
+  cantidadVentasHoy?: number;
 }
 
 /**
@@ -30,6 +32,7 @@ export function RendimientoCard({
   topProductosRentables,
   etiquetaRanking,
   ultimasVentas,
+  cantidadVentasHoy = ultimasVentas.length,
 }: Readonly<RendimientoCardProps>) {
   return (
     <div className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-full">
@@ -37,10 +40,15 @@ export function RendimientoCard({
         <div className="px-3 pt-3 shrink-0">
           <TabsList className="w-full">
             <TabsTrigger value="top" className="gap-1.5">
-              <Trophy className="w-3.5 h-3.5" /> Top Ventas
+              <Trophy className="w-3.5 h-3.5" /> Lo que más rinde
             </TabsTrigger>
             <TabsTrigger value="ultimas" className="gap-1.5">
-              <ShoppingBag className="w-3.5 h-3.5" /> Últimas Ventas
+              <ShoppingBag className="w-3.5 h-3.5" /> Últimas ventas
+              {cantidadVentasHoy > 0 && (
+                <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">
+                  {cantidadVentasHoy}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -51,8 +59,8 @@ export function RendimientoCard({
         >
           <div className="grid grid-cols-2 gap-3 h-full">
             <div>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
-                <Flame className="w-3 h-3" /> Rotación · {etiquetaRanking}
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1.5">
+                <Flame className="w-3 h-3" /> Más vendidos · {etiquetaRanking}
               </div>
               {topProductos.length > 0 ? (
                 <div className="space-y-1">
@@ -81,8 +89,8 @@ export function RendimientoCard({
             </div>
 
             <div>
-              <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground mb-1.5">
-                <Trophy className="w-3 h-3" /> Rentabilidad · {etiquetaRanking}
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1.5">
+                <Trophy className="w-3 h-3" /> Más ganancia · {etiquetaRanking}
               </div>
               {topProductosRentables.length > 0 ? (
                 <div className="space-y-1">
@@ -127,8 +135,16 @@ export function RendimientoCard({
                           ?.nombre,
                         venta.ventas_items?.[0] ?? {},
                       )}
+                      {/* El resto del ticket: una venta de 4 prendas no es
+                          una venta de una. */}
+                      {(venta.ventas_items?.length ?? 0) > 1 && (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          +{(venta.ventas_items?.length ?? 0) - 1} más
+                        </span>
+                      )}
                     </p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       {formatearHora(venta.fecha_venta)} · {venta.cantidad} u.
                     </p>
                   </div>
@@ -148,7 +164,7 @@ export function RendimientoCard({
           <div className="p-3 pt-1">
             <Link
               href="/ventas"
-              className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Ver todas →
             </Link>

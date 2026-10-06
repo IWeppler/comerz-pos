@@ -46,6 +46,11 @@ AGENTS.md porque aplican a toda migración.
   de entrada (`SIN_PERMISO`): con RLS sola, aprobar sin permiso devolvía un
   `ya_aprobada` engañoso (el UPDATE de la orden no veía filas). Probado como vendedora
   y admin reales del Kiosco Demo.
+- **Crear clientes pide `clientes.crear`** (`20261006170000`): RESTRICTIVE de INSERT
+  sobre `clientes` (alta del POS, ficha e importación CSV). Editar/leer/borrar no
+  cambian. Se asignó a todos los roles menos ENCARGADO/VENDEDOR de Librería Colores
+  (las vendedoras duplicaban clientes); `crear_negocio_con_owner` se lo da a
+  ENCARGADO y VENDEDOR al alta. El botón del POS y de /clientes se esconden sin él.
 - **Tres tablas quedan abiertas a propósito**: `producto_variantes`,
   `productos_stock` y el UPDATE de `promociones`. La venta las escribe con la RLS de
   quien vende (INVOKER) y la RLS es por fila, no por columna. Cerrarlas pide mover la

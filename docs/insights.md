@@ -67,5 +67,20 @@ No volver a proponerlo sin resolver el bloqueo:
   ES la lista de hasta dónde mira cada regla. Una regla nueva que necesite más
   historia se agrega AHÍ: si mira más atrás que la ventana, no falla, devuelve un
   número más chico en silencio. /reportes lee el historial completo a propósito.
+- **El panel calcula en RELOJ COMERCIAL** (6/10/2026,
+  `features/dashboard/lib/reloj-comercial.ts`): "ahora" y las fechas de ventas,
+  egresos, bajas y cobros de CC se corren a la hora de Buenos Aires ANTES de pasar
+  por los helpers (que usan getters locales). Con el server en UTC el día cortaba a
+  las 21:00 y de 21 a 24 "Hoy" era mañana. Las copias corridas son solo para
+  CALCULAR: lo que se muestra sale de la fecha original (`formatearHora` y
+  `formatearFechaHora` fijan `America/Argentina/Buenos_Aires`). Una fecha nueva
+  que entre a las cuentas del panel se corre con `conFechasComerciales`, o queda
+  3 horas desfasada contra los rangos.
+- **Franja de plata** (`plata-hoy.tsx`): efectivo en cajas abiertas y por acreditar
+  de `getPosicionDineroAction("hoy")` (la misma fuente que /caja, que además
+  materializa las acreditaciones vencidas), y deuda vencida de `deuda_cc_vencida`.
+  Tres tarjetas que NUNCA se suman: son tres plata distintas. Sin permiso para la
+  posición, no se dibuja.
+- Los avisos de stock llevan a `/stock?buscar=<nombre>`.
 - `getProductosPanelAction` trae productos sin variantes ni fotos.
 - Los ingresos libres NO suman a la ganancia del panel (lee ventas y egresos).

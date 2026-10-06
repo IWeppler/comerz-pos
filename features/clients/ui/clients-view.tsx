@@ -101,6 +101,9 @@ interface ClientsViewProps {
   plantillaRecordatorio?: string | null;
   isAdmin?: boolean;
   puedeCorregirCobro?: boolean;
+  /** Permiso `clientes.crear`: alta e importación. Solo decide si se muestran
+   * los botones; la base lo exige igual (policy de INSERT en `clientes`). */
+  puedeCrearCliente?: boolean;
 }
 
 export function ClientsView({
@@ -115,6 +118,7 @@ export function ClientsView({
   plantillaRecordatorio = null,
   isAdmin = false,
   puedeCorregirCobro = false,
+  puedeCrearCliente = false,
 }: Readonly<ClientsViewProps>) {
   // El "ahora" se congela en el primer render: si saliera de `new Date()`
   // dentro del useMemo, cada recálculo daría puntajes microscópicamente
@@ -604,36 +608,41 @@ export function ClientsView({
             />
           )}
 
-          <div className="hidden sm:flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsImportOpen(true)}
-              className="h-11 rounded-xl px-3 shadow-none border-border"
-            >
-              <UploadCloud className="w-5 h-5 mr-2" /> Importar CSV
-            </Button>
-            <CreateClientModal
-              buttonClassName="h-11 rounded-xl px-3"
-              entregaMinimaActiva={entregaMinimaActiva}
-            />
-          </div>
+          {/* Alta e importación crean clientes: piden `clientes.crear`. */}
+          {puedeCrearCliente ? (
+            <>
+              <div className="hidden sm:flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsImportOpen(true)}
+                  className="h-11 rounded-xl px-3 shadow-none border-border"
+                >
+                  <UploadCloud className="w-5 h-5 mr-2" /> Importar CSV
+                </Button>
+                <CreateClientModal
+                  buttonClassName="h-11 rounded-xl px-3"
+                  entregaMinimaActiva={entregaMinimaActiva}
+                />
+              </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:hidden">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsImportOpen(true)}
-              className="h-11 w-full justify-center rounded-xl"
-            >
-              <UploadCloud className="w-4 h-4 mr-2" /> Importar
-            </Button>
-            <CreateClientModal
-              buttonClassName="h-11 w-full justify-center rounded-xl"
-              labelClassName="flex whitespace-nowrap"
-              entregaMinimaActiva={entregaMinimaActiva}
-            />
-          </div>
+              <div className="grid grid-cols-2 gap-2 sm:hidden">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsImportOpen(true)}
+                  className="h-11 w-full justify-center rounded-xl"
+                >
+                  <UploadCloud className="w-4 h-4 mr-2" /> Importar
+                </Button>
+                <CreateClientModal
+                  buttonClassName="h-11 w-full justify-center rounded-xl"
+                  labelClassName="flex whitespace-nowrap"
+                  entregaMinimaActiva={entregaMinimaActiva}
+                />
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
 

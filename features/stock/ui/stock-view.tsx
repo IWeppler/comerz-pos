@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ProductoIndice } from "@/entities/productos/types";
 import {
   buildPropiedadesFiltro,
@@ -60,8 +61,11 @@ export function StockView({
   productosDelNegocio,
 }: Readonly<StockViewProps>) {
   const [paginaActual, setPaginaActual] = useState(1);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchDebounced, setSearchDebounced] = useState("");
+  // `?buscar=` abre Inventario ya filtrado: lo usan los avisos del panel
+  // (stock crítico, se agota) para llevar al producto en vez de solo nombrarlo.
+  const buscarInicial = useSearchParams().get("buscar") ?? "";
+  const [searchQuery, setSearchQuery] = useState(buscarInicial);
+  const [searchDebounced, setSearchDebounced] = useState(buscarInicial);
   const [categoriaActiva, setCategoriaActiva] = useState("todos");
   const [filtrosVariantes, setFiltrosVariantes] = useState<
     Record<string, string>

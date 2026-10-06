@@ -26,7 +26,7 @@ export function GrowthBadge({
     return (
       <span
         title={motivoSinDato}
-        className="inline-flex shrink-0 items-center text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+        className="inline-flex shrink-0 items-center text-xs font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
       >
         {etiquetaSinValor}
       </span>
@@ -37,8 +37,10 @@ export function GrowthBadge({
   return (
     <span
       title={titulo}
-      className={`inline-flex shrink-0 items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${
-        isPositive ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+      className={`inline-flex shrink-0 items-center gap-0.5 text-xs font-medium tabular-nums px-1.5 py-0.5 rounded-full ${
+        isPositive
+          ? "bg-success-subtle text-success"
+          : "bg-danger-subtle text-danger"
       }`}
     >
       {isPositive ? (

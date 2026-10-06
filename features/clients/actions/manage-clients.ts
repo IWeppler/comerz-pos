@@ -704,6 +704,15 @@ export async function crearClienteAction(
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  // La base lo exige igual (policy de INSERT); esto es para que el mensaje
+  // diga por qué y no un "no se pudo" genérico.
+  if (!(await tienePermiso(supabase, PERMISOS.CLIENTES_CREAR))) {
+    return {
+      error: "No tenés permiso para crear clientes. Pedíselo al administrador.",
+      success: false,
+    };
+  }
+
   const { data: cliente, error } = await supabase
     .from("clientes")
     .insert({
@@ -979,6 +988,16 @@ export async function importarClientesCSVAction(formData: FormData) {
 
     const cookieStore = await cookies();
     const supabase = createClient(cookieStore);
+
+    // Sin el permiso la policy rechaza cada fila y el loop las saltea: el
+    // import "terminaría bien" con cero clientes. Se frena antes.
+    if (!(await tienePermiso(supabase, PERMISOS.CLIENTES_CREAR))) {
+      return {
+        error: "No tenés permiso para crear clientes. Pedíselo al administrador.",
+        success: false,
+      };
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();

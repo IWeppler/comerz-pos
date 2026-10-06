@@ -1,4 +1,5 @@
-import { Package, Bookmark } from "lucide-react";
+import Link from "next/link";
+import { Package, Bookmark, ChevronRight } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { DevolverReservaButton } from "@/features/reservations/ui/devolver-reserva-button";
 import { formatearFechaHora } from "@/shared/utils/formatters";
@@ -16,7 +17,15 @@ type ReservaActiva = {
   vencida: boolean;
 };
 
+/** A Inventario con el producto ya buscado: un aviso tiene que llevar a donde
+ * se resuelve. El buscador encuentra por nombre y por SKU. */
+function hrefStock(nombre: string): string {
+  return `/stock?buscar=${encodeURIComponent(nombre)}`;
+}
+
 interface AtencionRequeridaCardProps {
+  /** Días de la ventana de rotación, para decir "vendiste 12 en 14 días". */
+  ventanaQuiebreDias?: number;
   quiebres: QuiebreProducto[];
   stockCritico: StockCriticoItem[];
   cantidadBajasPendientes: number;
@@ -45,7 +54,9 @@ export function AtencionRequeridaCard({
   cantidadBajasPendientes,
   reservasActivas,
   mostrarReservas = true,
+  ventanaQuiebreDias,
 }: Readonly<AtencionRequeridaCardProps>) {
+  const reservasVencidas = reservasActivas.filter((r) => r.vencida).length;
   const sinNovedadesStock =
     quiebres.length === 0 &&
     stockCritico.length === 0 &&
@@ -62,9 +73,10 @@ export function AtencionRequeridaCard({
       ) : (
         <div className="space-y-1.5">
           {quiebres.slice(0, 3).map((q) => (
-            <div
+            <Link
               key={q.productoId}
-              className="flex items-center justify-between gap-2 text-xs bg-danger/10 border border-danger/20rounded-lg px-2.5 py-1.5"
+              href={hrefStock(q.nombre)}
+              className="flex items-center justify-between gap-2 text-xs bg-danger-subtle border border-danger/20 rounded-lg px-2.5 py-2 transition-colors hover:border-danger/40"
             >
               <span
                 className="truncate text-foreground font-medium"
@@ -72,15 +84,19 @@ export function AtencionRequeridaCard({
               >
                 {q.nombre}
               </span>
-              <span className="shrink-0 text-[10px] font-semibold uppercase text-danger bg-danger/10 px-1.5 py-0.5 rounded">
-                Quiebre · {q.unidadesVendidas} u. vendidas
+              <span className="flex shrink-0 items-center gap-1 text-xs font-medium text-danger">
+                {/* En palabras del mostrador: "quiebre" es palabra del sistema. */}
+                Se agota · vendiste {q.unidadesVendidas}
+                {ventanaQuiebreDias ? ` en ${ventanaQuiebreDias} días` : ""}
+                <ChevronRight className="h-3.5 w-3.5 opacity-60" />
               </span>
-            </div>
+            </Link>
           ))}
           {stockCritico.slice(0, 3).map((s, idx) => (
-            <div
+            <Link
               key={`${s.nombre}-${s.variante}-${idx}`}
-              className="flex items-center justify-between gap-2 text-xs bg-muted/40 border border-border rounded-lg px-2.5 py-1.5"
+              href={hrefStock(s.nombre)}
+              className="flex items-center justify-between gap-2 text-xs bg-muted/40 border border-border rounded-lg px-2.5 py-2 transition-colors hover:bg-muted"
             >
               <span
                 className="truncate text-foreground"
@@ -88,10 +104,11 @@ export function AtencionRequeridaCard({
               >
                 {s.nombre} · {s.variante}
               </span>
-              <span className="shrink-0 text-warning font-medium">
-                {s.cantidad} u.
+              <span className="flex shrink-0 items-center gap-1 text-warning font-medium">
+                quedan {s.cantidad} u.
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground opacity-60" />
               </span>
-            </div>
+            </Link>
           ))}
           {cantidadBajasPendientes > 0 && (
             <div className="flex items-center gap-2 text-xs bg-muted/40 border border-border rounded-lg px-2.5 py-1.5 text-foreground">
@@ -126,8 +143,21 @@ export function AtencionRequeridaCard({
             <TabsTrigger value="stock" className="gap-1.5">
               <Package className="w-3.5 h-3.5" /> Stock Crítico
             </TabsTrigger>
+            {/* El contador va en la pestaña: lo que está detrás de una
+                pestaña sin número, en una mirada de 10 segundos, no existe. */}
             <TabsTrigger value="reservas" className="gap-1.5">
               <Bookmark className="w-3.5 h-3.5" /> Reservas
+              {reservasActivas.length > 0 && (
+                <span
+                  className={`rounded-full px-1.5 text-xs tabular-nums ${
+                    reservasVencidas > 0
+                      ? "bg-warning-subtle text-warning"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {reservasActivas.length}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
         </div>
@@ -150,7 +180,7 @@ export function AtencionRequeridaCard({
                   key={r.id}
                   className={`flex items-center justify-between gap-2 text-xs rounded-lg px-2.5 py-1.5 border ${
                     r.vencida
-                      ? "bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900"
+                      ? "bg-warning-subtle border-warning/25"
                       : "bg-muted/40 border-border"
                   }`}
                 >

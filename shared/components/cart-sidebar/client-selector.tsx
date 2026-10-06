@@ -82,6 +82,10 @@ export function ClientSelector({
   const [clientes, setClientes] = useState<ClienteBasico[]>([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  // Permiso `clientes.crear`. Arranca en false (fail-closed): el botón aparece
+  // cuando la base confirma. Solo esconde el botón; la policy de INSERT y la
+  // server action lo exigen igual.
+  const [puedeCrear, setPuedeCrear] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -89,13 +93,18 @@ export function ClientSelector({
     const fetchClientes = async () => {
       setIsLoading(true);
       const supabase = createClient();
-      const { data, error } = await supabase
-        .from("clientes")
-        .select(
-          "id, nombre, telefono, exceptuado_entrega_minima, lista_precio_id, condicion_iva, saldo_pendiente",
-        )
-        .eq("activo", true)
-        .order("nombre");
+      // En paralelo con la lista: no suma espera al abrir el selector.
+      const [{ data, error }, { data: permiso }] = await Promise.all([
+        supabase
+          .from("clientes")
+          .select(
+            "id, nombre, telefono, exceptuado_entrega_minima, lista_precio_id, condicion_iva, saldo_pendiente",
+          )
+          .eq("activo", true)
+          .order("nombre"),
+        supabase.rpc("tiene_permiso", { clave: "clientes.crear" }),
+      ]);
+      setPuedeCrear(Boolean(permiso));
 
       // El error NO se puede tragar: una lista vacía por RLS (negocio activo
       // sin resolver) se ve igual que un comercio sin clientes, y el vendedor
@@ -234,19 +243,21 @@ export function ClientSelector({
               )}
             </div>
 
-            <div className="p-2 border-t border-border bg-muted/20">
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-primary hover:text-info hover:bg-info/10 h-9 font-semibold"
-                onClick={() => {
-                  setOpen(false);
-                  setIsCreateOpen(true);
-                }}
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Crear nuevo cliente
-              </Button>
-            </div>
+            {puedeCrear ? (
+              <div className="p-2 border-t border-border bg-muted/20">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-primary hover:text-info hover:bg-info/10 h-9 font-semibold"
+                  onClick={() => {
+                    setOpen(false);
+                    setIsCreateOpen(true);
+                  }}
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Crear nuevo cliente
+                </Button>
+              </div>
+            ) : null}
           </PopoverContent>
         </Popover>
       </div>

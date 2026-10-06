@@ -128,12 +128,12 @@ export function AdvisorMiniList({ insights }: Readonly<AdvisorMiniListProps>) {
                       {insight.title}
                     </p>
                     {nuevos.has(insight.id) && (
-                      <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wider text-info bg-info/10 rounded px-1 py-0.5">
+                      <span className="shrink-0 text-xs font-medium text-info bg-info-subtle rounded-full px-1.5">
                         nuevo
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] leading-snug text-muted-foreground line-clamp-2 mt-0.5">
+                  <p className="text-xs leading-snug text-muted-foreground line-clamp-2 mt-0.5">
                     {insight.message}
                   </p>
                 </div>
