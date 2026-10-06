@@ -33,7 +33,6 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import { usePaletaStore } from "@/shared/store/paleta-store";
@@ -585,12 +584,11 @@ export function Sidebar({
                   </DropdownMenuItem>
                 </>
               )}
-              {/* Todavía no existe: se muestra deshabilitado para que se
-                  sepa que viene, no escondido. */}
-              <DropdownMenuItem disabled>
-                <LifeBuoy />
-                Soporte
-                <DropdownMenuShortcut>Pronto</DropdownMenuShortcut>
+              <DropdownMenuItem asChild>
+                <Link href="/soporte" prefetch={false}>
+                  <LifeBuoy />
+                  Soporte
+                </Link>
               </DropdownMenuItem>
 
               <DropdownMenuSeparator />
