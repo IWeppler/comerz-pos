@@ -268,6 +268,9 @@ function mensajeGuardRemito(mensaje: string | undefined): string | null {
   if (mensaje.includes("REMITO_LINEAS_INVALIDAS")) {
     return "La lista de renglones no coincide con el remito (hay repetidos o de otro remito). Recargá la página y volvé a aprobar.";
   }
+  if (mensaje.includes("SIN_PERMISO")) {
+    return "Tu usuario no tiene permiso para ingresar mercadería. Pedíselo al dueño del comercio.";
+  }
   if (mensaje.includes("REMITO_CANTIDAD_INVALIDA")) {
     return "Hay renglones sin cantidad o con cantidad negativa. Corregilos y volvé a aprobar.";
   }

@@ -38,6 +38,14 @@ AGENTS.md porque aplican a toda migración.
   `stock.cambiar_categoria`, y `configuracion_pos`, `metodos_pago` y alta/baja de
   promociones `is_admin()`. Sin eso, una vendedora cambiaba precios y comisiones
   desde la consola del navegador.
+- **Remitos piden `stock.ingresar_remito`** (`20261006140000`): escribir
+  `ordenes_compra` / `ordenes_items` y todo `ordenes_borradores` /
+  `diccionario_alias`. LEER órdenes y renglones sigue abierto al negocio porque el
+  pago a proveedor de caja (`resumen_remitos_financiero`, INVOKER) lo usan las
+  vendedoras. `aprobar_orden_compra_impl` y `crear_productos_desde_remito` lo exigen
+  de entrada (`SIN_PERMISO`): con RLS sola, aprobar sin permiso devolvía un
+  `ya_aprobada` engañoso (el UPDATE de la orden no veía filas). Probado como vendedora
+  y admin reales del Kiosco Demo.
 - **Tres tablas quedan abiertas a propósito**: `producto_variantes`,
   `productos_stock` y el UPDATE de `promociones`. La venta las escribe con la RLS de
   quien vende (INVOKER) y la RLS es por fila, no por columna. Cerrarlas pide mover la
