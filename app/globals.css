@@ -72,6 +72,14 @@
 }
 
 :root {
+  /* Altura de los controles (botón, input, select). Una variable y no clases
+     responsive: un `className="h-11"` desde la pantalla tiene que poder
+     pisarla, y `sm:h-8` en el componente le ganaría en desktop. Con mouse
+     40/32px; con dedo (celular, tablet del mostrador) 44/36px, el blanco
+     táctil. */
+  --control-h: 2.5rem;
+  --control-h-sm: 2rem;
+
   /* Barra de scroll: gris tenue, apenas visible sobre fondo claro. */
   --scroll-thumb: oklch(0.7 0 0 / 0.35);
   --scroll-thumb-hover: oklch(0.6 0 0 / 0.55);
@@ -223,6 +231,13 @@
      sidebar: el "casi blanco" del claro sería un bloque encendido acá. */
   --promo-from: oklch(0.29 0.05 270);
   --promo-to: oklch(0.22 0.008 270);
+}
+
+@media (pointer: coarse) {
+  :root {
+    --control-h: 2.75rem;
+    --control-h-sm: 2.25rem;
+  }
 }
 
 @layer base {
