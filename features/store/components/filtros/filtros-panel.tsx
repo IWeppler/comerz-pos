@@ -196,7 +196,7 @@ function PillsOpciones({
             type="button"
             onClick={() => onToggle(valor)}
             aria-pressed={marcado}
-            className={`h-11 rounded-lg border px-2 text-sm font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
+            className={`h-11 rounded-lg border px-2 text-sm font-medium transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-1 ${
               marcado
                 ? "border-foreground bg-foreground text-background"
                 : "border-border bg-background text-foreground hover:border-foreground/40 hover:bg-muted"

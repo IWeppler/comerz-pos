@@ -69,7 +69,7 @@ export function StoreHome({
                 <button
                   type="button"
                   onClick={() => onSelectCategoria(categoria.id)}
-                  className="group relative w-full aspect-[4/5] overflow-hidden rounded-xl border border-border/50 bg-card text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  className="group relative w-full aspect-[4/5] overflow-hidden rounded-xl border border-border/50 bg-card text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2"
                 >
                   {categoria.imagen ? (
                     <Image

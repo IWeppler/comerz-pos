@@ -18,6 +18,7 @@ import {
   SheetTitle,
 } from "@/shared/ui/sheet";
 import { contarFiltrosAplicados } from "../../lib/filtros-url";
+import { BOTON_CATALOGO } from "../../lib/estilos-catalogo";
 import { FiltrosPanel } from "./filtros-panel";
 import type { OrdenOption } from "../../lib/filtros-url";
 
@@ -142,7 +143,7 @@ export function BarraCatalogo({
               )}
               <Button
                 onClick={() => setPanelAbierto(false)}
-                className="h-12 flex-1 text-sm font-semibold"
+                className={`h-12 flex-1 text-sm font-semibold ${BOTON_CATALOGO}`}
               >
                 Ver {totalResultados}{" "}
                 {totalResultados === 1 ? "producto" : "productos"}

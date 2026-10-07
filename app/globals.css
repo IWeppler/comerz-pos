@@ -4,6 +4,25 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* El carrito público tiene blancos de 44px también en desktop; el POS
+   conserva sus controles compactos. No depende de cambiar CartItemRow. */
+.carrito-publico button { min-height: 44px; min-width: 44px; }
+.carrito-publico [class~="sm:h-9"] { height: 44px; }
+.carrito-publico [class~="sm:w-9"] { width: 44px; }
+/* El carrito público va sin redondeo, igual que el buscador del catálogo.
+   Una regla y no una clase por componente: arma su panel con piezas
+   compartidas con el POS (renglón, cantidad, encabezado) y el POS conserva las
+   suyas. Sin capa, gana sobre las utilidades `rounded-*` de Tailwind. */
+.carrito-publico,
+.carrito-publico * { border-radius: 0; }
+
+/* El naranja del logo de Comerz: lo único con color en el catálogo. Lo usa la
+   barra de envío gratis; completa, pasa al degradé del logo (naranja → rosa). */
+:root {
+  --marca-naranja: #ff7a1f;
+  --marca-rosa: #ff2d6f;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

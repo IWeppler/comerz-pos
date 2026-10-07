@@ -55,7 +55,7 @@ export function ColorSwatches({
             aria-pressed={seleccionado}
             aria-label={etiqueta}
             title={etiqueta}
-            className={`relative ${caja} shrink-0 rounded-full border transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+            className={`relative ${caja} shrink-0 rounded-full border transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 ${
               seleccionado
                 ? "border-foreground ring-2 ring-foreground ring-offset-2 ring-offset-background"
                 : "border-border/70"

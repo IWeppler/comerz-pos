@@ -111,7 +111,7 @@ export function CategoryPills({
         <Button
           key={padre.id}
           variant="outline"
-          className={`${pillBase} gap-1.5 font-bold border-primary/30 text-foreground hover:bg-primary/10`}
+          className={`${pillBase} gap-1.5 font-bold border-foreground/30 text-foreground hover:bg-muted`}
           onClick={() => onSelectCategoria(padre.id)}
         >
           {/* <FolderOpen className="w-3.5 h-3.5 text-primary" /> */}

@@ -32,7 +32,7 @@ export function SeccionFiltro({
       className="border-b border-border/60 last:border-b-0"
     >
       <Accordion.Header>
-        <Accordion.Trigger className="group flex w-full items-center justify-between gap-3 py-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset">
+        <Accordion.Trigger className="group flex w-full items-center justify-between gap-3 py-4 text-left cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-inset">
           <span className="flex items-baseline gap-2 min-w-0">
             <span className="text-sm font-semibold text-foreground truncate">
               {titulo}
