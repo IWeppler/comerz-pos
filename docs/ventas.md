@@ -24,6 +24,11 @@ Lo que la venta hace con la PLATA (arqueo, ledger, reintegros) está en
     `create-sale.ts` revierte esos dos y no queda ningún punto intermedio.
   - **SECURITY INVOKER, no DEFINER**: el aislamiento sigue siendo la RLS de quien
     vende. Verificado que un usuario apuntando a un negocio ajeno no escribe nada.
+  - **Inserta `ventas_items` con una lista de columnas FIJA** (`jsonb_to_recordset`):
+    un campo nuevo que manda create-sale y no se suma ACÁ se descarta sin error.
+    Pasó con la presentación: `20260918150000` nunca se aplicó y del 18/9 al 7/10
+    ningún renglón guardó qué presentación se vendió (corregido en
+    `20261007130000`, que también graba `motivo_sin_imei`).
 - **Las cuatro hijas de `ventas` atan el INSERT al padre**: `venta_pagos`
   (`20260905140000`), `ventas_items`, `devoluciones`, `devoluciones_items`
   (`20260905180000`). El predicado pide que el padre sea VISIBLE
@@ -124,6 +129,13 @@ Condición (`tipo_regla`, null = sin condición) y visibilidad
 (`mostrar_en_catalogo`) son ejes INDEPENDIENTES. **Fail-closed**: `tipo_regla`
 desconocido = NO elegible. La RLS de SELECT para `anon` en promociones es
 necesaria (su falta causó bugs silenciosos).
+
+Cupones del catálogo (implementación local del 7/10, aún sin aplicar):
+`promociones.codigo` null conserva una promoción automática; con código se valida
+antes de entrar al cálculo público. En el POS se sigue eligiendo por ID, con el
+código como etiqueta; `create-sale` recalcula desde la base y `registrar_venta`
+cuenta el uso al cobrar. Aplicar el código en un carrito público no consume usos.
+Migraciones y estado: [catalogo-marketing.md](catalogo-marketing.md).
 
 ## Anular una venta: `anular_venta` (`20260816150000`)
 
