@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Producto } from "@/entities/productos/types";
-import { getIndiceCatalogoPublicoAction } from "@/shared/actions/indice-catalogo-publico";
+import { useCatalogoPublico } from "./catalogo-publico-provider";
+import { coincideConBusqueda } from "../lib/coincide-busqueda";
 import type { PortadaCatalogo } from "../lib/catalogo-core";
 import { Button } from "@/shared/ui/button";
 import { Plus, SearchX, ShoppingBag } from "lucide-react";
@@ -94,10 +94,11 @@ export function StoreCatalog({
   categorias,
 }: Readonly<StoreCatalogProps>) {
   return (
+    <div id="productos-catalogo" className="scroll-mt-24 lg:scroll-mt-36">
     <Suspense
       fallback={
         <div className="flex justify-center items-center py-24">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground"></div>
         </div>
       }
     >
@@ -107,6 +108,7 @@ export function StoreCatalog({
         categorias={categorias}
       />
     </Suspense>
+    </div>
   );
 }
 
@@ -127,30 +129,27 @@ function CatalogContent({
    * empieza a moverse en el primer segundo, y esperar a su primer click para
    * recién ahí arrancar la descarga le suma el viaje entero a esa interacción.
    */
-  const [indice, setIndice] = useState<Producto[] | null>(null);
+  const { indice, error: errorIndice, cargarIndice } = useCatalogoPublico();
 
   useEffect(() => {
-    let vigente = true;
-    getIndiceCatalogoPublicoAction()
-      .then((res) => {
-        if (vigente && res.data) setIndice(res.data as Producto[]);
-      })
-      .catch((e) => {
-        // Sin índice el catálogo queda en la portada, que es una degradación
-        // legible; que no sea silenciosa igual, porque significa que no se
-        // puede buscar ni filtrar.
-        console.error("[CATALOGO] No se pudo cargar el índice:", e);
-      });
-    return () => {
-      vigente = false;
-    };
-  }, []);
+    void cargarIndice();
+  }, [cargarIndice]);
 
   const productos = indice ?? [];
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const searchQuery = searchParams.get("q") || "";
+
+  // Confirmar una búsqueda lleva a los resultados, incluso si el visitante
+  // estaba al pie de la portada. No lo tapa la cabecera sticky ni el banner.
+  useEffect(() => {
+    if (!searchQuery || indice === null) return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("productos-catalogo")?.scrollIntoView({ block: "start", behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [searchQuery, indice]);
 
   // --- ?productos=id1,id2,... — selección curada, gana sobre el resto ---
   // El parseo es el mismo que usa generateMetadata para armar el preview del
@@ -233,12 +232,7 @@ function CatalogContent({
     return productosBase.filter((p) => {
       // 1. Filtro por Búsqueda de texto
       if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchBuscador =
-          p.nombre?.toLowerCase().includes(q) ||
-          p.tipo?.toLowerCase().includes(q) ||
-          p.descripcion?.toLowerCase().includes(q);
-        if (!matchBuscador) return false;
+        if (!coincideConBusqueda(p, searchQuery)) return false;
       }
 
       // 2. Filtro por Categoría activa
@@ -538,9 +532,16 @@ function CatalogContent({
       );
     }
 
+    if (errorIndice) return (
+      <div className="py-24 text-center" role="alert">
+        <p className="text-sm text-muted-foreground">{errorIndice}</p>
+        <Button variant="outline" className="mt-4 min-h-11" onClick={() => void cargarIndice()}>Reintentar</Button>
+      </div>
+    );
+
     return (
       <div className="flex justify-center items-center py-24">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-foreground" />
       </div>
     );
   }

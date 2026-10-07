@@ -48,7 +48,10 @@ export function Navbar({ branding, categorias = [] }: Readonly<NavbarProps>) {
           {/* LADO IZQUIERDO: Menú Hamburguesa (Mobile) */}
           <div className="flex items-center md:hidden w-1/3">
             <button
-              className="p-2 -ml-2 text-foreground hover:bg-muted rounded-md cursor-pointer"
+              type="button"
+              aria-label={isMenuOpen ? "Cerrar menú" : "Abrir menú"}
+              aria-expanded={isMenuOpen}
+              className="flex h-11 w-11 items-center justify-center -ml-2 text-foreground hover:bg-muted rounded-md cursor-pointer"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               {isMenuOpen ? (
@@ -90,12 +93,14 @@ export function Navbar({ branding, categorias = [] }: Readonly<NavbarProps>) {
           {/* LADO DERECHO: Buscador y Carrito */}
           <div className="flex items-center justify-end gap-1 sm:gap-4 w-1/3 md:w-auto md:ml-auto">
             <Suspense
-              fallback={<div className="w-10 h-10 md:w-65 bg-transparent" />}
+              fallback={<div className="w-11 h-11 lg:w-80 bg-transparent" />}
             >
-              <SearchBar />
+              <SearchBar categorias={categorias} mostrarSinStock={branding?.mostrar_sin_stock} onAbrir={() => setIsMenuOpen(false)} />
             </Suspense>
             {/* Ocultar carrito si pedidos_whatsapp es falso */}
-            {branding?.pedidos_whatsapp !== false && <CartButton />}
+            {branding?.pedidos_whatsapp !== false && (
+              <CartButton />
+            )}
           </div>
         </div>
 
@@ -168,7 +173,7 @@ export function Navbar({ branding, categorias = [] }: Readonly<NavbarProps>) {
                             href={`${rutaDelCatalogo}?categoria=${encodeURIComponent(categoria.slug || categoria.id)}`}
                             prefetch={false}
                             onClick={() => setIsMenuOpen(false)}
-                            className="block py-2.5 text-sm font-medium text-foreground hover:text-primary transition-colors"
+                            className="block py-2.5 text-sm font-medium text-foreground hover:text-muted-foreground transition-colors"
                           >
                             {categoria.nombre}
                           </Link>

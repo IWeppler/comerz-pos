@@ -1,4 +1,5 @@
 import { Navbar } from "@/shared/components/navbar";
+import { CatalogoPublicoProvider } from "@/features/store/components/catalogo-publico-provider";
 import { CartPanelPublico } from "@/features/store/components/cart-panel-publico";
 import { createPublicClient } from "@/shared/config/supabase/server";
 import { headers } from "next/headers";
@@ -87,6 +88,7 @@ export default async function PublicLayout({
         promociones={(promociones ?? []) as unknown as PromocionDB[]}
         metodos={(metodos ?? []) as MetodoPublico[]}
       >
+      <CatalogoPublicoProvider key={negocio}>
       <div className="min-h-screen bg-background flex flex-col">
         <Navbar branding={config} categorias={categorias ?? []} />
         <CartPanelPublico numeroWhatsApp={config?.whatsapp} />
@@ -139,6 +141,7 @@ export default async function PublicLayout({
           </div>
         </footer>
       </div>
+      </CatalogoPublicoProvider>
 
       {/* Telemetría SOLO del catálogo. En el POS no interesa medir y cada
           navegación de las vendedoras consumía cuota. El muestreo es porque
