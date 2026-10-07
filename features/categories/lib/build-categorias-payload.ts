@@ -10,6 +10,8 @@ export type CategoriaBulkInput = {
   imagen_url?: string | null;
   /** Ventana de venta. Solo silencia sugerencias, nunca las genera. */
   temporada?: string | null;
+  /** Los productos de esta categoría (y sus hijas) piden IMEI al vender. */
+  lleva_serie?: boolean | null;
   isNew?: boolean;
 };
 
@@ -53,6 +55,9 @@ export function construirPayloadCategorias(categorias: CategoriaBulkInput[]) {
     // haría fallar el lote entero. `normalizarTemporada` cae a TODO_EL_ANIO,
     // que es el valor que no silencia nada.
     temporada: normalizarTemporada(cat.temporada),
+    // Siempre presente por lo mismo (NOT NULL). Solo `true` explícito la
+    // prende: una fila nueva o sin el dato queda en false, que es no pedir.
+    lleva_serie: cat.lleva_serie === true,
     orden: index, // Guardamos el orden visual
   }));
 }

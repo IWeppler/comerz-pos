@@ -12,6 +12,9 @@ export type LineaCarga = {
   itemId: string;
   variante: string;
   cantidad: number;
+  /** IMEI completados en pantalla para los aparatos de la línea que vinieron
+   * sin número. Opcional: los borradores de antes no lo tienen. */
+  imeis?: string[];
 };
 
 /** Una fila de la tabla del modo carga inicial = un producto a crear. */
@@ -140,7 +143,8 @@ export function construirFilasCargaInicial({
       categoriaId: inferida.categoriaId,
       categoriaNombreNueva:
         inferida.origen === "NUEVA" ? inferida.nombre : null,
-      marca: primero.raw_marca?.trim() ?? "",
+      // La de la planilla manda; si no vino, la deducida del nombre (electro).
+      marca: primero.raw_marca?.trim() || primero.marca_inferida || "",
       costo: Number(costo) || 0,
       precio: precioSugerido(
         Number(costo) || 0,
@@ -192,6 +196,7 @@ export function filasAItems(
       ...item,
       producto_id: productoId,
       cantidad: linea.cantidad,
+      imeis_completados: linea.imeis ?? [],
       precio_costo: fila.costo,
       precio_venta_actualizado: fila.precio,
       estado_match:

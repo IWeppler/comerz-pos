@@ -27,8 +27,15 @@ export interface ItemResuelto {
   raw_sku?: string | null;
   raw_marca?: string | null;
   raw_genero?: string | null;
-  /** Número de serie de esta línea (electro). Un aparato por fila. */
+  /** Número de serie que vino en el Excel para esta línea (electro). */
   raw_imei?: string | null;
+  /** IMEI completados en la conciliación para los aparatos del renglón que
+   * vinieron sin número (uno por unidad). Viajan a `aprobar_orden_compra`
+   * como `imeis`; `raw_imei` no se toca. Ver `lib/imeis-remito.ts`. */
+  imeis_completados?: string[];
+  /** Marca deducida del nombre cuando el Excel no trae columna Marca
+   * (`lib/inferir-marca.ts`). No pisa `raw_marca`, que es el dato crudo. */
+  marca_inferida?: string | null;
   variante_match: string;
   /** Lo que facturó el proveedor. No se toca nunca. */
   cantidad: number;

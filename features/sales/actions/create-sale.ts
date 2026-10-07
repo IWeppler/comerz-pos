@@ -32,6 +32,10 @@ import {
 import { agruparStockLegacy } from "../lib/agrupar-stock-legacy";
 import { renglonesPorAparato } from "../lib/renglones-por-aparato";
 import {
+  parsearMotivosSinImei,
+  resolverAparatosSinImei,
+} from "../lib/aparatos-sin-imei";
+import {
   cantidadBase,
   costoBaseDePresentacion,
   normalizarCantidadEnForma,
@@ -142,6 +146,11 @@ export async function registrarVentaAction(
   const unidadesRaw = formData.get("unidades_serie") as string | null;
   const unidadesElegidas: { varianteId: string; unidadId: string }[] =
     unidadesRaw ? JSON.parse(unidadesRaw) : [];
+  // Por qué sale sin IMEI cada línea de un producto que lo lleva:
+  // [{varianteId, motivo}]. Ver `aparatos-sin-imei.ts`.
+  const motivosSinImei = parsearMotivosSinImei(
+    formData.get("sin_imei") as string | null,
+  );
 
   // --- VENTA OFFLINE ---
   //
@@ -891,15 +900,31 @@ export async function registrarVentaAction(
     .filter((id): id is string => Boolean(id));
 
   const disponiblesPorVariante = new Map<string, number>();
+  // Variantes cuyo producto lleva IMEI (por él o por su categoría). El
+  // criterio vive en SQL (`variantes_llevan_serie`, 20261007120000).
+  const variantesLlevanSerie = new Set<string>();
   if (varianteIdsCarrito.length > 0) {
-    const { data: unidadesLibres, error: unidadesError } = await supabase
-      .from("unidades_serie")
-      .select("producto_variante_id")
-      .in("producto_variante_id", varianteIdsCarrito)
-      .eq("estado", "disponible");
+    const [
+      { data: unidadesLibres, error: unidadesError },
+      { data: llevanSerie, error: llevanSerieError },
+    ] = await Promise.all([
+      supabase
+        .from("unidades_serie")
+        .select("producto_variante_id")
+        .in("producto_variante_id", varianteIdsCarrito)
+        .eq("estado", "disponible"),
+      supabase.rpc("variantes_llevan_serie", {
+        p_variante_ids: varianteIdsCarrito,
+      }),
+    ]);
 
-    if (unidadesError) {
-      console.error("[VENTA] Error consultando unidades_serie:", unidadesError);
+    // Fail-closed, igual que las unidades: sin saber qué lleva IMEI no se
+    // puede decidir qué pedir.
+    if (unidadesError || llevanSerieError) {
+      console.error(
+        "[VENTA] Error consultando unidades_serie / lleva serie:",
+        unidadesError ?? llevanSerieError,
+      );
       return {
         error: "No se pudo verificar las unidades con número de serie.",
         success: false,
@@ -909,6 +934,9 @@ export async function registrarVentaAction(
     for (const row of unidadesLibres ?? []) {
       const vId = row.producto_variante_id as string;
       disponiblesPorVariante.set(vId, (disponiblesPorVariante.get(vId) ?? 0) + 1);
+    }
+    for (const row of (llevanSerie ?? []) as { variante_id: string }[]) {
+      variantesLlevanSerie.add(row.variante_id);
     }
   }
 
@@ -971,6 +999,27 @@ export async function registrarVentaAction(
     for (const unidadId of tomadas) {
       unidadesAVender.push({ unidad_id: unidadId, variante_id: varianteId });
     }
+  }
+
+  // Lo que lleva IMEI y sale sin número necesita un motivo (online). Antes
+  // un celular cargado sin IMEI se vendía sin pedir nada y el ticket salía
+  // sin número (ClickTostado 1-18, 6/10/2026).
+  const sinImei = resolverAparatosSinImei({
+    renglones: itemsResueltos.map((item, indice) => ({
+      varianteId: item.varianteId ?? null,
+      cantidad: item.cantidad,
+      aparatosConImei: unidadesPorRenglon.get(indice)?.length ?? 0,
+    })),
+    llevaSerie: variantesLlevanSerie,
+    motivos: motivosSinImei,
+    esVentaOffline,
+  });
+  if (!sinImei.ok) {
+    const item = itemsResueltos[sinImei.indice];
+    return {
+      error: `"${item.variante}" lleva IMEI: escaneá el número o elegí por qué sale sin IMEI. Si no ves la opción, actualizá la página.`,
+      success: false,
+    };
   }
 
   // --- 0ter. EL DESCUENTO, RECALCULADO SERVER-SIDE ---
@@ -1124,9 +1173,12 @@ export async function registrarVentaAction(
   // unidades: si la cuenta no cierra, tira sin nada que revertir.
   // `itemsProcesados` está alineado 1 a 1 con `itemsResueltos`, que es el
   // índice de `unidadesPorRenglon`.
+  // Los que llevan IMEI y salen (en todo o en parte) sin número: uno por
+  // renglón, para poder completarles el IMEI desde el historial.
   const renglonesGrabables = renglonesPorAparato(
     itemsProcesados,
     unidadesPorRenglon,
+    new Set(sinImei.motivoPorRenglon.keys()),
   );
 
   // --- 1bis. TOTAL, PAGOS Y REGLAS DE CUENTA CORRIENTE ---
@@ -1757,7 +1809,17 @@ export async function registrarVentaAction(
   // serializadas, que ya son atómicos por su cuenta. Si la RPC falla, se
   // revierten los dos acá: es el mismo camino que usan todos los cortes de
   // arriba, y ahora no queda ningún punto entre medio.
+  // `renglonesGrabables` pierde el índice al partir por aparato; el motivo
+  // sin IMEI está por índice de `itemsProcesados` (alineado con
+  // `itemsResueltos`).
+  const indicePorItem = new Map(itemsProcesados.map((item, i) => [item, i]));
   const insertItems = renglonesGrabables.map(({ item, cantidad, unidadSerieId }) => ({
+    // Solo en la parte SIN unidad de un producto que lleva IMEI. null en todo
+    // lo demás (y en offline sin motivo: queda pendiente de completar).
+    motivo_sin_imei:
+      unidadSerieId === null
+        ? (sinImei.motivoPorRenglon.get(indicePorItem.get(item) ?? -1) ?? null)
+        : null,
     producto_id: item.productoId,
     variante: item.variante,
     // La variante vendida, congelada en el renglón. Es por acá que la

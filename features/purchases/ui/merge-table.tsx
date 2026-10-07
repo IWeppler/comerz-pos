@@ -106,6 +106,18 @@ import {
   CategoriaPadreHijoSelect,
   useArbolParaElegir,
 } from "@/shared/components/categoria-padre-hijo-select";
+import {
+  AlertaImeisFaltantes,
+  ImeisRemitoPanel,
+  type RenglonImei,
+} from "./imeis-remito-panel";
+import { categoriaPideImeiPorNombre } from "@/shared/lib/categoria-pide-imei";
+import {
+  faltantesImei as calcularFaltantesImei,
+  problemasImeis,
+  type FaltanteImei,
+  type SerieConciliacion,
+} from "../lib/imeis-remito";
 
 interface MergeTableProps {
   orden: OrdenCompra;
@@ -120,6 +132,8 @@ interface MergeTableProps {
     items: ItemResuelto[];
     productosCreados: Producto[];
   } | null;
+  /** Qué lleva IMEI (criterio de la base, `productos_llevan_serie`). */
+  serie: SerieConciliacion;
 }
 
 type ItemResueltoConCategoria = ItemResuelto & {
@@ -316,6 +330,7 @@ export function MergeTable({
   productos,
   sugerenciasSimilitud,
   borradorServidor = null,
+  serie,
 }: Readonly<MergeTableProps>) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -475,6 +490,7 @@ export function MergeTable({
   // Lo que de verdad entra al stock. Un renglón marcado "no vino" no necesita
   // producto, y no cuenta para fusiones ni para lo que falta resolver.
   const itemsQueEntran = useMemo(() => items.filter(entraAlStock), [items]);
+
   const gruposNoVinieron = useMemo(
     () =>
       new Set(
@@ -519,6 +535,70 @@ export function MergeTable({
     }
     return mapa;
   }, [groupedItems, similaresMap, categoriasDB]);
+
+  // ---- IMEI ---------------------------------------------------------------
+  // Un renglón lleva IMEI si su producto lo lleva (por él o su categoría, lo
+  // contesta la base) o, si el producto se crea en esta pantalla, si la
+  // categoría con la que se crea lo pide.
+  const [faltantesImei, setFaltantesImei] = useState<FaltanteImei[] | null>(
+    null,
+  );
+  const productosConSerie = useMemo(() => new Set(serie.productos), [serie]);
+  const categoriasConSerie = useMemo(() => new Set(serie.categorias), [serie]);
+  const productosDelCatalogo = useMemo(
+    () => new Set(productos.map((p) => p.id)),
+    [productos],
+  );
+  /** La categoría con la que se crea (o se creó en esta pantalla) el producto
+   * del grupo: la elegida a mano, si no la sugerida, si no la del Excel. */
+  const categoriaDelGrupo = (item: ItemResuelto): string | null => {
+    const bucket = clasificacionPorGrupo.get(item.raw_nombre);
+    const sugerida =
+      bucket?.tipo === "NUEVO_SUGERIDO"
+        ? (bucket.categoriaId ??
+          idPorNombreCategoria(bucket.categoriaSugerida.categoriaNombre))
+        : undefined;
+    return (
+      categoriaIdPorGrupo[item.raw_nombre] ?? sugerida ?? item.raw_categoria_id ?? null
+    );
+  };
+  /** Espejo del trigger `productos_lleva_serie_por_categoria`: el producto que
+   * se crea en "Celulares" (o debajo) nace pidiendo IMEI. */
+  const categoriaPideImei = (categoriaId: string | null): boolean => {
+    if (!categoriaId) return false;
+    if (categoriasConSerie.has(categoriaId)) return true;
+    const cat = categoriasDB.find((c) => c.id === categoriaId);
+    const padre = cat?.parent_id
+      ? categoriasDB.find((c) => c.id === cat.parent_id)
+      : undefined;
+    return (
+      categoriaPideImeiPorNombre(cat?.nombre) ||
+      categoriaPideImeiPorNombre(padre?.nombre)
+    );
+  };
+  const renglonLlevaSerie = (i: ItemResuelto): boolean => {
+    // Producto que ya existía: lo contesta la base.
+    if (i.producto_id && productosDelCatalogo.has(i.producto_id)) {
+      return productosConSerie.has(i.producto_id);
+    }
+    // Producto a crear o creado en esta pantalla: por su categoría.
+    return categoriaPideImei(categoriaDelGrupo(i));
+  };
+  const renglonesImei: RenglonImei[] = itemsQueEntran
+    .filter(renglonLlevaSerie)
+    .filter((i) => i.id)
+    .map((i) => ({
+      itemId: i.id as string,
+      nombre: i.raw_nombre,
+      variante: i.variante_match || i.raw_variante || "Unico",
+      cantidad: cantidadEfectiva(i),
+      rawImei: i.raw_imei ?? null,
+      imeis: i.imeis_completados ?? [],
+    }));
+  const editarImeis = (itemId: string, imeis: string[]) =>
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, imeis_completados: imeis } : i)),
+    );
 
   /**
    * Los grupos que se pueden crear de una sola vez, que es lo único que hace
@@ -1174,7 +1254,7 @@ export function MergeTable({
       nombreProducto: rawNombre,
       categoriaId,
       precio,
-      marca: itemActual.raw_marca || undefined,
+      marca: itemActual.raw_marca || itemActual.marca_inferida || undefined,
     });
 
     setLoadingPorGrupo((prev) => ({ ...prev, [rawNombre]: false }));
@@ -1245,7 +1325,7 @@ export function MergeTable({
         nombreProducto: rawNombre,
         categoriaId: categoriaIdPorGrupo[rawNombre] ?? categoriaIdSugerida,
         precio: precioParaCrear(itemActual),
-        marca: itemActual?.raw_marca || undefined,
+        marca: itemActual?.raw_marca || itemActual?.marca_inferida || undefined,
       };
     });
 
@@ -1278,7 +1358,7 @@ export function MergeTable({
     }
   };
 
-  const handleAprobar = async () => {
+  const handleAprobar = async (aprobarSinImei = false) => {
     if (itemsQueEntran.length === 0) {
       toast.error(
         "Marcaste todo como no recibido: no hay nada para ingresar al stock.",
@@ -1325,6 +1405,27 @@ export function MergeTable({
         { duration: 12000 },
       );
       return;
+    }
+
+    // IMEI: lo que la base va a rechazar se frena acá con los nombres; lo que
+    // falta completar se avisa y se puede aprobar igual (el POS lo pide).
+    const problemas = problemasImeis(items);
+    if (problemas.length > 0) {
+      toast.error(problemas[0], {
+        description:
+          problemas.length > 1 ? `Y ${problemas.length - 1} más.` : undefined,
+      });
+      return;
+    }
+    if (!aprobarSinImei) {
+      const conSerie = new Set(renglonesImei.map((r) => r.itemId));
+      const faltantes = calcularFaltantesImei(items, (i) =>
+        conSerie.has(i.id ?? ""),
+      );
+      if (faltantes.length > 0) {
+        setFaltantesImei(faltantes);
+        return;
+      }
     }
 
     setAprobarLoading(true);
@@ -1425,7 +1526,7 @@ export function MergeTable({
           <Button
             size="lg"
             className="h-10 bg-primary hover:bg-primary/90 text-white w-full sm:w-auto cursor-pointer"
-            onClick={handleAprobar}
+            onClick={() => void handleAprobar()}
             // Con una fusión pendiente el botón queda deshabilitado y NO por
             // prolijidad: la RPC va a rechazar el remito entero igual, así que
             // dejar apretar solo consigue una espera y un error críptico.
@@ -1452,6 +1553,18 @@ export function MergeTable({
           )}
         </div>
       </div>
+
+      <AlertaImeisFaltantes
+        faltantes={faltantesImei}
+        onCompletar={() => setFaltantesImei(null)}
+        onAprobarIgual={() => {
+          setFaltantesImei(null);
+          void handleAprobar(true);
+        }}
+      />
+
+      {/* IMEI de los aparatos que vinieron sin número en el Excel. */}
+      <ImeisRemitoPanel renglones={renglonesImei} onChange={editarImeis} />
 
       {/* Acciones Rápidas (Recargo Global + Masivas) */}
       <div className="flex flex-col sm:flex-row items-center gap-4 bg-background p-4 rounded-xl border border-border">
@@ -1945,7 +2058,7 @@ export function MergeTable({
                               categoriaIdSugerida ??
                               firstItem.raw_categoria_id ??
                               "",
-                            marca: firstItem.raw_marca ?? "",
+                            marca: firstItem.raw_marca || firstItem.marca_inferida || "",
                             origenPrecio,
                           });
                           setArchivosNuevoProducto([]);

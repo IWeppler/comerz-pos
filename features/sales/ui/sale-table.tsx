@@ -600,8 +600,11 @@ export function VentasTable({
         : "Recargo por método de pago";
 
     setTicketAbierto({
+      ventaId: venta.id,
       items: (venta.ventas_items || []).map(
         (item: VentaItem): TicketItemData => ({
+          itemId: item.id,
+          motivoSinImei: item.motivo_sin_imei ?? null,
           nombre: nombreRenglon(getSupabaseRelation(item.producto)?.nombre, item),
           // En la venta libre la descripción ya es el nombre: no se repite.
           variante: item.es_venta_libre ? "" : item.variante,

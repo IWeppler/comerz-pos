@@ -16,6 +16,8 @@ import {
   type AtributoCache,
 } from "@/features/stock/lib/normalize-atributo";
 import { cantidadEfectiva, entraAlStock } from "../lib/recepcion";
+import { normalizarImei } from "@/entities/ventas/imei";
+import { inferirMarca } from "../lib/inferir-marca";
 
 type SupabaseDb = ReturnType<typeof createClient>;
 
@@ -111,6 +113,7 @@ export async function getOrdenParaMergeAction(ordenId: string) {
       sugerenciasSimilitud: [],
       categorias: [],
       borrador: null,
+      serie: { categorias: [] as string[], productos: [] as string[] },
     };
   }
 
@@ -123,6 +126,7 @@ export async function getOrdenParaMergeAction(ordenId: string) {
       sugerenciasSimilitud: [],
       categorias: [],
       borrador: null,
+      serie: { categorias: [] as string[], productos: [] as string[] },
     };
   }
 
@@ -135,6 +139,7 @@ export async function getOrdenParaMergeAction(ordenId: string) {
       sugerenciasSimilitud: [],
       categorias: [],
       borrador: null,
+      serie: { categorias: [] as string[], productos: [] as string[] },
     };
   }
 
@@ -231,16 +236,78 @@ export async function getOrdenParaMergeAction(ordenId: string) {
   // El borrador del modo carga inicial vive en la base, no en el navegador
   // (ver 20260904120000). Se lee acá y no en un round-trip aparte del cliente:
   // la pantalla no puede pintar filas vacías y después reemplazarlas.
-  const { data: borradorRow } = await supabase
-    .from("ordenes_borradores")
-    .select("payload, actualizado_en")
-    .eq("orden_id", ordenId)
-    .maybeSingle();
+  //
+  // En el mismo viaje: qué lleva IMEI (para pedir los que faltan) y cómo
+  // escribe el comercio las marcas que se van a deducir del nombre.
+  const items: ItemResuelto[] = itemsRes.data || [];
+  const marcasADeducir = new Set<string>();
+  for (const item of items) {
+    if (item.raw_marca?.trim()) continue;
+    const marca = inferirMarca(item.raw_nombre);
+    if (marca) marcasADeducir.add(marca);
+  }
+  const productoIds = (productosRes.data || []).map((p) => p.id as string);
+
+  const [borradorRes, categoriasSerieRes, productosSerieRes, marcasRes] =
+    await Promise.all([
+      supabase
+        .from("ordenes_borradores")
+        .select("payload, actualizado_en")
+        .eq("orden_id", ordenId)
+        .maybeSingle(),
+      supabase.rpc("categorias_llevan_serie"),
+      productoIds.length > 0
+        ? supabase.rpc("productos_llevan_serie", { p_producto_ids: productoIds })
+        : Promise.resolve({ data: [], error: null }),
+      marcasADeducir.size > 0
+        ? supabase
+            .from("productos")
+            .select("marca")
+            // ilike sin comodines = igual sin importar mayúsculas.
+            .or(
+              Array.from(marcasADeducir)
+                .map((m) => `marca.ilike.${m}`)
+                .join(","),
+            )
+            .limit(200)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+
+  // Lo de IMEI no bloquea la pantalla: sin esto no se piden en la
+  // conciliación, pero el POS los sigue pidiendo al vender.
+  if (categoriasSerieRes.error || productosSerieRes.error) {
+    console.error(
+      "[PURCHASE MERGE] Error leyendo qué lleva IMEI:",
+      categoriasSerieRes.error ?? productosSerieRes.error,
+    );
+  }
+  const serie = {
+    categorias: ((categoriasSerieRes.data ?? []) as { categoria_id: string }[]).map(
+      (r) => r.categoria_id,
+    ),
+    productos: ((productosSerieRes.data ?? []) as { producto_id: string }[]).map(
+      (r) => r.producto_id,
+    ),
+  };
+
+  const marcasExistentes = Array.from(
+    new Set(
+      ((marcasRes.data ?? []) as { marca: string | null }[])
+        .map((r) => r.marca?.trim())
+        .filter((m): m is string => Boolean(m)),
+    ),
+  );
+  const itemsConMarca = items.map((item) =>
+    item.raw_marca?.trim()
+      ? item
+      : { ...item, marca_inferida: inferirMarca(item.raw_nombre, marcasExistentes) },
+  );
 
   return {
     error: null,
     orden: ordenRes.data,
-    items: itemsRes.data || [],
+    items: itemsConMarca,
+    serie,
     productos: productosRes.data || [],
     sugerenciasSimilitud,
     // Las categorías del comercio ya se leyeron acá arriba para filtrar las
@@ -248,7 +315,7 @@ export async function getOrdenParaMergeAction(ordenId: string) {
     // select de cada fila. Sin esto llegaban vacías y el desplegable se abría
     // sin una sola opción — se veía como un select que no responde.
     categorias: categoriasRes.data || [],
-    borrador: borradorRow ?? null,
+    borrador: borradorRes.data ?? null,
   };
 }
 
@@ -273,6 +340,10 @@ function mensajeGuardRemito(mensaje: string | undefined): string | null {
   }
   if (mensaje.includes("REMITO_CANTIDAD_INVALIDA")) {
     return "Hay renglones sin cantidad o con cantidad negativa. Corregilos y volvé a aprobar.";
+  }
+  if (mensaje.includes("REMITO_IMEIS_DE_MAS")) {
+    const detalle = mensaje.split("unidades:")[1]?.trim();
+    return `Hay renglones con más IMEI que unidades${detalle ? `: ${detalle}` : ""}. Sacá los que sobran y volvé a aprobar.`;
   }
   return null;
 }
@@ -367,6 +438,12 @@ export async function aprobarOrdenAction(
           // `unidades_serie`. Es lo que permite que una planilla de electro
           // entre por conciliación sin perder los IMEI.
           imei: item.raw_imei?.trim() || null,
+          // Los completados en pantalla para los aparatos que vinieron sin
+          // número. La RPC crea una unidad por cada uno y frena si hay más
+          // que unidades (`REMITO_IMEIS_DE_MAS`).
+          imeis: (item.imeis_completados ?? [])
+            .map((imei) => normalizarImei(imei))
+            .filter(Boolean),
           // Lo que de verdad entró (corregido o "no vino"); la RPC lo compara
           // con lo del remito y guarda la diferencia con su motivo.
           cantidad: cantidadEfectiva(item),

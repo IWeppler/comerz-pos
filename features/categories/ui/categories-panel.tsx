@@ -31,6 +31,7 @@ import {
   ChevronRight,
   CornerDownRight,
   Settings2,
+  Barcode,
 } from "lucide-react";
 import { bulkSaveCategoriasAction } from "../actions/manage-categories";
 import { CategoryAttributesModal } from "./category-attributes-modal";
@@ -53,6 +54,8 @@ export interface Categoria {
   imagen_url?: string | null;
   /** Ventana de venta. Ver shared/lib/temporada-categoria.ts. */
   temporada?: string | null;
+  /** Sus productos (y los de sus subcategorías) piden IMEI al vender. */
+  lleva_serie?: boolean | null;
 }
 
 type LocalCategory = Categoria & { isNew?: boolean };
@@ -215,6 +218,35 @@ export function CategoriesPanel({
           ))}
         </SelectContent>
       </Select>
+      {/* IMEI. Una subcategoría de una que ya lo pide lo hereda (mismo
+          criterio que `categorias_llevan_serie` en la base): se muestra
+          prendido y no se puede apagar desde acá. */}
+      {(() => {
+        const heredado =
+          !!cat.parent_id &&
+          cats.some((c) => c.id === cat.parent_id && c.lleva_serie === true);
+        const activo = heredado || cat.lleva_serie === true;
+        return (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={heredado}
+            aria-pressed={activo}
+            onClick={() => updateCat(cat.id, { lleva_serie: !activo })}
+            className={`h-9 w-9 rounded-md transition-colors ${activo ? "text-primary bg-primary/10 hover:bg-primary/15" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
+            title={
+              heredado
+                ? "Pide IMEI al vender (lo hereda de la categoría de arriba)"
+                : activo
+                  ? "Pide IMEI al vender. Tocá para que no lo pida"
+                  : "No pide IMEI. Tocá para pedirlo al vender (celulares, tablets)"
+            }
+          >
+            <Barcode className="w-4 h-4" />
+          </Button>
+        );
+      })()}
       <Button
         type="button"
         variant="ghost"

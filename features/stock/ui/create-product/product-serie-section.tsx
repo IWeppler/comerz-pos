@@ -73,10 +73,13 @@ function Encabezado({
   activo,
   onActivoChange,
   disabled,
+  porCategoria,
 }: Readonly<{
   activo: boolean;
   onActivoChange: (v: boolean) => void;
   disabled?: boolean;
+  /** Lo pide la categoría: prendido y sin poder apagarse desde acá. */
+  porCategoria?: boolean;
 }>) {
   return (
     <div className="flex items-center justify-between gap-3 p-3 md:p-5">
@@ -87,14 +90,16 @@ function Encabezado({
         <div>
           <p className="font-bold text-sm">Lleva IMEI / número de serie</p>
           <p className="text-xs text-muted-foreground">
-            Sale en el ticket y el POS avisa si se vende sin uno.
+            {porCategoria
+              ? "Lo pide su categoría: el POS lo exige al vender. Se cambia en Configuración › Categorías."
+              : "Sale en el ticket y el POS lo pide al vender."}
           </p>
         </div>
       </div>
       <Switch
-        checked={activo}
+        checked={activo || Boolean(porCategoria)}
         onCheckedChange={onActivoChange}
-        disabled={disabled}
+        disabled={disabled || porCategoria}
         aria-label="Lleva IMEI o número de serie"
       />
     </div>
@@ -148,6 +153,7 @@ function SerieEdicion({
   const [corrigiendo, setCorrigiendo] = useState<string | null>(null);
   const [cargado, setCargado] = useState(false);
   const [activo, setActivo] = useState(false);
+  const [porCategoria, setPorCategoria] = useState(false);
   const [unidades, setUnidades] = useState<Record<string, UnidadFicha[]>>({});
   const [borrador, setBorrador] = useState<Record<string, string>>({});
   const [ocupado, setOcupado] = useState<string | null>(null);
@@ -158,6 +164,7 @@ function SerieEdicion({
       if (cancelado) return;
       if (res.error) toast.error(res.error);
       setActivo(res.llevaSerie);
+      setPorCategoria(res.porCategoria);
       setUnidades(res.unidadesPorVariante);
       setCargado(true);
     });
@@ -208,7 +215,15 @@ function SerieEdicion({
       {cargado && (
         <input type="hidden" name="lleva_serie" value={String(activo)} />
       )}
-      <Encabezado activo={activo} onActivoChange={setActivo} disabled={!cargado} />
+      {/* El input oculto manda la marca PROPIA: si la pide la categoría, el
+          producto no se marca solo por eso (sacarlo de la categoría lo
+          libera). */}
+      <Encabezado
+        activo={activo}
+        onActivoChange={setActivo}
+        disabled={!cargado}
+        porCategoria={porCategoria}
+      />
 
       {!cargado && (
         <div className="flex items-center gap-2 px-5 pb-4 text-xs text-muted-foreground">
@@ -217,7 +232,7 @@ function SerieEdicion({
         </div>
       )}
 
-      {cargado && activo && (
+      {cargado && (activo || porCategoria) && (
         <div className="px-3 md:px-5 pb-5 pt-3 border-t border-border/50 space-y-4">
           {variantes.length === 0 && (
             <p className="text-xs text-muted-foreground">

@@ -32,6 +32,34 @@ describe("renglonesPorAparato", () => {
     ]);
   });
 
+  it("un producto que lleva IMEI sale un renglón por aparato aunque no tenga número", () => {
+    const dos = { ...a56, cantidad: 2 };
+    const filas = renglonesPorAparato([funda, dos], new Map(), new Set([1]));
+    expect(filas).toEqual([
+      { item: funda, cantidad: 3, unidadSerieId: null },
+      { item: dos, cantidad: 1, unidadSerieId: null },
+      { item: dos, cantidad: 1, unidadSerieId: null },
+    ]);
+  });
+
+  it("parte también lo que sobra cuando solo algunos tienen IMEI", () => {
+    const tres = { ...a56, cantidad: 3 };
+    expect(
+      renglonesPorAparato([tres], new Map([[0, ["u1"]]]), new Set([0])),
+    ).toEqual([
+      { item: tres, cantidad: 1, unidadSerieId: "u1" },
+      { item: tres, cantidad: 1, unidadSerieId: null },
+      { item: tres, cantidad: 1, unidadSerieId: null },
+    ]);
+  });
+
+  it("con cantidad no entera no parte nada", () => {
+    const raro = { ...a56, cantidad: 1.5 };
+    expect(renglonesPorAparato([raro], new Map(), new Set([0]))).toEqual([
+      { item: raro, cantidad: 1.5, unidadSerieId: null },
+    ]);
+  });
+
   it("frena si llegan más aparatos que unidades vendidas", () => {
     expect(() =>
       renglonesPorAparato([{ ...a56, cantidad: 1 }], new Map([[0, ["u1", "u2"]]])),

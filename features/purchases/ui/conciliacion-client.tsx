@@ -15,6 +15,7 @@ import {
 } from "../lib/modo-conciliacion";
 import type { CategoriaReal } from "../lib/resolve-import-categoria";
 import type { FilaCargaInicial } from "../lib/filas-carga-inicial";
+import type { SerieConciliacion } from "../lib/imeis-remito";
 import { CargaInicialTable } from "./carga-inicial-table";
 import { MergeTable } from "./merge-table";
 
@@ -58,6 +59,8 @@ interface Props {
   categorias: CategoriaReal[];
   rubro: Rubro;
   borrador: BorradorGuardado;
+  /** Qué lleva IMEI: para pedir los que el Excel no trajo. */
+  serie: SerieConciliacion;
 }
 
 export function ConciliacionClient({
@@ -68,6 +71,7 @@ export function ConciliacionClient({
   categorias,
   rubro,
   borrador,
+  serie,
 }: Readonly<Props>) {
   const decision = decidirModoConciliacion(items, productos.length);
 
@@ -91,6 +95,7 @@ export function ConciliacionClient({
         rubro={rubro}
         decision={decision}
         borradorInicial={borradorCargaInicial}
+        serie={serie}
         onCambiarModo={() => {
           setModo("CONCILIACION");
           toast.info(
@@ -123,6 +128,7 @@ export function ConciliacionClient({
         productos={productos}
         sugerenciasSimilitud={sugerenciasSimilitud}
         borradorServidor={borradorConciliacion}
+        serie={serie}
       />
     </div>
   );

@@ -17,11 +17,12 @@ import type {
  * electro, y por eso la respuesta para ellas es simplemente ausencia de
  * clave, no un error.
  *
- * `llevaSerie` son las variantes cuyo PRODUCTO está marcado "lleva IMEI"
- * (`productos.lleva_serie`). Con eso el POS advierte cuando una de ellas no
- * tiene ninguna unidad cargada: sin la marca, un celular cargado a mano se
- * vendía sin pedir nada y el ticket salía sin IMEI. Viaja acá y no en el
- * catálogo del celular para no depender de que la copia local esté al día.
+ * `llevaSerie` son las variantes cuyo producto lleva IMEI, por él o por su
+ * categoría (`variantes_llevan_serie`). Con eso el POS pide el número (o un
+ * motivo) cuando una de ellas no tiene ninguna unidad cargada: sin la marca, un
+ * celular cargado a mano se vendía sin pedir nada y el ticket salía sin IMEI.
+ * Viaja acá y no en el catálogo del celular para no depender de que la copia
+ * local esté al día.
  */
 export async function getDisponibilidadUnidadesAction(
   varianteIds: string[],
@@ -50,11 +51,9 @@ export async function getDisponibilidadUnidadesAction(
         .select("producto_variante_id")
         .in("producto_variante_id", lote)
         .eq("estado", "disponible"),
-      supabase
-        .from("producto_variantes")
-        .select("id, producto:productos!inner(lleva_serie)")
-        .in("id", lote)
-        .eq("producto.lleva_serie", true),
+      // Por el producto O por su categoría (20261007120000). Mismo criterio
+      // que usa create-sale para exigir el motivo.
+      supabase.rpc("variantes_llevan_serie", { p_variante_ids: lote }),
     ]);
 
     if (unidades.error) {
@@ -74,12 +73,14 @@ export async function getDisponibilidadUnidadesAction(
       disponibilidad[varianteId] = (disponibilidad[varianteId] ?? 0) + 1;
     }
 
-    // La marca solo alimenta una advertencia: si la consulta falla, se deja
-    // rastro y se sigue sin ella. Frenar el cobro por un aviso sería peor.
+    // Si falla se sigue sin la marca: el server (create-sale) igual exige el
+    // IMEI o el motivo, así que acá solo se pierde el modal anticipado.
     if (marcadas.error) {
       console.error("[UNIDADES SERIE] Error consultando lleva_serie:", marcadas.error);
     } else {
-      for (const row of marcadas.data ?? []) llevaSerie.push(row.id as string);
+      for (const row of (marcadas.data ?? []) as { variante_id: string }[]) {
+        llevaSerie.push(row.variante_id);
+      }
     }
   }
 

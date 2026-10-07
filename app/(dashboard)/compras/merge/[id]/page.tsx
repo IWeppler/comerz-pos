@@ -35,6 +35,7 @@ export default async function MergePage({ params }: Readonly<PageProps>) {
       sugerenciasSimilitud,
       categorias,
       borrador,
+      serie,
       error,
     },
     config,
@@ -66,6 +67,7 @@ export default async function MergePage({ params }: Readonly<PageProps>) {
         categorias={(categorias ?? []) as CategoriaReal[]}
         rubro={normalizarRubro(config?.rubro)}
         borrador={borrador as BorradorGuardado}
+        serie={serie}
       />
     </div>
   );

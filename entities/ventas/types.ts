@@ -40,6 +40,9 @@ export interface VentaItem {
     imei: string;
     fecha_venta?: string | null;
   } | null;
+  /** Por qué el aparato salió sin IMEI (elegido en el POS). Ver
+   * `features/sales/lib/aparatos-sin-imei.ts`. */
+  motivo_sin_imei?: string | null;
 }
 
 export interface VentaProducto {
@@ -186,9 +189,16 @@ export interface TicketItemData {
   unidadMedida?: string | null;
   /** Si existe, `cantidad` y el precio del ticket están en esta presentación. */
   presentacionNombre?: string | null;
+  /** Renglón de `ventas_items`. Solo en la reimpresión desde el historial:
+   * permite completar el IMEI de un aparato que salió sin número. */
+  itemId?: string;
+  /** Por qué salió sin IMEI. Solo se muestra en pantalla, no se imprime. */
+  motivoSinImei?: string | null;
 }
 
 export interface TicketData {
+  /** La venta, cuando el ticket se abre desde el historial. */
+  ventaId?: string;
   items: TicketItemData[];
   total: number;
   metodoPago: string;

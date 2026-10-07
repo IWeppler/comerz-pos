@@ -18,6 +18,13 @@ import type {
   UnidadSeleccionada,
   UnidadSerieDisponible,
 } from "@/entities/ventas/unidades-serie-types";
+import { MOTIVOS_SIN_IMEI } from "@/features/sales/lib/aparatos-sin-imei";
+import {
+  MotivoSinImeiField,
+  OPCION_OTRO,
+  motivoElegido,
+  type EleccionMotivoSinImei,
+} from "./motivo-sin-imei-field";
 
 /** Línea del carrito que no se puede vender sin elegir el aparato. */
 export interface LineaSerializada {
@@ -29,11 +36,14 @@ export interface LineaSerializada {
 }
 
 /**
- * Línea de un producto marcado "lleva IMEI" que NO tiene ninguna unidad
- * cargada. No bloquea el cobro: se tipea el número acá (y queda registrado) o
- * se vende sin IMEI a sabiendas.
+ * Línea de un producto que lleva IMEI (por él o por su categoría) que NO tiene
+ * ninguna unidad cargada. Se tipea el número acá (y queda registrado) o se
+ * vende sin IMEI con un motivo, que create-sale exige.
  */
 export type LineaSinImei = LineaSerializada;
+
+/** Por qué sale sin IMEI cada línea que lo lleva y va sin número. */
+export type MotivoSinImeiLinea = { varianteId: string; motivo: string };
 
 /**
  * Cuántos aparatos hay que elegir en una línea: uno por unidad vendida, hasta
@@ -66,14 +76,19 @@ interface SeleccionarUnidadesModalProps {
   onCerrar: () => void;
   lineas: LineaSerializada[];
   lineasSinImei?: LineaSinImei[];
+  /** Variantes que llevan IMEI. Una línea serializada de éstas que vende más
+   * aparatos que los que tienen número pide motivo para los que sobran. */
+  variantesLlevanSerie?: ReadonlySet<string>;
+  /** Motivos ya elegidos en esta venta (reabrir el modal no los pierde). */
+  motivosIniciales?: MotivoSinImeiLinea[];
   /**
    * Se llama con una unidad por línea serializada (más las recién tipeadas).
    * `creadas`: variantes a las que se les acaba de crear la unidad.
-   * `sinImei`: variantes que se venden sin IMEI por decisión de la vendedora.
+   * `sinImei`: líneas que salen (en todo o en parte) sin IMEI, con su motivo.
    */
   onConfirmar: (
     seleccion: UnidadSeleccionada[],
-    extra: { creadas: string[]; sinImei: string[] },
+    extra: { creadas: string[]; sinImei: MotivoSinImeiLinea[] },
   ) => void;
 }
 
@@ -81,6 +96,8 @@ export function SeleccionarUnidadesModal({
   onCerrar,
   lineas,
   lineasSinImei = [],
+  variantesLlevanSerie,
+  motivosIniciales = [],
   onConfirmar,
 }: Readonly<SeleccionarUnidadesModalProps>) {
   // Arranca en true: el componente se monta justo para cargar, así el
@@ -100,7 +117,24 @@ export function SeleccionarUnidadesModal({
   // volver a crearlo y chocar contra el índice único si otro número falló).
   // Las claves de `creadas` son `${varianteId}|${posición}`.
   const [imeiTipeado, setImeiTipeado] = useState<Record<string, string[]>>({});
-  const [sinImei, setSinImei] = useState<Record<string, boolean>>({});
+  const [sinImei, setSinImei] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(motivosIniciales.map((m) => [m.varianteId, true])),
+  );
+  // Motivo por variante. Arranca con lo ya elegido como "Otro" con su texto:
+  // muestra lo mismo y no obliga a elegirlo de nuevo.
+  const [motivos, setMotivos] = useState<Record<string, EleccionMotivoSinImei>>(
+    () =>
+      Object.fromEntries(
+        motivosIniciales.map((m) => [
+          m.varianteId,
+          (MOTIVOS_SIN_IMEI as readonly string[]).includes(m.motivo)
+            ? { opcion: m.motivo, otro: "" }
+            : { opcion: OPCION_OTRO, otro: m.motivo },
+        ]),
+      ),
+  );
+  const elegirMotivo = (varianteId: string, eleccion: EleccionMotivoSinImei) =>
+    setMotivos((prev) => ({ ...prev, [varianteId]: eleccion }));
   const [creadas, setCreadas] = useState<
     Record<string, { unidadId: string; imei: string }>
   >({});
@@ -170,8 +204,21 @@ export function SeleccionarUnidadesModal({
   const casillasSinImei = (linea: LineaSinImei) =>
     Number.isInteger(linea.cantidad) ? linea.cantidad : 0;
 
+  /** Aparatos de una línea serializada que salen sin número porque se venden
+   * más que los que tienen IMEI. Si el producto lleva IMEI, piden motivo. */
+  const sinNumeroDe = (linea: LineaSerializada) =>
+    Math.max(0, linea.cantidad - requeridasDe(linea));
+  const pideMotivoParcial = (linea: LineaSerializada) =>
+    !cargando &&
+    (unidadesPorVariante[linea.varianteId]?.length ?? 0) > 0 &&
+    sinNumeroDe(linea) > 0 &&
+    Boolean(variantesLlevanSerie?.has(linea.varianteId));
+  const parcialesResueltas = lineas.every(
+    (l) => !pideMotivoParcial(l) || motivoElegido(motivos[l.varianteId]) !== null,
+  );
+
   const sinImeiResueltas = lineasSinImei.every((l) => {
-    if (sinImei[l.varianteId]) return true;
+    if (sinImei[l.varianteId]) return motivoElegido(motivos[l.varianteId]) !== null;
     const casillas = casillasSinImei(l);
     const tipeados = imeiTipeado[l.varianteId] ?? [];
     return (
@@ -224,13 +271,22 @@ export function SeleccionarUnidadesModal({
     // la venta después no se hace, el aparato queda con su número en stock,
     // que es la verdad.
     const creadasAhora = { ...creadas };
-    const aceptadasSinImei: string[] = [];
+    const aceptadasSinImei: MotivoSinImeiLinea[] = [];
+    // Las serializadas que venden más aparatos que los que tienen número.
+    for (const linea of lineas) {
+      if (!pideMotivoParcial(linea)) continue;
+      const motivo = motivoElegido(motivos[linea.varianteId]);
+      if (!motivo) return;
+      aceptadasSinImei.push({ varianteId: linea.varianteId, motivo });
+    }
     setErrorSinImei(null);
     setGuardando(true);
     try {
       for (const linea of lineasSinImei) {
         if (sinImei[linea.varianteId]) {
-          aceptadasSinImei.push(linea.varianteId);
+          const motivo = motivoElegido(motivos[linea.varianteId]);
+          if (!motivo) return;
+          aceptadasSinImei.push({ varianteId: linea.varianteId, motivo });
           continue;
         }
         const tipeados = imeiTipeado[linea.varianteId] ?? [];
@@ -358,11 +414,20 @@ export function SeleccionarUnidadesModal({
                     )}
                   </div>
                   {sinNumero > 0 && unidades.length > 0 && (
-                    <p className="px-3 py-2 text-[11px] text-warning border-b border-border">
-                      Se venden {linea.cantidad} y hay {unidades.length} con
-                      IMEI: {sinNumero === 1 ? "1 sale" : `${sinNumero} salen`}{" "}
-                      sin número.
-                    </p>
+                    <div className="px-3 py-2 border-b border-border space-y-2">
+                      <p className="text-[11px] text-warning">
+                        Se venden {linea.cantidad} y hay {unidades.length} con
+                        IMEI: {sinNumero === 1 ? "1 sale" : `${sinNumero} salen`}{" "}
+                        sin número.
+                      </p>
+                      {pideMotivoParcial(linea) && (
+                        <MotivoSinImeiField
+                          idBase={`motivo-parcial-${linea.varianteId}`}
+                          eleccion={motivos[linea.varianteId]}
+                          onChange={(e) => elegirMotivo(linea.varianteId, e)}
+                        />
+                      )}
+                    </div>
                   )}
 
                   {unidades.length === 0 ? (
@@ -488,6 +553,13 @@ export function SeleccionarUnidadesModal({
                       />
                       Vender sin IMEI
                     </label>
+                    {aceptada && (
+                      <MotivoSinImeiField
+                        idBase={`motivo-${linea.varianteId}`}
+                        eleccion={motivos[linea.varianteId]}
+                        onChange={(e) => elegirMotivo(linea.varianteId, e)}
+                      />
+                    )}
                   </div>
                 </div>
               );
@@ -511,7 +583,12 @@ export function SeleccionarUnidadesModal({
               <Button
                 type="button"
                 onClick={() => void handleConfirmar()}
-                disabled={!todasElegidas || !sinImeiResueltas || guardando}
+                disabled={
+                  !todasElegidas ||
+                  !sinImeiResueltas ||
+                  !parcialesResueltas ||
+                  guardando
+                }
               >
                 {guardando && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
                 {lineas.length > 0 ? "Confirmar unidades" : "Continuar"}

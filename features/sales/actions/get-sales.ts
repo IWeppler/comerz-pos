@@ -76,8 +76,10 @@ export async function getVentasAction(opts?: {
         clientes(nombre),
         perfiles(nombre),
         ventas_items (
+          id,
           cantidad,
           cantidad_devuelta,
+          motivo_sin_imei,
           precio_unitario,
           precio_costo,
           variante,

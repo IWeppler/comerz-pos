@@ -33,6 +33,7 @@ import {
   SeleccionarUnidadesModal,
   aparatosRequeridos,
   imeisPorVariante,
+  type MotivoSinImeiLinea,
 } from "./seleccionar-unidades-modal";
 import type {
   DisponibilidadPorVariante,
@@ -209,13 +210,14 @@ export function CartPanelAdmin({
     [items],
   );
 
-  // Variantes del carrito cuyo producto está marcado "lleva IMEI". Si una
-  // de ellas no tiene ninguna unidad cargada, el POS ADVIERTE antes de cobrar
-  // y ofrece tipear el número (no bloquea: el server no lo exige).
+  // Variantes del carrito cuyo producto lleva IMEI (por él o por su
+  // categoría). Si una sale sin número, el POS pide escanearlo o un motivo;
+  // create-sale lo exige en las ventas online.
   const [variantesLlevaSerie, setVariantesLlevaSerie] = useState<string[]>([]);
-  // Las que la vendedora ya decidió vender sin IMEI en esta venta, para no
-  // preguntarle dos veces (p. ej. al reintentar tras "ARCA no responde").
-  const [sinImeiAceptadas, setSinImeiAceptadas] = useState<string[]>([]);
+  // Las que la vendedora ya decidió vender sin IMEI en esta venta, con su
+  // motivo, para no preguntarle dos veces (p. ej. al reintentar tras "ARCA no
+  // responde").
+  const [motivosSinImei, setMotivosSinImei] = useState<MotivoSinImeiLinea[]>([]);
 
   useEffect(() => {
     const ids = varianteIdsCarrito ? varianteIdsCarrito.split(",") : [];
@@ -313,6 +315,23 @@ export function CartPanelAdmin({
         cantidad: i.cantidad,
       }));
   }, [items, variantesLlevaSerie, variantesSerializadas]);
+
+  const setLlevanSerie = useMemo(
+    () => new Set(variantesLlevaSerie),
+    [variantesLlevaSerie],
+  );
+
+  /** Líneas con IMEI cargados pero menos que los aparatos que se venden: los
+   * que sobran salen sin número y, si el producto lleva IMEI, piden motivo. */
+  const lineasParcialesSinImei = useMemo(
+    () =>
+      lineasSerializadas.filter(
+        (l) =>
+          setLlevanSerie.has(l.varianteId) &&
+          l.cantidad > (aparatosPorVariante[l.varianteId] ?? 0),
+      ),
+    [lineasSerializadas, setLlevanSerie, aparatosPorVariante],
+  );
 
   const mounted = useSyncExternalStore(
     subscribeToClientMount,
@@ -960,7 +979,7 @@ export function CartPanelAdmin({
     setFacturarElegido(venta.facturarElegido);
     setCheckoutStep(venta.items.length > 0 ? venta.paso : "CART");
     setUnidadesElegidasRaw(venta.unidadesElegidas);
-    setSinImeiAceptadas([]);
+    setMotivosSinImei([]);
     listaElegidaAMano.current = venta.listaElegidaAMano;
     clienteYaOfrecido.current = null;
     setSelectorClienteAbierto(false);
@@ -1215,7 +1234,7 @@ export function CartPanelAdmin({
 
   const clearCartAndResetStep = () => {
     clearCart();
-    setSinImeiAceptadas([]);
+    setMotivosSinImei([]);
     setSaldoAFavorClienteId(null);
     setCheckoutStep("CART");
     if (esCajaCentral) setVistaTicket("POR_COBRAR");
@@ -1381,7 +1400,7 @@ export function CartPanelAdmin({
     }
     const ctx = p.contexto ?? {};
     clearCart();
-    setSinImeiAceptadas([]);
+    setMotivosSinImei([]);
     for (const i of p.items) {
       addItem({
         productoId: i.productoId,
@@ -1457,9 +1476,12 @@ export function CartPanelAdmin({
     // venta saldría sin aparatos.
     unidadesOverride?: UnidadSeleccionada[],
     /** Reintento tras "ARCA no responde": cobrar con ticket interno.
-     * `sinImeiAceptadas` llega del modal por el mismo motivo que
+     * `motivosSinImei` llega del modal por el mismo motivo que
      * `unidadesOverride`: el estado todavía no se aplicó en este closure. */
-    opciones?: { sinFacturaPorArcaCaido?: boolean; sinImeiAceptadas?: string[] },
+    opciones?: {
+      sinFacturaPorArcaCaido?: boolean;
+      motivosSinImei?: MotivoSinImeiLinea[];
+    },
   ) => {
     const montoRealAsignado =
       montoAnticipoModal !== undefined ? montoAnticipoModal : sumaPagos;
@@ -1470,28 +1492,27 @@ export function CartPanelAdmin({
     for (const u of unidadesParaVenta) {
       aparatosElegidos[u.varianteId] = (aparatosElegidos[u.varianteId] ?? 0) + 1;
     }
-    const aceptadasSinImei = new Set(
-      opciones?.sinImeiAceptadas ?? sinImeiAceptadas,
-    );
+    const motivosParaVenta = opciones?.motivosSinImei ?? motivosSinImei;
+    const conMotivo = new Set(motivosParaVenta.map((m) => m.varianteId));
 
     // Antes que cualquier otra validación: si hay líneas serializadas sin
     // todos sus aparatos elegidos, se abre el modal y no se cobra nada. El
     // server hace el mismo chequeo (esto es solo la UX; la regla vive en
-    // create-sale). En el mismo modal se advierte por los productos que
-    // llevan IMEI y no tienen ninguno cargado; esos no bloquean, se aceptan
-    // explícitamente. Si la selección llega del modal, el modal ya exigió
-    // todos los aparatos (y la disponibilidad de este closure todavía no
-    // cuenta los IMEI recién tipeados ahí).
+    // create-sale). En el mismo modal se piden los productos que llevan IMEI
+    // y salen sin número: se escanea o se elige un motivo (create-sale lo
+    // exige). Si la selección llega del modal, el modal ya exigió todo (y la
+    // disponibilidad de este closure todavía no cuenta los IMEI recién
+    // tipeados ahí).
     if (
       (!unidadesOverride &&
-        lineasSerializadas.some(
+        (lineasSerializadas.some(
           (l) =>
             (aparatosElegidos[l.varianteId] ?? 0) <
             (aparatosPorVariante[l.varianteId] ?? 0),
-        )) ||
+        ) ||
+          lineasParcialesSinImei.some((l) => !conMotivo.has(l.varianteId)))) ||
       lineasSinImei.some(
-        (l) =>
-          !imeisParaVenta[l.varianteId] && !aceptadasSinImei.has(l.varianteId),
+        (l) => !imeisParaVenta[l.varianteId] && !conMotivo.has(l.varianteId),
       )
     ) {
       setAnticipoPendiente(montoAnticipoModal);
@@ -1610,6 +1631,16 @@ export function CartPanelAdmin({
               })),
             ),
           );
+        }
+
+        // Por qué sale sin IMEI cada línea que lo lleva. Solo las que siguen
+        // en el carrito; el server decide a cuáles les corresponde.
+        const variantesEnCarrito = new Set(items.map((i) => i.varianteId));
+        const motivosVigentes = motivosParaVenta.filter((m) =>
+          variantesEnCarrito.has(m.varianteId),
+        );
+        if (motivosVigentes.length > 0) {
+          formData.append("sin_imei", JSON.stringify(motivosVigentes));
         }
 
         const reservaIds = items.flatMap((item) => item.reservaIds ?? []);
@@ -1816,7 +1847,7 @@ export function CartPanelAdmin({
 
         // "Vender sin IMEI" vale para ESTA venta: la próxima del mismo
         // modelo vuelve a preguntar.
-        setSinImeiAceptadas([]);
+        setMotivosSinImei([]);
         setVentaExitosa({
           // El IMEI viaja al ticket recién impreso: es el comprobante de
           // garantía del aparato que el cliente se acaba de llevar.
@@ -2416,6 +2447,8 @@ export function CartPanelAdmin({
           onCerrar={() => setModalUnidades(null)}
           lineas={lineasSerializadas}
           lineasSinImei={lineasSinImei}
+          variantesLlevanSerie={setLlevanSerie}
+          motivosIniciales={motivosSinImei}
           onConfirmar={(seleccion, { creadas, sinImei }) => {
             const modo = modalUnidades;
             // Las unidades recién tipeadas ya existen en la base como
@@ -2431,7 +2464,7 @@ export function CartPanelAdmin({
               });
             }
             setUnidadesElegidasRaw(seleccion);
-            setSinImeiAceptadas(sinImei);
+            setMotivosSinImei(sinImei);
             setModalUnidades(null);
             // Abierto desde el carrito: se guarda el aparato y listo, nadie
             // pidió cobrar todavía.
@@ -2439,7 +2472,7 @@ export function CartPanelAdmin({
             // La selección va por argumento: el estado de arriba todavía no
             // se aplicó en este closure.
             handleConfirmarVentaPOS(anticipoPendiente, seleccion, {
-              sinImeiAceptadas: sinImei,
+              motivosSinImei: sinImei,
             });
           }}
         />

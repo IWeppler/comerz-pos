@@ -69,4 +69,14 @@ describe("construirPayloadCategorias", () => {
     expect(payload.every((f) => "imagen_url" in f)).toBe(true);
     expect(payload[1].imagen_url).toBeNull();
   });
+
+  it("incluye lleva_serie en TODAS las filas (NOT NULL + upsert por unión de claves)", () => {
+    const payload = construirPayloadCategorias([
+      { id: "a", nombre: "Celulares", activa: true, parent_id: null, lleva_serie: true },
+      { id: "b", nombre: "Fundas", activa: true, parent_id: null },
+    ]);
+
+    expect(payload[0].lleva_serie).toBe(true);
+    expect(payload[1]).toHaveProperty("lleva_serie", false);
+  });
 });

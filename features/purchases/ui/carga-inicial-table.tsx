@@ -31,6 +31,18 @@ import {
 } from "../actions/carga-inicial";
 import { aprobarOrdenAction } from "../actions/merge-purchase";
 import { ProgresoOverlay } from "./progreso-overlay";
+import {
+  AlertaImeisFaltantes,
+  ImeisRemitoPanel,
+  type RenglonImei,
+} from "./imeis-remito-panel";
+import {
+  faltantesImei as calcularFaltantesImei,
+  problemasImeis,
+  type FaltanteImei,
+} from "../lib/imeis-remito";
+import type { SerieConciliacion } from "../lib/imeis-remito";
+import { categoriaPideImeiPorNombre } from "@/shared/lib/categoria-pide-imei";
 
 /**
  * Tabla editable del modo CARGA INICIAL.
@@ -92,6 +104,8 @@ interface Props {
   decision: DecisionModo;
   /** Lo que había guardado en la base de una sesión anterior. */
   borradorInicial: BorradorCargaInicial | null;
+  /** Qué lleva IMEI (criterio de la base, `productos_llevan_serie`). */
+  serie: SerieConciliacion;
   onCambiarModo: () => void;
 }
 
@@ -102,10 +116,15 @@ export function CargaInicialTable({
   rubro,
   decision,
   borradorInicial,
+  serie,
   onCambiarModo,
 }: Readonly<Props>) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  // La alerta de IMEI sin completar al confirmar (null = cerrada).
+  const [faltantesImei, setFaltantesImei] = useState<FaltanteImei[] | null>(
+    null,
+  );
 
   const [recargo, setRecargo] = useState<number | "">(
     borradorInicial?.recargo ?? RECARGO_DEFAULT,
@@ -155,6 +174,64 @@ export function CargaInicialTable({
       ),
     [nuevas],
   );
+
+  // ---- IMEI ---------------------------------------------------------------
+  // Una fila que ya existía lleva IMEI si la base lo dice. Una que se CREA
+  // acá, si su categoría lo pide: marcada, o llamada "Celulares"/"Tablets"
+  // (ella o la de arriba, también si se crea en este momento). Es el espejo
+  // del trigger `productos_lleva_serie_por_categoria`, que marca el producto
+  // al crearlo.
+  const productosConSerie = useMemo(() => new Set(serie.productos), [serie]);
+  const categoriasConSerie = useMemo(() => new Set(serie.categorias), [serie]);
+  const categoriaPideImei = (f: FilaCargaInicial): boolean => {
+    if (!f.categoriaId) return categoriaPideImeiPorNombre(f.categoriaNombreNueva);
+    if (categoriasConSerie.has(f.categoriaId)) return true;
+    const cat = categorias.find((c) => c.id === f.categoriaId);
+    const padre = cat?.parent_id
+      ? categorias.find((c) => c.id === cat.parent_id)
+      : undefined;
+    return (
+      categoriaPideImeiPorNombre(cat?.nombre) ||
+      categoriaPideImeiPorNombre(padre?.nombre)
+    );
+  };
+  const filaLlevaSerie = (f: FilaCargaInicial) =>
+    f.yaExistia
+      ? Boolean(f.productoId && productosConSerie.has(f.productoId))
+      : categoriaPideImei(f);
+  const rawImeiPorItem = useMemo(
+    () => new Map(itemsOriginales.map((i) => [i.id ?? "", i.raw_imei ?? null])),
+    [itemsOriginales],
+  );
+  const renglonesImei: RenglonImei[] = filas
+    .filter(filaLlevaSerie)
+    .flatMap((f) =>
+      f.lineas
+        .filter((l) => l.cantidad > 0)
+        .map((l) => ({
+          itemId: l.itemId,
+          nombre: f.nombre || f.rawNombre,
+          variante: l.variante,
+          cantidad: l.cantidad,
+          rawImei: rawImeiPorItem.get(l.itemId) ?? null,
+          imeis: l.imeis ?? [],
+        })),
+    );
+
+  function editarImeis(itemId: string, imeis: string[]) {
+    setFilas((prev) =>
+      prev.map((f) =>
+        f.lineas.some((l) => l.itemId === itemId)
+          ? {
+              ...f,
+              lineas: f.lineas.map((l) =>
+                l.itemId === itemId ? { ...l, imeis } : l,
+              ),
+            }
+          : f,
+      ),
+    );
+  }
 
   // ---- Persistencia: el borrador vive en la BASE ------------------------
   // El de IndexedDB (merge-draft-db.ts) sobrevive a cerrar la pestaña pero no
@@ -306,7 +383,7 @@ export function CargaInicialTable({
 
   // ---- Confirmación ------------------------------------------------------
 
-  async function confirmar() {
+  async function confirmar(aprobarSinImei = false) {
     if (confirmando) return;
 
     const sinNombre = nuevas.find((f) => !f.nombre.trim());
@@ -327,6 +404,28 @@ export function CargaInicialTable({
         `"${sinCantidad.nombre || sinCantidad.rawNombre}" no tiene unidades para ingresar.`,
       );
       return;
+    }
+
+    // IMEI: lo que la base va a rechazar se frena acá con los nombres; lo que
+    // falta completar se avisa y se puede aprobar igual (el POS lo pide).
+    const itemsConImeis = filasAItems(filas, itemsOriginales);
+    const problemas = problemasImeis(itemsConImeis);
+    if (problemas.length > 0) {
+      toast.error(problemas[0], {
+        description:
+          problemas.length > 1 ? `Y ${problemas.length - 1} más.` : undefined,
+      });
+      return;
+    }
+    if (!aprobarSinImei) {
+      const conSerie = new Set(renglonesImei.map((r) => r.itemId));
+      const faltantes = calcularFaltantesImei(itemsConImeis, (i) =>
+        conSerie.has(i.id ?? ""),
+      );
+      if (faltantes.length > 0) {
+        setFaltantesImei(faltantes);
+        return;
+      }
     }
 
     setConfirmando(true);
@@ -782,11 +881,22 @@ export function CargaInicialTable({
         </div>
       )}
 
+      <ImeisRemitoPanel renglones={renglonesImei} onChange={editarImeis} />
+
+      <AlertaImeisFaltantes
+        faltantes={faltantesImei}
+        onCompletar={() => setFaltantesImei(null)}
+        onAprobarIgual={() => {
+          setFaltantesImei(null);
+          void confirmar(true);
+        }}
+      />
+
       <Button
         type="button"
         className="h-12 w-full text-sm font-semibold"
         disabled={confirmando || filas.length === 0}
-        onClick={confirmar}
+        onClick={() => void confirmar()}
       >
         {confirmando
           ? "Cargando…"

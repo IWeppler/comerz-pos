@@ -42,6 +42,7 @@ import {
   normalizarAnchoTicket,
 } from "@/shared/lib/ancho-ticket";
 import type { OrigenEntregaComprobante } from "../actions/registrar-uso";
+import { CompletarImeiRenglon, useImeisPendientes } from "./completar-imei";
 
 interface TicketSheetProps {
   ticket: TicketData | null;
@@ -56,11 +57,15 @@ interface TicketSheetProps {
 }
 
 export function TicketSheet({
-  ticket,
+  ticket: ticketRecibido,
   config,
   onClose,
   origen = "POS",
 }: Readonly<TicketSheetProps>) {
+  // IMEI completados en esta pantalla (aparatos que salieron sin número). Se
+  // aplican sobre el ticket recibido para que la reimpresión, el PDF y el
+  // WhatsApp ya salgan con el número.
+  const { ticket, pendientes, completar } = useImeisPendientes(ticketRecibido);
   const fiscal = ticket?.fiscal ?? null;
   const {
     qrDataUrl,
@@ -320,6 +325,19 @@ export function TicketSheet({
                                 IMEI: {item.imei}
                               </p>
                             )}
+                            {!item.imei && item.motivoSinImei && (
+                              <p className="text-xs text-warning mt-0.5">
+                                Salió sin IMEI: {item.motivoSinImei}
+                              </p>
+                            )}
+                            {!item.imei &&
+                              item.itemId &&
+                              pendientes.has(item.itemId) && (
+                                <CompletarImeiRenglon
+                                  itemId={item.itemId}
+                                  onCompletar={completar}
+                                />
+                              )}
                           </div>
                           <p className="font-mono text-sm font-medium text-foreground shrink-0">
                             {formatTicketMoney(precioUnidad * item.cantidad)}
