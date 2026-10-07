@@ -231,6 +231,39 @@ Es la épica más delicada: toca promociones, que también usa el POS.
 
 ## M4. "Completá tu compra": productos sugeridos en el carrito
 
+### Ampliación autorizada: Intelligence y envío gratis (7/10/2026, local)
+
+- Dashboard: tarjeta de Comerz Intelligence con un par observado y enlace a
+  `/reportes#complementos-catalogo`. Reportes muestra hasta 30 pares, últimos 180
+  días, cantidades de ventas juntas y ventas de cada producto. Dos apariciones
+  significan repetición observada, **no evidencia de incremento ni predicción**.
+- Solo ADMIN puede activar o quitar asociaciones; la RPC valida permisos y ambos
+  productos contra el negocio de la sesión. Son simétricas y se pueden desactivar.
+  Las activas aparecen primero en Reportes incluso sin repetición en el período.
+- La lectura gerencial pide `caja.ver_gerencial`. La consulta agrega en SQL;
+  no amplía la ventana de ventas descargadas al dashboard ni baja tickets al cliente.
+- Carrito con productos: asociaciones activadas → compras conjuntas → misma
+  categoría exacta/subcategoría → familia de categoría. Ya no rellena con los más
+  vendidos de otras categorías. Carrito vacío conserva el ranking general.
+- Sin relacionados, el cliente simula una unidad de cada variante disponible del
+  índice público con `calcularTotalesPedido`. Prioriza el menor gasto adicional
+  **después de descuentos** que alcance cualquiera de los umbrales. Si ninguna
+  alcanza, prioriza el mayor progreso. Excluye productos del carrito, agotados,
+  inactivos y fraccionados (no asume una cantidad arbitraria). Deduplica productos,
+  conserva la opción de variante y muestra hasta cuatro.
+- El bloque «Acercate al envío gratis» informa opción y precio, condición local
+  y confirmación por entrega/pago. No aparece sin umbral, con umbral alcanzado o
+  destino lejano cuando el beneficio es local. Un error de la RPC no se
+  interpreta como ausencia de relacionados.
+- Migración/reversión: `20261007220000_catalogo_complementos_intelligence`.
+  Requiere la RPC original `20261007210000` instalada. Modifica el cuerpo VIVO
+  con guard de coincidencia exacta; si la versión instalada es distinta, aborta.
+  La reversión restaura ese cuerpo y quita únicamente la nueva configuración.
+- **No aplicada ni deployada**: falta conexión SQL para medir el costo real en
+  Librería Colores, aplicar y verificar en la base. No se eligió cache ni precálculo
+  sin esa medición. Harness temporal cubre permisos, jerarquía, simetría, ventas
+  anuladas/devueltas y reversión; tests de TS cubren mínimo, variantes y descuentos.
+
 **M4-T1. De dónde salen (medir antes de decidir)**
 - Fuente automática: **lo que se compra junto en el POS**. Productos que aparecen en
   las mismas ventas que los del carrito, últimos 180 días, sin anuladas.
@@ -239,8 +272,10 @@ Es la épica más delicada: toca promociones, que también usa el POS.
   productos publicados (con stock salvo `mostrar_sin_stock`), sin los del carrito,
   ordenados por cuántas veces se compraron juntos. **Nunca devuelve conteos ni
   datos de ventas** (`anon` no puede ver ventas).
-- Si no alcanza (catálogo nuevo, poco POS): completar con lo más vendido del
-  negocio y después con la misma categoría (`categoria_id`, no `tipo`).
+- Con carrito: priorizar asociaciones activadas, compras conjuntas, categoría
+  exacta y familia de categoría (`categoria_id` / `parent_id`, no `tipo`). Si no
+  hay relacionados, buscar el producto que acerque al envío gratis (ampliación
+  anterior). Más vendidos generales, solo con el carrito vacío.
 - **Medir el costo de la consulta** en Librería Colores (~2.600 ventas en 30 días)
   antes de elegir entre consulta en vivo con `unstable_cache` (por negocio + ids
   ordenados, 1 h) o una tabla precalculada. Dejar el número en este documento.
@@ -254,9 +289,9 @@ Es la épica más delicada: toca promociones, que también usa el POS.
   ninguna columna nueva para `anon`.
 - Con el carrito vacío (M1-T2), "Lo más vendido".
 
-**M4-T3. Opcional, después**: que el dueño elija accesorios a mano por producto
-(tabla `productos_accesorios`, sin FK dura si guarda historia), que ganen sobre los
-automáticos.
+**M4-T3. Asociaciones aprobadas el 7/10/2026**: Intelligence propone pares observados
+y el dueño los activa desde Reportes (ver ampliación anterior). La selección
+manual arbitraria de accesorios sigue fuera del alcance.
 
 ---
 

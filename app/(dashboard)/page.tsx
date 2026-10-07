@@ -1,4 +1,6 @@
 import { etiquetaFraccionado } from "@/features/dashboard/lib/unidades-vendidas";
+import { Suspense } from "react";
+import { ComplementosCatalogoSeccion } from "@/features/reports/ui/complementos-catalogo-seccion";
 import {
   getVentasAction,
   getPagosCuentaCorrienteAction,
@@ -590,6 +592,10 @@ export default async function DashboardPage({
         </Button>
         <EgresoModal triggerVariant="outline" triggerClassName="h-11 w-full" />
       </div>
+
+      <Suspense fallback={<div className="h-32 animate-pulse rounded-xl bg-muted" aria-label="Cargando asociaciones del catálogo" />}>
+        <ComplementosCatalogoSeccion compacto />
+      </Suspense>
 
       {/* BENTO — dos columnas que se estiran a la misma altura:
             izquierda 40% (KPIs + Insights), derecha 60% (tendencia arriba,

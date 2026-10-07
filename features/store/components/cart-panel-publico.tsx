@@ -380,7 +380,7 @@ export function CartPanelPublico({
             onSeguirComprando={cerrarPanel}
             onContinuar={() => setPaso("DATOS")}
             pie={campoCupon}
-          >{progreso}{isOpen && <SugerenciasCarrito ids={items.map(i => i.productoId)} onVerFicha={cerrarPanel} />}</CartPasoProductos>
+          >{progreso}{isOpen && <SugerenciasCarrito ids={items.map(i => i.productoId)} onVerFicha={cerrarPanel} contextoEnvio={{ promociones: promocionesPedido, opcionPago, config: branding, destino: envioInfo?.tipo }} />}</CartPasoProductos>
         ) : (
           <>
             <CartPasoDatos

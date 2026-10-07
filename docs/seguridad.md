@@ -118,6 +118,15 @@ muestre no es control de acceso.
   [catalogo-marketing.md](catalogo-marketing.md).
 - El schema `archivo` guarda backups sin USAGE para nadie.
 
+Ampliación local de asociaciones del catálogo (`20261007220000`, sin aplicar):
+`productos_complementarios_catalogo` nace cerrada a anon y sin escritura directa
+de authenticated. Lectura con aislamiento RESTRICTIVE y `caja.ver_gerencial`;
+`configurar_complemento_catalogo` valida ADMIN, negocio de sesión y ambos productos.
+`analisis_complementos_catalogo` pide el permiso gerencial en la base. La fuente
+compartida `security.compras_catalogo_180d` no concede EXECUTE a anon/authenticated.
+La RPC pública sigue devolviendo únicamente IDs. Diseño y estado en
+[catalogo-marketing.md](catalogo-marketing.md), ampliación de M4.
+
 ## Auth y sesión
 
 Ver [alta-y-sesion.md](alta-y-sesion.md): claim del token, callback de un solo uso,

@@ -57,9 +57,12 @@ No volver a proponerlo sin resolver el bloqueo:
 - **Sell-through por lote / capital inmovilizado**: falta un `lote_id` en
   `ventas_items`.
 - **Ciclo de conversión de efectivo**: faltan los días de pago a proveedor.
-- **Venta cruzada**: medido en 90 días de Evens, el par más frecuente aparece dos
-  veces. No hay señal hasta ~6 meses. (La fragmentación de categorías duplicadas
-  degrada toda señal por categoría.)
+- **Venta cruzada predictiva**: medido en 90 días de Evens, el par más frecuente
+  aparece dos veces. Eso no permite prometer ventas ni presentar una correlación
+  como palanca. La ampliación local del 7/10 muestra pares observados en 180 días y
+  permite al ADMIN activar asociaciones para el catálogo, sin predicción ni
+  incremento estimado. Estado, permisos y pruebas en
+  [catalogo-marketing.md](catalogo-marketing.md), sección de ampliación de M4.
 
 ## Panel (`/`) y egress
 

@@ -1,4 +1,6 @@
 import { cookies } from "next/headers";
+import { Suspense } from "react";
+import { ComplementosCatalogoSeccion } from "@/features/reports/ui/complementos-catalogo-seccion";
 import {
   getVentasAction,
   getPagosCuentaCorrienteAction,
@@ -257,6 +259,9 @@ export default async function ReportesPage({
   return (
     <div className="flex flex-col gap-4 px-4 p-2">
       <AdvisorBanner insights={insights} />
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Cargando asociaciones del catálogo" />}>
+        <ComplementosCatalogoSeccion />
+      </Suspense>
 
       <Tabs defaultValue="resumen" className="w-full space-y-4 mt-2">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-border/50 pb-2">

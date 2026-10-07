@@ -13,9 +13,11 @@ try {
   await db.exec(`create role anon; create role authenticated; create schema security;
     create function security.current_negocio_id() returns uuid language sql as $$ select '${n}'::uuid $$;
     create function security.is_super_admin() returns boolean language sql as $$ select current_setting('test.admin', true) = 'true' $$;
+    create function public.is_admin() returns boolean language sql as $$ select current_setting('test.editor', true) = 'true' $$;
+    create function public.tiene_permiso(text) returns boolean language sql as $$ select current_setting('test.gerencial', true) = 'true' $$;
     create function public.cantidad_base(numeric,numeric) returns numeric language sql as $$ select $1*$2 $$;
     grant usage on schema security, public to anon, authenticated;`);
-  for (const tabla of ['negocios','configuracion_pos','promociones','promociones_categorias','promociones_metodos_pago','promociones_productos','eventos_uso','productos','producto_variantes','ventas','ventas_items']) {
+  for (const tabla of ['negocios','categorias','configuracion_pos','promociones','promociones_categorias','promociones_metodos_pago','promociones_productos','eventos_uso','productos','producto_variantes','ventas','ventas_items']) {
     const ddl = baseline.match(new RegExp(`CREATE TABLE IF NOT EXISTS "public"\\."${tabla}" \\([\\s\\S]*?\\n\\);`))?.[0];
     assert(ddl, tabla);
     await db.exec(ddl);
@@ -74,6 +76,51 @@ try {
   assert.equal(metricas.negocios.find(r => r.id === n).marketing.cupon.con_beneficio, 1);
   await db.exec(`update security.intentos_cupon_catalogo set ultimo = now() - interval '6 minutes', bloqueado_hasta = now() - interval '1 minute' where negocio_id = '${n}';`);
   assert.equal((await db.query(`select public.validar_cupon_catalogo('VERANO10') p`)).rows[0].p.nombre, 'Cupón');
+  const sugerenciasAntes = (await db.query(`select pg_get_functiondef('public.sugerencias_carrito(uuid[],integer)'::regprocedure) d`)).rows[0].d;
+  await cargar('20261007220000_catalogo_complementos_intelligence');
+  const extra = [5,6].map(i => `30000000-0000-0000-0000-00000000000${i}`);
+  const categorias = [1,2].map(i => `60000000-0000-0000-0000-00000000000${i}`);
+  await db.exec(`select set_config('test.editor','true',false),set_config('test.gerencial','true',false);
+    insert into public.categorias(id,negocio_id,nombre,slug) values('${categorias[0]}','${n}','Principal','principal');
+    insert into public.categorias(id,negocio_id,nombre,slug,parent_id) values('${categorias[1]}','${n}','Hija','hija','${categorias[0]}');
+    update public.productos set categoria_id='${categorias[1]}' where id='${pids[0]}';
+    insert into public.productos(id,negocio_id,nombre,precio,slug,publicado,categoria_id) values
+      ('${extra[0]}','${n}','Ajeno a categoría',500,'otro',true,null),('${extra[1]}','${n}','De la principal',500,'principal',true,'${categorias[0]}');
+    insert into public.producto_variantes(producto_id,negocio_id,nombre_display,stock) values('${extra[0]}','${n}','Único',5),('${extra[1]}','${n}','Único',5);`);
+  await db.exec('set role anon');
+  const relacionados = (await db.query(`select * from public.sugerencias_carrito(array['${pids[0]}']::uuid[],6)`)).rows;
+  assert.deepEqual(relacionados, [{producto_id:pids[1]},{producto_id:extra[1]}]);
+  await assert.rejects(db.query('select * from public.productos_complementarios_catalogo'));
+  await assert.rejects(db.query('select public.analisis_complementos_catalogo()'));
+  await assert.rejects(db.query(`select * from security.compras_catalogo_180d('${n}')`));
+  await db.exec('reset role; set role authenticated');
+  await db.query(`select public.configurar_complemento_catalogo('${pids[0]}','${extra[0]}',true)`);
+  await assert.rejects(db.query(`select public.configurar_complemento_catalogo('${pids[0]}','${pids[3]}',true)`));
+  await db.exec('reset role; set role anon');
+  assert.equal((await db.query(`select * from public.sugerencias_carrito(array['${pids[0]}']::uuid[],6)`)).rows[0].producto_id,extra[0]);
+  assert.deepEqual((await db.query(`select * from public.sugerencias_carrito(array['${extra[0]}']::uuid[],6)`)).rows, [{producto_id:pids[0]}]);
+  await db.exec('reset role; set role authenticated');
+  await db.exec('reset role');
+  for (const [i,estado,devuelto] of [[2,'CONFIRMADA',0],[3,'ANULADA',0],[4,'CONFIRMADA',1]]) {
+    const venta = `40000000-0000-0000-0000-00000000000${i}`;
+    await db.exec(`insert into public.ventas(id,negocio_id,estado_operacion) values('${venta}','${n}','${estado}');
+      insert into public.ventas_items(venta_id,negocio_id,producto_id,variante,cantidad,cantidad_devuelta,precio_unitario) values
+      ('${venta}','${n}','${pids[0]}','Único',1,${devuelto},1000),('${venta}','${n}','${pids[1]}','Único',1,${devuelto},1000);`);
+  }
+  await db.exec('set role authenticated');
+  const pares = (await db.query('select public.analisis_complementos_catalogo() p')).rows[0].p;
+  assert.equal(pares.pares[0].activo,true);
+  assert.equal(pares.pares[0].ventas_juntas,0);
+  assert.equal(pares.pares.find(p => p.producto_b_id === pids[1]).ventas_juntas,2);
+  assert.equal(pares.pares.find(p => p.producto_b_id === pids[1]).ventas_a,2);
+  await db.query(`select public.configurar_complemento_catalogo('${extra[0]}','${pids[0]}',false)`);
+  await db.exec(`select set_config('test.editor','false',false),set_config('test.gerencial','false',false);`);
+  await assert.rejects(db.query(`select public.configurar_complemento_catalogo('${pids[0]}','${extra[0]}',true)`));
+  await assert.rejects(db.query('select public.analisis_complementos_catalogo()'));
+  assert.deepEqual((await db.query('select * from public.productos_complementarios_catalogo')).rows,[]);
+  await db.exec('reset role');
+  await cargar('20261007220000_catalogo_complementos_intelligence','reversals');
+  assert.equal((await db.query(`select pg_get_functiondef('public.sugerencias_carrito(uuid[],integer)'::regprocedure) d`)).rows[0].d,sugerenciasAntes);
   for (const m of ['20261007210000_catalogo_sugerencias','20261007200000_catalogo_cupones','20261007190000_catalogo_marketing_medicion','20261007180000_catalogo_envio_gratis']) await cargar(m, 'reversals');
   assert.equal((await db.query(`select pg_get_functiondef('public.registrar_pedido_catalogo(numeric,integer,numeric,text,text,boolean)'::regprocedure) d`)).rows[0].d, registroAntes);
   assert.equal((await db.query(`select pg_get_functiondef('public.metricas_pedidos_catalogo()'::regprocedure) d`)).rows[0].d, metricasAntes);
