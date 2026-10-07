@@ -33,6 +33,8 @@ ventas, caja o stock es plata real.**
 | [docs/alta-y-sesion.md](docs/alta-y-sesion.md) | `/auth`, callback, onboarding, middleware, token/claim, invitaciones, /admincomerz, embudo de alta, planes |
 | [docs/insights.md](docs/insights.md) | El panel (`/`), /reportes, cualquier señal o métrica nueva |
 | [docs/presupuestos.md](docs/presupuestos.md) | `features/presupuestos/`, cotizaciones, planes en cuotas, un `tipo_movimiento` nuevo en `venta_pagos` |
+| [docs/catalogo-marketing.md](docs/catalogo-marketing.md) | Plan de herramientas de venta del catálogo: carrito, envío gratis, cupones, sugeridos (épicas M1–M6, no empezadas) |
+| [docs/tienda-online.md](docs/tienda-online.md) | El carrito público (`features/store/`), pedidos u órdenes del catálogo, `registrar_pedido_catalogo`, notificación de venta, push, Mercado Pago |
 
 **Mapa rápido de carpetas**: `features/<módulo>/{actions,lib,ui}` (la lógica pura con
 tests vive en `lib/`), `entities/` (tipos y lógica de dominio compartida),
@@ -346,6 +348,10 @@ las ventas de cada cliente).
 
 ## Backlog de producto (no empezado)
 
+- **Tienda online** (órdenes del catálogo, notificación "Venta realizada", Mercado
+  Pago, app en tiendas): plan por fases en [docs/tienda-online.md](docs/tienda-online.md).
+  Fase 0 (medir pedidos del catálogo) hecha el 7/10/2026; decidir el resto con ese
+  número.
 - **Multi-sucursal**: el Plan Empresa lo vende y no existe. Es UN negocio con varias
   ubicaciones (catálogo y clientes compartidos, stock por depósito): un `sucursal_id`
   bajo `negocio_id`, no otro tenant.
@@ -355,3 +361,12 @@ las ventas de cada cliente).
 - **IVA**: débito / crédito / neto. Depende de ARCA y de compras con datos fiscales.
 - **Región**: migrar a un proyecto Supabase en San Pablo con funciones en `gru1`.
 - **Lotes y vencimientos**: tabla de lotes (farmacia, alimentos, sell-through).
+- **Pinturería con máquina tintométrica** (relevado 7/10/2026, decidido no hacer
+  todavía): vender "base + fórmula de colorantes" con precio por color y guardar la
+  fórmula atada al cliente y a la venta para repetir el color. Hoy solo se puede con
+  venta libre o una variante por color (inmanejable). Relevar con un comercio real
+  antes de diseñar: cómo cobran el color, si guardan fórmulas, qué máquina usan. Las
+  latas cerradas van como VARIANTES (Capacidad × Color), no como presentaciones
+  (esas comparten stock en unidad base, para lo que se vende fraccionado).
+- **Presupuestos con listas de precios y promos**: hoy cotizan a precio base (ver
+  docs/presupuestos.md). Pesa en rubros que cotizan a obras (pinturería, ferretería).

@@ -95,6 +95,45 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   `actualizaciones_precio` (`tipo_operacion = 'REMITO'`), perezoso. El fallback legacy
   de `revertirPreciosAction` queda apagado para REMITO.
 
+### Ajustes por marca y aplicación transaccional (`20261007160000`, aplicada el 7/10/2026)
+
+- Alcances TODOS / CATEGORIA / SELECCION / MARCA. Las marcas se agrupan por NFD sin
+  diacríticos, minúsculas y espacios colapsados/recortados. El filtro usa ese mismo
+  criterio; los signos `%` y `_` son literales. Espejo TS/SQL:
+  `marcas-del-catalogo.ts` / `normalizar_marca_precios`.
+- `actualizaciones_precio.alcance_valor` congela la escritura de la marca o el nombre
+  de la categoría. NULL significa que el alcance no tiene un valor.
+- `aplicar_ajuste_precios` y `revertir_ajuste_precios` son nuevas RPC INVOKER:
+  exigen admin en la base, respetan RLS, filtran negocio y escriben todo en una
+  transacción. Aplicar recibe regla + ids, recalcula desde la base y chequea filas.
+  Si cambiaron los precios desde la simulación, aborta y pide simular otra vez.
+  El UUID de solicitud evita repetir un aumento ante un reintento; aplicar y deshacer
+  se serializan por negocio y toman locks de productos/variantes en orden estable.
+- Se conserva la regla anterior de variantes: solo columnas con valor propio reciben
+  el nuevo valor de cabecera; lo heredado queda NULL. Deshacer restaura SOLO las filas
+  auditadas, incluso NULL; una variante eliminada nunca se trata como producto.
+- `ajuste-precios.ts` y `calcular_ajuste_precio` comparten casos de prueba para %,
+  recargo sobre costo y seis redondeos. TS calcula con decimales exactos (BigInt):
+  $200 + 10% redondeado a $10 es $220, sin el salto binario a $230. Se valida porcentaje finito, no negativo, con
+  hasta dos decimales; reducción hasta 100%. COSTO + FIJAR_MARGEN se rechaza.
+- Simulación, marcas, auditoría e historial se leen paginados, ordenados por id;
+  los filtros por ids se parten en 200. Una lectura truncada o fallida aborta la
+  simulación. Medido en producción el 7/10/2026 (prueba en seco, como admin y con
+  el `statement_timeout` de 8 s de `authenticated`): aumento a TODO Evens, 1.542
+  productos + 45 variantes con precio propio, 2,1 s; deshacer, 0,8 s.
+- **"Recargo sobre costo" rechaza productos sin costo** (`SIN_COSTO_PARA_RECARGO`,
+  espejo `productosSinCostoParaRecargo`): con costo null o 0 el precio quedaba en
+  $0 y el POS y el catálogo lo vendían a $0. La simulación ya lo frena nombrando
+  hasta 5. Medido: Librería Colores 795 productos sin costo, El Nono Cacho 91 de 92.
+- Validación local: `scripts/verificar-ajustes-precios.mjs` levanta PostgreSQL temporal
+  con tablas del baseline y roles simulados. Prueba 15 cálculos compartidos, tenant,
+  admin, NULL heredado, reintento idempotente, RLS que filtra UPDATE, error intermedio
+  con rollback, categoría en transacción revertida y aplicar/deshacer 1.542 productos.
+  La UI se verificó a 390 px con sus componentes reales y acciones ficticias;
+  esto no reemplaza el smoke en producción.
+- Reversión manual en `supabase/reversals/`. Smoke pendiente tras el deploy:
+  aplicar/deshacer por marca en un comercio de prueba.
+
 ## Ingreso de mercadería: UN camino
 
 - **"Ingresar mercadería" (`ingresar-mercaderia-modal.tsx`) igual para todos los
@@ -129,11 +168,56 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   variante. Solo se borra si está disponible y nunca se vendió.
 - **Qué exige el server**: `create-sale` pide una unidad por aparato vendido, hasta
   las disponibles de la variante (con 1 con IMEI y 2 vendidos, el segundo sale sin
-  número). `productos.lleva_serie` (`20260930120000`) alimenta una
-  ADVERTENCIA en el POS cuando una línea de un producto marcado no tiene ninguna
-  unidad: se tipea el IMEI ahí o se vende "sin IMEI" a sabiendas. Por producto y
-  no por rubro (un electro vende fundas). El trigger `unidades_serie_marca_producto`
-  lo prende al cargar cualquier unidad.
+  número).
+- **Qué lleva IMEI** (`20261007120000`): el producto (`productos.lleva_serie`), su
+  categoría o la categoría padre (`categorias.lleva_serie`, switch con el ícono de
+  código de barras en Configuración › Categorías). El criterio vive UNA vez en SQL:
+  `productos_llevan_serie` / `variantes_llevan_serie` / `categorias_llevan_serie`;
+  el POS, create-sale, la conciliación, la ficha y el historial lo consultan, nadie
+  lo reescribe en TS. Por categoría y no por rubro (un electro vende fundas). El
+  trigger `unidades_serie_marca_producto` sigue prendiendo la marca del producto al
+  cargar cualquier unidad. Caso que lo originó: ClickTostado 1-18 (6/10/2026), un
+  Redmi cargado sin IMEI (carga masiva) que el POS vendió sin pedir nada.
+- **Un celular nace pidiendo IMEI** (`20261007140000`): quien lo necesita es el
+  PRODUCTO. El trigger `productos_lleva_serie_por_categoria` (antes de INSERT o de
+  cambiar `categoria_id`) prende `productos.lleva_serie` si su categoría o la de
+  arriba SE LLAMA Celulares / Smartphones / Tablets / Móviles
+  (`categoria_pide_imei_por_nombre`; "Accesorios para celulares" no). Cubre todos
+  los caminos de alta, también una categoría creada en la misma carga inicial.
+  Solo prende, nunca apaga. Aires, heladeras, TV, microondas y auriculares quedan
+  afuera: se marcan a mano. Espejo TS para la conciliación:
+  `shared/lib/categoria-pide-imei.ts` (mismos casos en test y en la migración).
+- **Un renglón por aparato también sin número**: en un producto que lleva IMEI,
+  create-sale graba cada aparato que sale sin IMEI en su propio renglón de cantidad
+  1 (`renglonesPorAparato` con `partirSinUnidad`), para poder completarle el IMEI
+  después. Antes 2 iguales sin IMEI quedaban en un renglón de cantidad 2 que no se
+  podía completar.
+- **Aparato que sale sin número = motivo obligatorio** (venta ONLINE): el modal del
+  POS pide escanear el IMEI o elegir por qué sale sin él (`aparatos-sin-imei.ts`,
+  `motivo-sin-imei-field.tsx`); también para los que sobran en una línea con menos
+  IMEI que unidades. create-sale rechaza la venta online sin motivo y lo guarda en
+  `ventas_items.motivo_sin_imei` (vía `registrar_venta`). La venta OFFLINE se graba
+  igual sin motivo (queda pendiente): rechazarla no deshace la venta, la deja en la
+  cola del celular para siempre.
+- **Completar después**: el ticket del historial ofrece "Agregar IMEI" en los
+  renglones pendientes (cantidad 1, sin unidad, sin devolver, venta no anulada).
+  `completar_imei_venta_item` (SECURITY DEFINER, `ventas.cobrar` + venta propia o
+  `ventas.ver_todas`) crea la unidad ya VENDIDA atada a la venta, sin mover stock,
+  idempotente con el mismo número. Un renglón de 2+ aparatos sin IMEI no se parte.
+- **Conciliación**: los renglones que llevan IMEI y vinieron sin número muestran un
+  input por aparato (`imeis-remito-panel.tsx`; Enter del escáner salta al
+  siguiente), guardados en el borrador. `aprobar_orden_compra` recibe `imeis` (array)
+  además del `imei` del Excel y frena con `REMITO_IMEIS_DE_MAS` si hay más números
+  que unidades. Aprobar con IMEI sin completar muestra la alerta con la lista y deja
+  aprobar igual: el POS los pide al vender. Para un producto que todavía no existe
+  (o se creó en esta pantalla) decide la categoría con la que se crea: elegida,
+  sugerida o del Excel, también una que se crea en la carga inicial.
+- `normalizar_imei` (SQL) es el espejo de `normalizarImei` (TS): sin espacios y en
+  mayúsculas. Desde `20261007120000` también los IMEI del remito se guardan así.
+- **Marca deducida del nombre** (`inferir-marca.ts`): si el Excel no trae columna
+  Marca, la conciliación la deduce de la primera palabra contra un diccionario de
+  electro ("SAMSUNG A17" → la escritura que ya use el comercio). Fuera de la lista
+  no adivina. Va en `marca_inferida`, nunca pisa `raw_marca`.
 - **18/8/2026 se perdieron 4 IMEI de ClickTostado**: la edición de variantes
   borraba y recreaba, y el FK estaba en CASCADE. Hoy el FK es RESTRICT. OJO: la
   grilla de edición conserva el id solo si los ATRIBUTOS no cambian
@@ -219,9 +303,9 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   (`features/stock/lib/columnas-por-rubro.ts`). Las base son iguales; lo específico se
   AGREGA. Cada columna declara si parte variantes. El parser reconoce las de TODOS
   los rubros. No existen `vencimiento` ni `lote` (no hay tabla de lotes).
-- **`configuracion_pos.rubro`** tiene 7 valores con CHECK. Cambia la identidad en la
+- **`configuracion_pos.rubro`** tiene 9 valores con CHECK (incluye cotillón y pinturería). Cambia la identidad en la
   UI (`identidad-por-rubro.ts`: indumentaria "N var.", electro Modelo + EAN), no el
-  schema. `normalizarRubro` cubre los 7.
+  schema. `normalizarRubro` cubre los 9.
 - **El GÉNERO no es un atributo de variante, es la categoría de arriba**
   (HOMBRE › ZAPATILLAS). Viaja como `raw_genero` hasta `resolverCategoriaImport`.
   Única excepción: Ropa Bebé (Bebé/Beba sí es un eje). Se limpió en
@@ -232,6 +316,29 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   del contenido parseado (`importaciones_productos`, unique parcial), plan firmado
   (`firma-plan-import.ts`: si cambió al confirmar, no escribe) y permiso
   `stock.importar_planilla`.
+
+### Pinturería (`20261007170000`, aplicada el 7/10/2026)
+
+- Rubro comercial y operativo `pintureria`; plantilla con marca, capacidad, color,
+  acabado y unidad de medida. Carga rápida muestra Capacidad y Color. POS en lista
+  sin fotos, marca habilitada y sin reservas; defaults Unidad y 21%.
+- Latas cerradas: VARIANTES (Capacidad × Color), cada una con su stock. Las
+  PRESENTACIONES comparten stock en unidad base y sirven para venta fraccionada:
+  una lata cerrada de 20 L no es una presentación. Aguarrás suelto: unidad LITRO.
+- Ambos parsers reconocen litros/lts; en Pinturería también capacidad/contenido/tamaño.
+  Se pasa el rubro para conservar capacidad=memoria en electro y tamaño=talle en ropa.
+  Acabado se conserva como atributo de la fila; no se ofrece como eje inline.
+- Categorías sugeridas: Látex, Esmaltes, Barnices, Impermeabilizantes, Preparación,
+  Diluyentes, Herramientas y Aerosoles. La categoría Pinturería de ferretería sigue.
+- Migración `20261007170000` agrega el noveno rubro sin reclasificar comercios;
+  también corrige el CASE del alta que en el baseline fuerza indumentaria salvo
+  electro. Lee el cuerpo vivo de `crear_negocio_con_owner`, exige un único match
+  y verifica que no cambie nada fuera de ese CASE. Si producción difiere, aborta
+  para revisar. Reversión aborta si ya existe algún comercio con Pinturería.
+- Smoke pendiente de migración/deploy: alta de comercio Pinturería, descargar plantilla,
+  importar sus tres filas, vender una lata y 0,5 L de aguarrás. Verificar stock por
+  variante y que el aguarrás baje exactamente 0,5 L. En precios: marca con distintas
+  escrituras, simular/aplicar/deshacer, revisar historial y un catálogo de 1.000+.
 
 ## Venta por peso (`20260819120000`, `130000`, `140000`)
 
@@ -275,6 +382,35 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   `reservas`; la consulta vuelve vacía a propósito). Y una reserva tampoco frena la
   venta en el server: `ajustar_stock_variante` no conoce `reservas` (ver
   [presupuestos.md](presupuestos.md)).
+
+### Buscador público (7/10/2026, pendiente de deploy)
+
+- Patrón de Dope Snow: lupa en mobile que abre pantalla completa; campo visible
+  y panel ancho bajo la cabecera en desktop (desde 1024 px). Foco en el input,
+  Escape/volver/clic fuera para cerrar, limpiar conserva el foco. Inputs de 16 px,
+  blancos de 44 px, `dvh`, scroll propio y safe areas.
+- Sugerencias desde nombre/marca/modelo reales (hasta tres), cuatro tarjetas y
+  acceso a todos los resultados. Sin consulta: categorías del comercio; no se
+  inventan “búsquedas populares”. Matching por `coincideConBusqueda` compartido
+  con la grilla, con acentos normalizados y SKU. Respeta productos publicados,
+  ruta de ficha y `mostrar_sin_stock`. Prioriza coincidencias exactas/prefijos y
+  entre iguales los más recientes.
+- `CatalogoPublicoProvider` comparte la descarga entre navbar y grilla, deduplica
+  solicitudes concurrentes y admite reintento. En una ficha recién se pide al
+  abrir búsqueda. Instancia por negocio, sin cache global en el navegador.
+- Tipear no cambia la URL. Enter, sugerencia o “Ver todos los resultados” busca
+  globalmente en la tienda, sin heredar categoría, variantes o selección curada.
+  En portada usa History API; al salir de ficha/categoría/selección usa router
+  porque hay que cambiar la página o regenerar metadata. Links siguen usando
+  `useRutaCatalogo` tanto por path como por subdominio. Al confirmar una búsqueda
+  se lleva la grilla bajo la cabecera, sin tener que atravesar el banner.
+- QA local: búsqueda, visibilidad y navegación tienen tests; revisar también con
+  teclado y a 390/768/1440 px. El teclado virtual y safe areas requieren teléfono
+  real. No necesita columnas nuevas ni migración.
+- Hallazgo aparte en dev (7/10): Next rechazó cachear el índice de Evens porque
+  pesa 2.362.649 bytes y `unstable_cache` admite hasta 2 MB. La lectura respondió,
+  pero el cache no se guardó. Verificar en producción antes de optimizar ese
+  payload; este cambio comparte la descarga del cliente, no altera sus columnas.
 
 ## Renombrar variantes en producción
 
