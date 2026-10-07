@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, BookOpen, ChevronDown, LifeBuoy, MessageCircle, Search, Video } from "lucide-react";
+import { ArrowRight, BookOpen, ChevronDown, LifeBuoy, Search, Video } from "lucide-react";
+import { FaWhatsapp } from "react-icons/fa";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/shared/ui/dialog";
@@ -107,8 +108,9 @@ export function CentroSoporte() {
         <div className="max-w-xl">
           <h2 id="contacto-soporte" className="text-lg font-semibold">¿Necesitás que lo revisemos con vos?</h2>
           <p className="mt-1 text-sm text-muted-foreground">Contanos qué intentabas hacer, en qué pantalla y qué mensaje apareció. Incluí el comercio y el ticket o producto si corresponde.</p>
+          <p className="mt-2 text-sm font-medium">WhatsApp de soporte: +54 11 5470-2118</p>
         </div>
-        <Button asChild className="min-h-11 shrink-0"><a href={WHATSAPP_SOPORTE} target="_blank" rel="noopener noreferrer"><MessageCircle className="mr-2 h-4 w-4" aria-hidden="true" /> Escribir a soporte</a></Button>
+        <Button asChild className="min-h-11 shrink-0"><a href={WHATSAPP_SOPORTE} target="_blank" rel="noopener noreferrer"><FaWhatsapp className="mr-2 h-4 w-4" aria-hidden="true" /> Escribir por WhatsApp</a></Button>
       </section>
 
       <Dialog open={guia !== null} onOpenChange={(abierto) => { if (!abierto) setGuia(null); }}>
@@ -122,7 +124,7 @@ export function CentroSoporte() {
             )}
             <ol className="space-y-3 pl-5 text-sm leading-relaxed [list-style-type:decimal]">{guia.pasos.map((paso) => <li key={paso} className="pl-1">{paso}</li>)}</ol>
             {guia.nota && <p className="rounded-lg bg-muted/40 p-3 text-sm leading-relaxed text-muted-foreground">{guia.nota}</p>}
-            <Button asChild variant="outline" className="min-h-11"><a href={`https://wa.me/541154702118?text=${encodeURIComponent(`Hola, necesito ayuda con la guía «${guia.titulo}» de Comerz. Mi comercio es: `)}`} target="_blank" rel="noopener noreferrer">Consultar esta guía con soporte</a></Button>
+            <Button asChild variant="outline" className="min-h-11"><a href={`https://wa.me/541154702118?text=${encodeURIComponent(`Hola, necesito ayuda con la guía «${guia.titulo}» de Comerz. Mi comercio es: `)}`} target="_blank" rel="noopener noreferrer"><FaWhatsapp className="mr-2 h-4 w-4" aria-hidden="true" />Consultar esta guía con soporte</a></Button>
           </>}
         </DialogContent>
       </Dialog>
