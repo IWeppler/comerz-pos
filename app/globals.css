@@ -16,6 +16,58 @@
 .carrito-publico,
 .carrito-publico * { border-radius: 0; }
 
+/* Radix mantiene el portal durante la animación de salida. Una transición
+   sola no anima la entrada: el panel se monta directamente con estado open. */
+.carrito-publico,
+.carrito-publico-overlay {
+  animation-timing-function: var(--ease-out);
+  animation-fill-mode: both;
+}
+.carrito-publico[data-state="open"] {
+  animation-name: carrito-entrar;
+  animation-duration: 240ms;
+}
+.carrito-publico[data-state="closed"] {
+  animation-name: carrito-salir;
+  animation-duration: 200ms;
+}
+.carrito-publico-overlay[data-state="open"] {
+  animation-name: carrito-overlay-entrar;
+  animation-duration: 200ms;
+}
+.carrito-publico-overlay[data-state="closed"] {
+  animation-name: carrito-overlay-salir;
+  animation-duration: 200ms;
+}
+@keyframes carrito-entrar {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+@keyframes carrito-salir {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+@keyframes carrito-overlay-entrar {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes carrito-overlay-salir {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .carrito-publico[data-state="open"],
+  .carrito-publico-overlay[data-state="open"] {
+    animation-name: carrito-overlay-entrar;
+    animation-duration: 120ms;
+  }
+  .carrito-publico[data-state="closed"],
+  .carrito-publico-overlay[data-state="closed"] {
+    animation-name: carrito-overlay-salir;
+    animation-duration: 120ms;
+  }
+}
+
 /* El naranja del logo de Comerz: lo único con color en el catálogo. Lo usa la
    barra de envío gratis; completa, pasa al degradé del logo (naranja → rosa). */
 :root {

@@ -337,13 +337,11 @@ export function CartPanelPublico({
     <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
       <Dialog.Portal>
         <Dialog.Overlay
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity"
+          className="carrito-publico-overlay fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
         />
 
       <Dialog.Content aria-describedby={undefined}
-        className={`carrito-publico fixed top-0 right-0 z-50 flex h-dvh w-full transform flex-col overflow-x-hidden border-l border-border bg-card pb-[env(safe-area-inset-bottom)] transition-transform duration-300 motion-reduce:transition-none ease-in-out sm:w-[440px] lg:w-[480px] ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className="carrito-publico fixed top-0 right-0 z-50 flex h-dvh w-full flex-col overflow-x-hidden border-l border-border bg-card pb-[env(safe-area-inset-bottom)] sm:w-[440px] lg:w-[480px]"
       >
         <Dialog.Title className="sr-only">Tu carrito</Dialog.Title>
         <CartSidebarHeader
