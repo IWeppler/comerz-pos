@@ -1,0 +1,152 @@
+[
+  {
+    "costo": 100,
+    "precio": 200,
+    "campo": "AMBOS",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 10,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 110,
+    "nuevoPrecio": 220
+  },
+  {
+    "costo": 100,
+    "precio": 200,
+    "campo": "PRECIO",
+    "operacion": "REDUCIR_PORCENTAJE",
+    "valor": 100,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 0
+  },
+  {
+    "costo": 25.55,
+    "precio": 80,
+    "campo": "AMBOS",
+    "operacion": "REDUCIR_PORCENTAJE",
+    "valor": 15,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 21.72,
+    "nuevoPrecio": 68
+  },
+  {
+    "costo": 10,
+    "precio": 1.005,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 0,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 10,
+    "nuevoPrecio": 1.01
+  },
+  {
+    "costo": 9.95,
+    "precio": 30,
+    "campo": "COSTO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 10,
+    "redondeo": "100",
+    "nuevoCosto": 10.95,
+    "nuevoPrecio": 30
+  },
+  {
+    "costo": 100,
+    "precio": 400,
+    "campo": "PRECIO",
+    "operacion": "FIJAR_MARGEN",
+    "valor": 50,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 150
+  },
+  {
+    "costo": 100,
+    "precio": 400,
+    "campo": "AMBOS",
+    "operacion": "FIJAR_MARGEN",
+    "valor": 50,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 150
+  },
+  {
+    "costo": null,
+    "precio": 200,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 10,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": null,
+    "nuevoPrecio": 220
+  },
+  {
+    "costo": 100,
+    "precio": 121,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 0,
+    "redondeo": "10",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 130
+  },
+  {
+    "costo": 100,
+    "precio": 121,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 0,
+    "redondeo": "50",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 150
+  },
+  {
+    "costo": 100,
+    "precio": 121,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 0,
+    "redondeo": "100",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 200
+  },
+  {
+    "costo": 100,
+    "precio": 199,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 0,
+    "redondeo": "90",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 190
+  },
+  {
+    "costo": 100,
+    "precio": 121,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 0,
+    "redondeo": "99",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 199
+  },
+  {
+    "costo": 100,
+    "precio": 200,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 10,
+    "redondeo": "10",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 220
+  },
+  {
+    "costo": 100,
+    "precio": 9999999.95,
+    "campo": "PRECIO",
+    "operacion": "AUMENTAR_PORCENTAJE",
+    "valor": 10,
+    "redondeo": "SIN_REDONDEO",
+    "nuevoCosto": 100,
+    "nuevoPrecio": 10999999.95
+  }
+]

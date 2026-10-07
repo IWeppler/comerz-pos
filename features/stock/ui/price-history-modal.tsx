@@ -34,6 +34,7 @@ const LABEL_OPERACION: Record<OperacionPrecio, string> = {
 };
 
 const LABEL_ALCANCE: Record<AlcancePrecio, string> = {
+  MARCA: "Marca",
   TODOS: "Todos los productos",
   CATEGORIA: "Categoría",
   SELECCION: "Productos seleccionados",
@@ -178,7 +179,7 @@ export function PriceHistoryModal({
         </DialogTrigger>
       )}
 
-      <DialogContent className="sm:max-w-[650px] p-0 overflow-hidden bg-card border-border">
+      <DialogContent className="sm:max-w-[650px] max-h-[90dvh] p-0 overflow-y-auto bg-card border-border">
         <DialogHeader className="p-6 pb-4 border-b border-border bg-muted/20">
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <History className="w-5 h-5 text-primary" />
@@ -222,7 +223,7 @@ export function PriceHistoryModal({
                               <p className="text-xs text-muted-foreground">
                                 {formatearFechaHora(lote.creado_en)} ·{" "}
                                 {LABEL_ALCANCE[lote.tipo_alcance] ??
-                                  lote.tipo_alcance}{" "}
+                                  lote.tipo_alcance}{lote.alcance_valor ? ` · ${lote.alcance_valor}` : ""}{" "}
                                 · {lote.campo_objetivo}
                               </p>
                             </div>
@@ -240,7 +241,7 @@ export function PriceHistoryModal({
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center justify-between gap-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                             <p className="text-xs text-muted-foreground">
                               {lote.productosAfectados} producto
                               {lote.productosAfectados === 1 ? "" : "s"}
@@ -254,7 +255,7 @@ export function PriceHistoryModal({
                               variant="outline"
                               disabled={yaRevertido}
                               onClick={() => handleSeleccionarLote(lote)}
-                              className="h-8 text-xs shrink-0"
+                              className="h-11 text-xs shrink-0"
                             >
                               <Undo2 className="w-3.5 h-3.5 mr-1.5" />
                               Revertir este ajuste
@@ -274,7 +275,7 @@ export function PriceHistoryModal({
                 variant="ghost"
                 size="sm"
                 onClick={resetSeleccion}
-                className="h-8 -ml-2"
+                className="h-11 -ml-2"
               >
                 <ArrowLeft className="w-4 h-4 mr-1.5" /> Volver al historial
               </Button>

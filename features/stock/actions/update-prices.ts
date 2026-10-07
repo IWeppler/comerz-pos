@@ -5,25 +5,14 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { invalidarCatalogoDeSesion } from "@/shared/lib/cache-catalogo";
 
-/** SELECCION = los ids que el usuario marcó en la tabla/grilla de stock.
- * `actualizaciones_precio.tipo_alcance` es `text` sin CHECK, así que el valor
- * nuevo entra al historial sin migración. */
-export type AlcancePrecio = "TODOS" | "CATEGORIA" | "SELECCION" | "REMITO";
-/**
- * REMITO no lo produce este módulo: lo escribe `aprobar_orden_compra_impl`
- * desde 20260908190000, cuando aprobar un ingreso de mercadería cambia un
- * precio. Hasta entonces un cambio de precio hecho por un remito no dejaba
- * ninguna fila, y por eso no se pudo fechar el caso que reportó Evelyn.
- *
- * Está en el mismo lote y con el mismo formato que un ajuste masivo a
- * propósito: así "Deshacer" del historial de precios funciona sobre un remito
- * sin una línea de código más. Lo que NO deshace es el stock, que ya entró —
- * revertir un lote REMITO devuelve los precios, no la mercadería.
- */
-export type OperacionPrecio =
-  "AUMENTAR_PORCENTAJE" | "REDUCIR_PORCENTAJE" | "FIJAR_MARGEN" | "REMITO";
-export type CampoObjetivo = "PRECIO" | "COSTO" | "AMBOS";
-export type TipoRedondeo = "SIN_REDONDEO" | "10" | "50" | "100" | "90" | "99";
+import {
+  calcularAjuste, validarReglaPrecio, productosSinCostoParaRecargo,
+  type ReglaPrecio, type AlcancePrecio, type OperacionPrecio,
+  type CampoObjetivo, type TipoRedondeo,
+} from "../lib/ajuste-precios";
+import { agruparMarcas, normalizarMarca } from "../lib/marcas-del-catalogo";
+import { leerCompleto, leerPorIds } from "../lib/lectura-ajuste-precios";
+export type { AlcancePrecio, OperacionPrecio, CampoObjetivo, TipoRedondeo } from "../lib/ajuste-precios";
 
 export interface PrevisualizacionItem {
   producto_id: string;
@@ -48,6 +37,7 @@ export interface AjustePrecioHistorialItem {
   id: string;
   nombre: string;
   tipo_alcance: AlcancePrecio;
+  alcance_valor: string | null;
   tipo_operacion: OperacionPrecio;
   campo_objetivo: CampoObjetivo;
   valor: number;
@@ -92,373 +82,88 @@ async function esUsuarioAdmin(
   return esAdmin === true;
 }
 
-// ----------------------------------------------------------------------
-// HELPER: Lógica matemática de aplicación y redondeo
-// ----------------------------------------------------------------------
-function calcularNuevoValor(
-  valorOriginal: number,
-  operacion: OperacionPrecio,
-  valorInput: number,
-): number {
-  if (operacion === "AUMENTAR_PORCENTAJE")
-    return valorOriginal * (1 + valorInput / 100);
-  if (operacion === "REDUCIR_PORCENTAJE")
-    return valorOriginal * (1 - valorInput / 100);
-  return valorOriginal;
+export async function listarMarcasAction() {
+  const supabase = createClient(await cookies());
+  if (!(await esUsuarioAdmin(supabase))) return { error: "Solo un administrador puede ver las marcas para ajustar precios." };
+  const res = await leerCompleto("Marcas del catálogo", (desde, hasta) => supabase.from("productos")
+    .select("marca", { count: "exact" }).order("id").range(desde, hasta));
+  if (res.error) return { error: res.error };
+  return { data: agruparMarcas(res.data) };
 }
 
-function aplicarRedondeo(valor: number, tipo: TipoRedondeo): number {
-  if (tipo === "SIN_REDONDEO") return Number(valor.toFixed(2));
-
-  const entero = Math.round(valor);
-
-  if (tipo === "10") return Math.ceil(valor / 10) * 10;
-  if (tipo === "50") return Math.ceil(valor / 50) * 50;
-  if (tipo === "100") return Math.ceil(valor / 100) * 100;
-
-  // Terminar en 90 o 99
-  if (tipo === "90") return Math.floor(valor / 100) * 100 + 90;
-  if (tipo === "99") return Math.floor(valor / 100) * 100 + 99;
-
-  return entero;
-}
-
-// 1. SIMULADOR DE PRECIOS (PREVIEW)
+// La marca y la categoría comparten valorAlcance; SELECCION usa ids.
 export async function simularPreciosAction(
-  alcance: AlcancePrecio,
-  categoriaFiltro: string,
-  campo: CampoObjetivo,
-  operacion: OperacionPrecio,
-  valor: number,
-  redondeo: TipoRedondeo,
-  /** Solo para alcance SELECCION: los productos marcados en el módulo. */
-  productIds?: string[],
+  alcance: AlcancePrecio, valorAlcance: string, campo: CampoObjetivo,
+  operacion: OperacionPrecio, valor: number, redondeo: TipoRedondeo, productIds?: string[],
 ) {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  // El alcance se resuelve SIEMPRE contra la base, nunca contra lo que el
-  // cliente dice que hay adentro: el cliente manda ids, el server relee
-  // precio y costo actuales de esos ids.
-  if (alcance === "SELECCION" && (!productIds || productIds.length === 0)) {
-    return { error: "No hay productos seleccionados." };
-  }
-
-  let query = supabase
-    .from("productos")
-    .select(
-      "id, nombre, tipo, categoria_id, precio, precio_costo, categoria:categorias(nombre)",
-    );
-
-  if (alcance === "CATEGORIA" && categoriaFiltro !== "todos") {
-    query = query.eq("categoria_id", categoriaFiltro);
-  }
-
-  if (alcance === "SELECCION") {
-    query = query.in("id", productIds!);
-  }
-
-  const { data: productos, error } = await query;
-
-  if (error || !productos) {
-    return { error: "No se pudieron cargar los productos para la simulación." };
-  }
-
-  // Chequeo de precio $0 en variantes del alcance (el operador de % directo
-  // no tiene ningún efecto sobre una base en $0, y no había ninguna alerta
-  // de esto antes de aplicar el ajuste).
-  const productoIds = productos.map((p) => p.id);
-  const { data: variantesEnAlcance } = await supabase
-    .from("producto_variantes")
-    .select("id, producto_id, precio")
-    .in("producto_id", productoIds.length > 0 ? productoIds : [""]);
-
-  const esAjustePorcentualSobrePrecio =
-    (operacion === "AUMENTAR_PORCENTAJE" ||
-      operacion === "REDUCIR_PORCENTAJE") &&
-    (campo === "PRECIO" || campo === "AMBOS");
-
-  const productosPrecioCero = esAjustePorcentualSobrePrecio
-    ? productos.filter((p) => (Number(p.precio) || 0) === 0).length
-    : 0;
-
-  const variantesPrecioCero = esAjustePorcentualSobrePrecio
-    ? (variantesEnAlcance || []).filter((v) => (Number(v.precio) || 0) === 0)
-        .length
-    : 0;
-
-  const reduccionTotal = operacion === "REDUCIR_PORCENTAJE" && valor >= 100;
-
-  const preview: PrevisualizacionItem[] = productos.map((prod) => {
-    // Blindaje matemático: si viene null/undefined, es 0.
-    const costoBase = Number(prod.precio_costo) || 0;
-    const precioBase = Number(prod.precio) || 0;
-
-    let nuevoCosto = costoBase;
-    let nuevoPrecio = precioBase;
-
-    if (campo === "COSTO" || campo === "AMBOS") {
-      nuevoCosto = calcularNuevoValor(costoBase, operacion, valor);
-    }
-
-    if (campo === "PRECIO" || campo === "AMBOS") {
-      if (operacion === "FIJAR_MARGEN") {
-        // El tipo se llama FIJAR_MARGEN por compatibilidad con el
-        // historial ya guardado en actualizaciones_precio(_items), pero la
-        // fórmula es de recargo sobre costo (mismo criterio que
-        // handleAplicarRecargoGlobal en merge-table.tsx), no margen sobre
-        // precio de venta.
-        const costoReferencia = campo === "AMBOS" ? nuevoCosto : costoBase;
-        nuevoPrecio = costoReferencia * (1 + valor / 100);
-      } else {
-        nuevoPrecio = calcularNuevoValor(precioBase, operacion, valor);
-      }
-      nuevoPrecio = aplicarRedondeo(nuevoPrecio, redondeo);
-    }
-
-    const categoriaRelacion = Array.isArray(prod.categoria)
-      ? prod.categoria[0]
-      : prod.categoria;
-
-    return {
-      producto_id: prod.id,
-      nombre: prod.nombre || "Sin nombre",
-      categoria: categoriaRelacion?.nombre || prod.tipo || "Sin categoría",
-      costo_anterior: costoBase,
-      costo_nuevo: nuevoCosto,
-      diferencia_costo: nuevoCosto - costoBase,
-      precio_anterior: precioBase,
-      precio_nuevo: nuevoPrecio,
-      diferencia_precio: nuevoPrecio - precioBase,
-    };
-  });
-
-  const productosResultanCeroONegativo =
-    campo === "PRECIO" || campo === "AMBOS"
-      ? preview.filter((item) => item.precio_nuevo <= 0).length
-      : 0;
-
-  const advertencias: AdvertenciasPrecio = {
-    productosPrecioCero,
-    variantesPrecioCero,
-    reduccionTotal,
-    productosResultanCeroONegativo,
+  const supabase = createClient(await cookies());
+  if (!(await esUsuarioAdmin(supabase))) return { error: "Solo un administrador puede actualizar precios." };
+  const regla = { alcance, valorAlcance, campo, operacion, valor, redondeo };
+  const invalida = validarReglaPrecio(regla);
+  if (invalida) return { error: invalida };
+  if (alcance === "SELECCION" && !productIds?.length) return { error: "No hay productos seleccionados." };
+  const pagina = (desde: number, hasta: number, ids?: string[]) => {
+    let q = supabase.from("productos").select(
+      "id, nombre, tipo, marca, categoria_id, precio, precio_costo, categoria:categorias(nombre)", { count: "exact" },
+    ).order("id").range(desde, hasta);
+    if (alcance === "CATEGORIA") q = q.eq("categoria_id", valorAlcance);
+    if (ids) q = q.in("id", ids);
+    return q;
   };
-
-  return { preview, advertencias };
+  const res = alcance === "SELECCION"
+    ? await leerPorIds(productIds!, (ids, desde, hasta) => pagina(desde, hasta, ids))
+    : await leerCompleto("Simular precios", (desde, hasta) => pagina(desde, hasta));
+  if (res.error) return { error: res.error };
+  const productos = alcance === "MARCA" ? res.data.filter((p) => normalizarMarca(p.marca) === normalizarMarca(valorAlcance)) : res.data;
+  if (alcance === "SELECCION" && productos.length !== new Set(productIds).size) return { error: "Hay productos seleccionados que ya no están disponibles." };
+  if (!productos.length) return { error: "No hay productos en este alcance." };
+  const sinCosto = productosSinCostoParaRecargo(regla, productos);
+  if (sinCosto) return { error: sinCosto };
+  const variantes = await leerPorIds(productos.map((p) => p.id), (ids, desde, hasta) => supabase
+    .from("producto_variantes").select("id, producto_id, precio", { count: "exact" })
+    .in("producto_id", ids).order("id").range(desde, hasta));
+  if (variantes.error) return { error: variantes.error };
+  const porcentual = operacion !== "FIJAR_MARGEN" && campo !== "COSTO";
+  const preview: PrevisualizacionItem[] = productos.map((p) => {
+    const costo = p.precio_costo === null ? null : Number(p.precio_costo);
+    const precio = Number(p.precio);
+    const nuevo = calcularAjuste(costo, precio, regla);
+    const categoria = Array.isArray(p.categoria) ? p.categoria[0] : p.categoria;
+    return { producto_id: p.id, nombre: p.nombre || "Sin nombre", categoria: categoria?.nombre || p.tipo || "Sin categoría",
+      costo_anterior: costo ?? 0, costo_nuevo: nuevo.costo ?? 0, diferencia_costo: (nuevo.costo ?? 0) - (costo ?? 0),
+      precio_anterior: precio, precio_nuevo: nuevo.precio!, diferencia_precio: nuevo.precio! - precio };
+  });
+  return { preview, advertencias: {
+    productosPrecioCero: porcentual ? productos.filter((p) => Number(p.precio) === 0).length : 0,
+    variantesPrecioCero: porcentual ? variantes.data.filter((v) => v.precio !== null && Number(v.precio) === 0).length : 0,
+    reduccionTotal: operacion === "REDUCIR_PORCENTAJE" && valor === 100,
+    productosResultanCeroONegativo: campo !== "COSTO" ? preview.filter((p) => p.precio_nuevo <= 0).length : 0,
+  } };
 }
 
-// 2. APLICAR CAMBIOS Y GUARDAR LOTE (BATCH)
-export async function aplicarPreciosAction(
-  nombreLote: string,
-  previewData: PrevisualizacionItem[],
-  config: {
-    alcance: string;
-    campo: string;
-    operacion: string;
-    valor: number;
-    redondeo: string;
-  },
-) {
-  if (previewData.length === 0)
-    return { error: "No hay productos para actualizar." };
-
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "No autorizado." };
-
-  // Espejo server-side del gate de UI: la acción entra por dos disparadores
-  // (el menú de Acciones y el modo selección), y estar autenticado no alcanza
-  // para reescribir precios de todo el catálogo.
-  if (!(await esUsuarioAdmin(supabase))) {
-    return {
-      error: "Solo un administrador puede actualizar precios.",
-    };
+// Solo viajan ids y la regla. Los importes de la preview no se usan para escribir.
+export async function aplicarPreciosAction(nombreLote: string, previewData: PrevisualizacionItem[], config: ReglaPrecio, solicitudId: string) {
+  const supabase = createClient(await cookies());
+  if (!(await esUsuarioAdmin(supabase))) return { error: "Solo un administrador puede actualizar precios." };
+  const invalida = validarReglaPrecio(config);
+  if (invalida) return { error: invalida };
+  if (!previewData.length) return { error: "No hay productos para actualizar." };
+  const { error } = await supabase.rpc("aplicar_ajuste_precios", {
+    p_solicitud_id: solicitudId, p_nombre: nombreLote,
+    p_alcance: config.alcance, p_valor_alcance: config.valorAlcance ?? null,
+    p_campo: config.campo, p_operacion: config.operacion, p_valor: config.valor,
+    p_redondeo: config.redondeo, p_producto_ids: previewData.map((p) => p.producto_id),
+    p_prevision: previewData.map((p) => ({ producto_id: p.producto_id, precio_anterior: p.precio_anterior, costo_anterior: p.costo_anterior })),
+  });
+  if (error) {
+    // El mensaje de la base ya está escrito para la persona; se le saca el
+    // código interno del guard.
+    return { error: error.message.replace(/^SIN_COSTO_PARA_RECARGO:\s*/, "") };
   }
-
-  try {
-    const { data: lote, error: loteError } = await supabase
-      .from("actualizaciones_precio")
-      .insert({
-        nombre:
-          nombreLote || `Ajuste ${new Date().toLocaleDateString("es-AR")}`,
-        tipo_alcance: config.alcance,
-        tipo_operacion: config.operacion,
-        campo_objetivo: config.campo,
-        valor: config.valor,
-        redondeo: config.redondeo,
-        cantidad_afectada: previewData.length,
-        creado_por: user.id,
-      })
-      .select("id")
-      .single();
-
-    if (loteError || !lote)
-      throw new Error("Error creando el registro de actualización.");
-
-    // `null` significa "no tenía valor propio", y desde 20260908210000 la
-    // base lo puede guardar. NO es lo mismo que 0: revertir un 0 le escribe
-    // cero al precio de la variante y `variante.precio ?? producto.precio`
-    // devuelve ese cero, o sea que el producto pasa a venderse a $0.
-    // Qué columnas pidió tocar el usuario. La cabecera se escribe entera
-    // igual (la preview ya deja `nuevo = viejo` en la que no se toca), pero en
-    // las variantes sí importa: escribir un costo que nadie pidió cambiar
-    // convertiría un costo heredado en propio.
-    const campoObjetivo = config.campo as CampoObjetivo;
-
-    const itemsHistorial: {
-      lote_id: string;
-      producto_id: string;
-      variante_id: string | null;
-      costo_anterior: number | null;
-      costo_nuevo: number | null;
-      precio_anterior: number | null;
-      precio_nuevo: number | null;
-    }[] = [];
-
-    for (const item of previewData) {
-      itemsHistorial.push({
-        lote_id: lote.id,
-        producto_id: item.producto_id,
-        variante_id: null,
-        costo_anterior: item.costo_anterior,
-        costo_nuevo: item.costo_nuevo,
-        precio_anterior: item.precio_anterior,
-        precio_nuevo: item.precio_nuevo,
-      });
-
-      const { error: updateError } = await supabase
-        .from("productos")
-        .update({
-          precio_costo: item.costo_nuevo,
-          precio: item.precio_nuevo,
-        })
-        .eq("id", item.producto_id);
-
-      if (updateError)
-        console.error(
-          `Error actualizando producto ${item.producto_id}`,
-          updateError,
-        );
-
-      // ------------------------------------------------------------------
-      // LAS VARIANTES QUE HEREDAN NO SE TOCAN, y esto es lo que producía el
-      // bug que reportó Evelyn el 8/9/2026.
-      //
-      // Hasta hoy este bloque le COPIABA el precio nuevo a todas las
-      // variantes del producto, convirtiendo herederas (`precio` null, que
-      // significa "seguime al producto") en copias con el número escrito
-      // encima. Después el remito cambiaba el precio del producto, la copia
-      // se quedaba con el viejo, y como en la venta gana la variante, /stock
-      // mostraba un precio y la caja cobraba otro.
-      //
-      // Medido antes de normalizar: Estilo Bonito corrió 5 ajustes masivos en
-      // julio y tenía 1.142 copias sobre 1.514 variantes (75%); Ninja
-      // Camisetas y ClickTostado, que nunca corrieron uno, tenían cero en 687.
-      // La normalización (20260908200000) limpió las 1.252; esto es lo que
-      // evita que vuelvan.
-      //
-      // Una variante que hereda YA queda actualizada por el UPDATE del
-      // producto de arriba: no hay nada que escribirle. Solo se tocan las que
-      // tienen valor PROPIO, y columna por columna — una variante puede tener
-      // precio propio y costo heredado.
-      // ------------------------------------------------------------------
-      const { data: variantesPrevias } = await supabase
-        .from("producto_variantes")
-        .select("id, precio, costo")
-        .eq("producto_id", item.producto_id);
-
-      const tocaPrecio = campoObjetivo === "PRECIO" || campoObjetivo === "AMBOS";
-      const tocaCosto = campoObjetivo === "COSTO" || campoObjetivo === "AMBOS";
-
-      for (const variante of variantesPrevias || []) {
-        const precioPropio = variante.precio !== null;
-        const costoPropio = variante.costo !== null;
-
-        // Sin valor propio en ninguna de las dos columnas no hay fila de
-        // auditoría: no se la va a tocar, y una fila que dice "de null a
-        // null" solo ensucia el "Deshacer".
-        if (!(precioPropio && tocaPrecio) && !(costoPropio && tocaCosto)) {
-          continue;
-        }
-
-        itemsHistorial.push({
-          lote_id: lote.id,
-          producto_id: item.producto_id,
-          variante_id: variante.id,
-          costo_anterior: costoPropio ? Number(variante.costo) : null,
-          costo_nuevo:
-            costoPropio && tocaCosto
-              ? item.costo_nuevo
-              : costoPropio
-                ? Number(variante.costo)
-                : null,
-          precio_anterior: precioPropio ? Number(variante.precio) : null,
-          precio_nuevo:
-            precioPropio && tocaPrecio
-              ? item.precio_nuevo
-              : precioPropio
-                ? Number(variante.precio)
-                : null,
-        });
-      }
-
-      // Dos UPDATE filtrados en vez de uno sin filtro: cada columna se escribe
-      // solo donde había valor propio. `updated_at` va explícito por el mismo
-      // motivo de siempre — sin moverlo, la sincronización incremental del
-      // catálogo no se entera del cambio.
-      const ahora = new Date().toISOString();
-
-      if (tocaPrecio) {
-        const { error } = await supabase
-          .from("producto_variantes")
-          .update({ precio: item.precio_nuevo, updated_at: ahora })
-          .eq("producto_id", item.producto_id)
-          .not("precio", "is", null);
-
-        if (error)
-          console.error(
-            `Error actualizando precios de variantes de ${item.producto_id}`,
-            error,
-          );
-      }
-
-      if (tocaCosto) {
-        const { error } = await supabase
-          .from("producto_variantes")
-          .update({ costo: item.costo_nuevo, updated_at: ahora })
-          .eq("producto_id", item.producto_id)
-          .not("costo", "is", null);
-
-        if (error)
-          console.error(
-            `Error actualizando costos de variantes de ${item.producto_id}`,
-            error,
-          );
-      }
-    }
-
-    await supabase.from("actualizaciones_precio_items").insert(itemsHistorial);
-
-    revalidatePath("/stock");
-    revalidatePath("/store", "layout");
-    // El precio es lo que la vidriera muestra: sin invalidar el tag, el
-    // catálogo público sigue sirviendo los precios viejos desde
-    // `unstable_cache` hasta que vence el TTL. `revalidatePath` solo no
-    // alcanza — ver cache-catalogo.ts.
-    await invalidarCatalogoDeSesion(supabase);
-    return { success: true };
-  } catch (error: unknown) {
-    console.error("Error en aplicarPreciosAction:", error);
-    const message = error instanceof Error ? error.message : null;
-    return {
-      error:
-        message || "Ocurrió un error inesperado al actualizar los precios.",
-    };
-  }
+  revalidatePath("/stock");
+  revalidatePath("/store", "layout");
+  await invalidarCatalogoDeSesion(supabase);
+  return { success: true };
 }
 
 // 3. LISTAR HISTORIAL DE AJUSTES
@@ -475,12 +180,10 @@ export async function listarHistorialPreciosAction(): Promise<
     };
   }
 
-  const { data: lotes, error: lotesError } = await supabase
+  const { data: lotes, error: lotesError } = await leerCompleto("Historial de precios", (desde, hasta) => supabase
     .from("actualizaciones_precio")
-    .select(
-      "id, nombre, tipo_alcance, tipo_operacion, campo_objetivo, valor, estado, creado_en, revertido_en, cantidad_afectada",
-    )
-    .order("creado_en", { ascending: false });
+    .select("id, nombre, tipo_alcance, alcance_valor, tipo_operacion, campo_objetivo, valor, estado, creado_en, revertido_en, cantidad_afectada", { count: "exact" })
+    .order("creado_en", { ascending: false }).order("id").range(desde, hasta));
 
   if (lotesError || !lotes) {
     return { error: "No se pudo cargar el historial de ajustes." };
@@ -489,11 +192,10 @@ export async function listarHistorialPreciosAction(): Promise<
   if (lotes.length === 0) return { data: [] };
 
   const loteIds = lotes.map((l) => l.id);
-  const { data: filasVariante } = await supabase
-    .from("actualizaciones_precio_items")
-    .select("lote_id")
-    .in("lote_id", loteIds)
-    .not("variante_id", "is", null);
+  const { data: filasVariante, error: variantesError } = await leerPorIds(loteIds, (ids, desde, hasta) => supabase
+    .from("actualizaciones_precio_items").select("lote_id", { count: "exact" })
+    .in("lote_id", ids).not("variante_id", "is", null).order("id").range(desde, hasta));
+  if (variantesError) return { error: variantesError };
 
   const variantesPorLote = new Map<string, number>();
   (filasVariante || []).forEach((f) => {
@@ -506,6 +208,7 @@ export async function listarHistorialPreciosAction(): Promise<
       id: lote.id,
       nombre: lote.nombre,
       tipo_alcance: lote.tipo_alcance as AlcancePrecio,
+      alcance_valor: lote.alcance_valor,
       tipo_operacion: lote.tipo_operacion as OperacionPrecio,
       campo_objetivo: lote.campo_objetivo as CampoObjetivo,
       valor: Number(lote.valor),
@@ -536,10 +239,10 @@ export async function previsualizarRevertirPreciosAction(
     };
   }
 
-  const { data: items, error: fetchError } = await supabase
+  const { data: items, error: fetchError } = await leerCompleto("Revertir precios", (desde, hasta) => supabase
     .from("actualizaciones_precio_items")
-    .select("producto_id, variante_id, costo_anterior, precio_anterior")
-    .eq("lote_id", loteId);
+    .select("producto_id, variante_id, costo_anterior, precio_anterior", { count: "exact" })
+    .eq("lote_id", loteId).order("id").range(desde, hasta));
 
   if (fetchError || !items || items.length === 0)
     return {
@@ -551,18 +254,13 @@ export async function previsualizarRevertirPreciosAction(
     .filter((i) => i.variante_id)
     .map((i) => i.variante_id as string);
 
-  const { data: productos } = await supabase
-    .from("productos")
-    .select("id, nombre, precio, precio_costo")
-    .in("id", productoIds);
-
-  const { data: variantes } =
-    varianteIds.length > 0
-      ? await supabase
-          .from("producto_variantes")
-          .select("id, nombre_display, precio, costo")
-          .in("id", varianteIds)
-      : { data: [] };
+  const { data: productos, error: productosError } = await leerPorIds(productoIds, (ids, desde, hasta) => supabase
+    .from("productos").select("id, nombre, precio, precio_costo", { count: "exact" })
+    .in("id", ids).order("id").range(desde, hasta));
+  const { data: variantes, error: variantesError } = await leerPorIds(varianteIds, (ids, desde, hasta) => supabase
+    .from("producto_variantes").select("id, nombre_display, precio, costo", { count: "exact" })
+    .in("id", ids).order("id").range(desde, hasta));
+  if (productosError || variantesError) return { error: productosError || variantesError || "No se pudieron leer los precios." };
 
   const productosMap = new Map((productos || []).map((p) => [p.id, p]));
   const variantesMap = new Map((variantes || []).map((v) => [v.id, v]));
@@ -625,84 +323,8 @@ export async function revertirPreciosAction(loteId: string) {
     };
   }
 
-  const { data: lote } = await supabase
-    .from("actualizaciones_precio")
-    .select("estado")
-    .eq("id", loteId)
-    .single();
-
-  if (lote?.estado === "REVERTIDO") {
-    return { error: "Este ajuste ya fue revertido anteriormente." };
-  }
-
-  const { data: items, error: fetchError } = await supabase
-    .from("actualizaciones_precio_items")
-    .select("producto_id, variante_id, costo_anterior, precio_anterior")
-    .eq("lote_id", loteId);
-
-  if (fetchError || !items)
-    return { error: "No se encontraron los datos para revertir." };
-
-  // ------------------------------------------------------------------------
-  // ACÁ HABÍA UN FALLBACK Y SE SACÓ. Decía: "si este producto no tiene fila de
-  // variante en el lote, revertí TODAS sus variantes al valor del producto".
-  // Tenía sentido cuando toda variante llevaba una copia del precio y los
-  // lotes viejos no la registraban. Hoy hace daño por tres motivos:
-  //
-  //   1. Vuelve a fabricar copias. Escribirle el precio del producto a una
-  //      variante que heredaba es exactamente lo que 20260908200000 limpió de
-  //      1.252 filas, y lo que hace que /stock y la caja digan cosas distintas.
-  //   2. Miente sobre lo que va a hacer. `previsualizarRevertirPreciosAction`
-  //      lista SOLO las filas del lote, así que este bloque cambiaba variantes
-  //      que la pantalla de confirmación no mostraba.
-  //   3. Sobre un lote de remito pisaría el precio especial de una variante,
-  //      porque ahí la ausencia de fila significa "no la moví", no "no la
-  //      registré" (ver 20260908190000).
-  //
-  // Sin el fallback, revertir un lote sobre variantes que heredan sigue siendo
-  // COMPLETO: devolver el precio del producto las devuelve a todas. Lo único
-  // que ya no cubre son las variantes que tenían copia en un lote de julio de
-  // 2026 y no quedaron auditadas — 108 filas en Evens, hoy ya normalizadas.
-  // ------------------------------------------------------------------------
-
-  for (const item of items) {
-    if (item.variante_id) {
-      // Fila a nivel variante: revertir solo esa variante puntual.
-      //
-      // El `variante_id` puede apuntar a una variante que YA NO EXISTE: desde
-      // 20260902190000 la columna no tiene FK, así que el id se conserva
-      // cuando la variante se borra. Ese UPDATE afecta 0 filas y está bien —
-      // una variante que no existe no tiene precio que restaurar.
-      //
-      // NO convertir esto en "si no existe, caé a la rama de producto": eso es
-      // exactamente lo que hacía el ON DELETE SET NULL anterior, y era un bug.
-      // La fila de una variante borrada se disfrazaba de fila de nivel
-      // producto y pisaba `productos.precio` con el precio viejo de la
-      // variante. Eran 66 productos afectados cuando se midió.
-      await supabase
-        .from("producto_variantes")
-        .update({
-          costo: item.costo_anterior,
-          precio: item.precio_anterior,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", item.variante_id);
-    } else {
-      // Fila a nivel producto.
-      await supabase
-        .from("productos")
-        .update({
-          precio_costo: item.costo_anterior,
-          precio: item.precio_anterior,
-        })
-        .eq("id", item.producto_id);
-    }
-  }
-
-  await supabase
-    .from("actualizaciones_precio")
-    .update({ estado: "REVERTIDO", revertido_en: new Date().toISOString() })
-    .eq("id", loteId);
+  const { error } = await supabase.rpc("revertir_ajuste_precios", { p_lote_id: loteId });
+  if (error) return { error: error.message };
 
   revalidatePath("/stock");
   // Revertir devuelve los precios anteriores, así que la vidriera también

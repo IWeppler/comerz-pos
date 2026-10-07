@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -41,6 +41,7 @@ import {
 import {
   simularPreciosAction,
   aplicarPreciosAction,
+  listarMarcasAction,
   AlcancePrecio,
   OperacionPrecio,
   CampoObjetivo,
@@ -50,6 +51,7 @@ import {
 } from "../actions/update-prices";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { useActiveCategories } from "../hooks/use-active-categories";
+import { normalizarMarca, type MarcaCatalogo } from "../lib/marcas-del-catalogo";
 
 interface UpdatePricesModalProps {
   /** Controlado desde afuera (modo selección). Sin esto el modal maneja su
@@ -86,6 +88,28 @@ export function UpdatePricesModal({
   // --- ESTADO DEL FORMULARIO ---
   const [alcance, setAlcance] = useState<AlcancePrecio>(alcanceInicial);
   const [categoria, setCategoria] = useState<string>("todos");
+  const [marca, setMarca] = useState("");
+  const [busquedaMarca, setBusquedaMarca] = useState("");
+  const [marcas, setMarcas] = useState<MarcaCatalogo[]>([]);
+  const [cargandoMarcas, setCargandoMarcas] = useState(true);
+  const [errorMarcas, setErrorMarcas] = useState<string | null>(null);
+  const [solicitudId, setSolicitudId] = useState("");
+
+  useEffect(() => {
+    if (!isOpen || esModoSeleccion) return;
+    let activo = true;
+    listarMarcasAction().then((res) => {
+      if (!activo) return;
+      setMarcas(res.data ?? []);
+      setErrorMarcas(res.error ?? null);
+      setCargandoMarcas(false);
+    }).catch(() => {
+      if (!activo) return;
+      setErrorMarcas("No se pudieron cargar las marcas. Cerrá y volvé a abrir para reintentar.");
+      setCargandoMarcas(false);
+    });
+    return () => { activo = false; };
+  }, [isOpen, esModoSeleccion]);
 
   const [campo, setCampo] = useState<CampoObjetivo>("PRECIO");
   const [operacion, setOperacion] = useState<OperacionPrecio>(
@@ -110,6 +134,7 @@ export function UpdatePricesModal({
 
   // --- HANDLERS ---
   const handleOpenChange = (abierto: boolean) => {
+    if (isApplying || isSimulating) return;
     if (!esControlado) setIsOpenInterno(abierto);
     onOpenChange?.(abierto);
     if (!abierto) resetForm();
@@ -119,6 +144,12 @@ export function UpdatePricesModal({
     setStep(1);
     setAlcance(alcanceInicial);
     setCategoria("todos");
+    setMarca("");
+    setBusquedaMarca("");
+    setSolicitudId("");
+    setCargandoMarcas(true);
+    setErrorMarcas(null);
+    setMarcas([]);
     setCampo("PRECIO");
     setOperacion("AUMENTAR_PORCENTAJE");
     setValor("");
@@ -139,27 +170,37 @@ export function UpdatePricesModal({
     }
 
     setIsSimulating(true);
-    const res = await simularPreciosAction(
-      alcance,
-      categoria,
-      campo,
-      operacion,
-      Number(valor),
-      redondeo,
-      seleccion?.ids,
-    );
+    try {
+      const res = await simularPreciosAction(
+        alcance,
+        alcance === "MARCA" ? marca : categoria,
+        campo,
+        operacion,
+        Number(valor),
+        redondeo,
+        seleccion?.ids,
+      );
 
-    setIsSimulating(false);
 
-    if (res.error) {
-      toast.error(res.error);
-    } else if (res.preview) {
-      setPreviewData(res.preview);
-      setAdvertencias(res.advertencias || null);
-      setConfirmadoReduccionTotal(false);
-      setBusquedaPreview("");
-      setOrdenPreview("cambio");
-      setStep(3);
+      if (res.error) {
+        toast.error(res.error);
+      } else if (res.preview) {
+        setSolicitudId(crypto.randomUUID());
+        if (!nombreLote && alcance === "MARCA") {
+          const accion = operacion === "REDUCIR_PORCENTAJE" ? "Reducción" : operacion === "FIJAR_MARGEN" ? "Recargo" : "Aumento";
+          setNombreLote(`${accion} ${marca} ${valor}%`);
+        }
+        setPreviewData(res.preview);
+        setAdvertencias(res.advertencias || null);
+        setConfirmadoReduccionTotal(false);
+        setBusquedaPreview("");
+        setOrdenPreview("cambio");
+        setStep(3);
+      }
+    } catch {
+      toast.error("No se pudo simular el ajuste. Volvé a intentar.");
+    } finally {
+      setIsSimulating(false);
     }
   };
 
@@ -180,23 +221,31 @@ export function UpdatePricesModal({
 
   const handleAplicar = async () => {
     setIsApplying(true);
-    const res = await aplicarPreciosAction(nombreLote, previewData, {
-      alcance,
-      campo,
-      operacion,
-      valor: Number(valor),
-      redondeo,
-    });
-    setIsApplying(false);
+    try {
+      const res = await aplicarPreciosAction(nombreLote, previewData, {
+        alcance,
+        campo,
+        operacion,
+        valor: Number(valor),
+        redondeo,
+        valorAlcance: alcance === "MARCA" ? marca : alcance === "CATEGORIA" ? categoria : undefined,
+      }, solicitudId);
 
-    if (res.error) {
-      toast.error(res.error);
-    } else {
-      toast.success("¡Precios actualizados con éxito!");
-      handleOpenChange(false);
-      queryClient.invalidateQueries({ queryKey: queryKeys.catalogo });
-      router.refresh();
-      onAplicado?.();
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success("¡Precios actualizados con éxito!");
+        if (!esControlado) setIsOpenInterno(false);
+        onOpenChange?.(false);
+        resetForm();
+        queryClient.invalidateQueries({ queryKey: queryKeys.catalogo });
+        router.refresh();
+        onAplicado?.();
+      }
+    } catch {
+      toast.error("No se pudo confirmar el resultado. Reintentá sin volver a simular para evitar duplicar el ajuste.");
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -207,7 +256,7 @@ export function UpdatePricesModal({
           <Button
             variant="outline"
             size="sm"
-            className="h-10 bg-background border-border/60 hover:bg-muted text-foreground"
+            className="h-11 bg-background border-border/60 hover:bg-muted text-foreground"
             title="Actualizar Precios Masivamente"
           >
             <TrendingUp className="w-4 h-4 sm:mr-1.5 text-primary" />
@@ -216,7 +265,7 @@ export function UpdatePricesModal({
         </DialogTrigger>
       )}
 
-      <DialogContent className="sm:max-w-[550px] p-0 overflow-hidden bg-card border-border">
+      <DialogContent className="sm:max-w-[550px] max-h-[90dvh] p-0 overflow-y-auto bg-card border-border">
         <DialogHeader className="p-6 pb-4 border-b border-border bg-muted/20">
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <Percent className="w-5 h-5 text-primary" />
@@ -281,9 +330,34 @@ export function UpdatePricesModal({
                       <SelectItem value="CATEGORIA">
                         Filtrar por una Categoría específica
                       </SelectItem>
+                      <SelectItem value="MARCA" disabled={cargandoMarcas || !!errorMarcas || marcas.length === 0} className="min-h-11">
+                        Por marca
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {cargandoMarcas ? <p className="text-xs text-muted-foreground">Cargando marcas…</p>
+                  : errorMarcas ? <p role="alert" className="text-xs text-destructive">{errorMarcas}</p>
+                  : marcas.length === 0 ? <p className="text-xs text-muted-foreground">Tus productos no tienen marca cargada</p> : null}
+                {alcance === "MARCA" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="buscar-marca-precios">Marca</Label>
+                    <Input id="buscar-marca-precios" className="h-11" placeholder="Buscar marca…"
+                      value={busquedaMarca} onChange={(e) => setBusquedaMarca(e.target.value)} />
+                    {marca && <p className="text-sm">Elegida: <strong>{marca}</strong></p>}
+                    <div className="max-h-48 overflow-y-auto rounded-lg border" role="group" aria-label="Marcas del catálogo">
+                      {marcas.filter((m) => m.clave.includes(normalizarMarca(busquedaMarca) ?? "")).map((m) => (
+                        <button key={m.clave} type="button" aria-pressed={marca === m.nombre}
+                          onClick={() => setMarca(m.nombre)}
+                          className={`min-h-11 w-full px-3 py-2 text-left text-sm break-words hover:bg-muted ${marca === m.nombre ? "bg-primary/10 font-semibold" : ""}`}>
+                          {m.nombre} · {m.cantidad} {m.cantidad === 1 ? "producto" : "productos"}
+                        </button>
+                      ))}
+                      {!marcas.some((m) => m.clave.includes(normalizarMarca(busquedaMarca) ?? "")) && <p className="p-3 text-sm text-muted-foreground">No hay marcas con ese nombre.</p>}
+                    </div>
+                  </div>
+                )}
 
                 {alcance === "CATEGORIA" && (
                   <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
@@ -308,7 +382,7 @@ export function UpdatePricesModal({
               <div className="flex justify-end pt-4 border-t border-border">
                 <Button
                   onClick={() => setStep(2)}
-                  disabled={alcance === "CATEGORIA" && categoria === "todos"}
+                  disabled={(alcance === "CATEGORIA" && categoria === "todos") || (alcance === "MARCA" && !marca)}
                   className="bg-primary hover:bg-primary/90 text-white rounded-xl shadow-none h-11 px-6"
                 >
                   Siguiente <ArrowRight className="w-4 h-4 ml-2" />
@@ -378,8 +452,9 @@ export function UpdatePricesModal({
                 </div>
 
                 <div className="space-y-2 col-span-2 sm:col-span-1">
-                  <Label>Valor / Porcentaje</Label>
+                  <Label htmlFor="porcentaje-ajuste">Valor / Porcentaje</Label>
                   <Input
+                    id="porcentaje-ajuste"
                     type="number"
                     value={valor}
                     onChange={(e) => setValor(e.target.value)}
@@ -403,15 +478,17 @@ export function UpdatePricesModal({
                       <SelectItem value="50">Múltiplo de $50</SelectItem>
                       <SelectItem value="100">Múltiplo de $100</SelectItem>
                       <SelectItem value="90">Terminar en 90</SelectItem>
+                      <SelectItem value="99">Terminar en 99</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2 col-span-2">
-                  <Label>
+                  <Label htmlFor="nombre-ajuste">
                     Nombre de esta actualización (Para el Historial)
                   </Label>
                   <Input
+                    id="nombre-ajuste"
                     value={nombreLote}
                     onChange={(e) => setNombreLote(e.target.value)}
                     placeholder="Ej: Aumento Proveedor Mayorista Mayo"
@@ -420,7 +497,7 @@ export function UpdatePricesModal({
                 </div>
               </div>
 
-              <div className="flex justify-between pt-4 border-t border-border">
+              <div className="flex flex-col sm:flex-row gap-2 sm:justify-between pt-4 border-t border-border">
                 <Button
                   variant="ghost"
                   onClick={() => setStep(1)}
@@ -460,21 +537,21 @@ export function UpdatePricesModal({
                 </p>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                   <Input
                     value={busquedaPreview}
                     onChange={(e) => setBusquedaPreview(e.target.value)}
                     placeholder="Buscar producto..."
-                    className="h-9 pl-8 text-xs rounded-lg"
+                    className="h-11 pl-8 text-xs rounded-lg"
                   />
                 </div>
                 <Select
                   value={ordenPreview}
                   onValueChange={(v) => setOrdenPreview(v as "cambio" | "az")}
                 >
-                  <SelectTrigger className="h-9 rounded-lg w-44 shrink-0 text-xs">
+                  <SelectTrigger className="h-11 rounded-lg w-full sm:w-44 shrink-0 text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -650,7 +727,7 @@ export function UpdatePricesModal({
                 </div>
               )}
 
-              <div className="flex items-center space-x-2 bg-warning/10 p-3 rounded-lg border border-warning/20">
+              <div className="flex items-center min-h-11 space-x-2 bg-warning/10 p-3 rounded-lg border border-warning/20">
                 <input
                   type="checkbox"
                   id="confirm_check"
@@ -660,14 +737,13 @@ export function UpdatePricesModal({
                 />
                 <Label
                   htmlFor="confirm_check"
-                  className="text-warning/10 cursor-pointer leading-tight font-medium text-xs"
+                  className="text-foreground cursor-pointer leading-tight font-medium text-xs"
                 >
-                  Entiendo que esta acción modificará irreversiblemente los
-                  precios seleccionados.
+                  Confirmo el cambio de precios. Puedo deshacerlo desde el historial.
                 </Label>
               </div>
 
-              <div className="flex justify-between pt-4 border-t border-border">
+              <div className="flex flex-col sm:flex-row gap-2 sm:justify-between pt-4 border-t border-border">
                 <Button
                   variant="ghost"
                   onClick={() => setStep(2)}
