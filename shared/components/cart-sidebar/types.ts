@@ -2,6 +2,7 @@ import { MetodoPago } from "@/entities/payments/types";
 
 export interface PromocionDB {
   id: string;
+  codigo?: string | null;
   nombre: string;
   tipo_regla: string | null;
   tipo_descuento: string;

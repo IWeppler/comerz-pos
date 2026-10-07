@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { createClient } from "@/shared/config/supabase/client";
 import { BannerManager } from "./banner-manager";
 import { DireccionTienda } from "./direccion-tienda";
-import { FaFacebook, FaInstagram, FaWhatsapp } from "react-icons/fa";
+import { FaFacebook, FaInstagram } from "react-icons/fa";
 
 interface CatalogPanelProps {
   config: ConfiguracionPOS;
@@ -45,6 +45,9 @@ export function CatalogPanel({ config }: Readonly<CatalogPanelProps>) {
     localidad_negocio: config.localidad_negocio || "",
     envio_costo_local: config.envio_costo_local ?? 0,
     envio_mensaje_lejos: config.envio_mensaje_lejos || "",
+    envio_gratis_desde_monto: config.envio_gratis_desde_monto?.toString() ?? "",
+    envio_gratis_desde_unidades: config.envio_gratis_desde_unidades?.toString() ?? "",
+    envio_gratis_alcance: config.envio_gratis_alcance ?? "LOCAL",
   });
 
   const handleChange = (field: string, value: string | boolean | number) => {
@@ -52,6 +55,12 @@ export function CatalogPanel({ config }: Readonly<CatalogPanelProps>) {
   };
 
   const handleSave = async () => {
+    const monto = formData.envio_gratis_desde_monto.trim() === "" ? null : Number(formData.envio_gratis_desde_monto);
+    const unidades = formData.envio_gratis_desde_unidades.trim() === "" ? null : Number(formData.envio_gratis_desde_unidades);
+    if ([monto, unidades].some(v => v !== null && (!Number.isFinite(v) || v <= 0))) {
+      toast.error("El mínimo para envío gratis debe ser mayor que cero, o quedar vacío.");
+      return;
+    }
     setIsSaving(true);
     const supabase = createClient();
 
@@ -64,7 +73,7 @@ export function CatalogPanel({ config }: Readonly<CatalogPanelProps>) {
     // verde, y que la tienda siguiera cerrada.
     const { data: filasTocadas, error } = await supabase
       .from("configuracion_pos")
-      .update(formData)
+      .update({ ...formData, envio_gratis_desde_monto: monto, envio_gratis_desde_unidades: unidades })
       .eq("id", config.id)
       .select("id");
 
@@ -321,18 +330,31 @@ export function CatalogPanel({ config }: Readonly<CatalogPanelProps>) {
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-foreground uppercase tracking-widest">
-                Costo de Envío Local
+                  Costo de Envío Local
               </Label>
-              <Input
-                type="number"
-                value={formData.envio_costo_local}
+                <Input
+                  type="number"
+                  value={formData.envio_costo_local}
                 onChange={(e) =>
                   handleChange("envio_costo_local", Number(e.target.value))
                 }
                 placeholder="Ej: 2000"
                 className="bg-muted/50 border-border"
               />
-            </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label htmlFor="gratis-monto">Envío gratis desde $</Label>
+                <Input id="gratis-monto" type="number" min="0.01" step="any" className="h-11" value={formData.envio_gratis_desde_monto} onChange={e => handleChange("envio_gratis_desde_monto", e.target.value)} placeholder="Sin mínimo por monto" />
+                <Label htmlFor="gratis-unidades">Envío gratis desde productos</Label>
+                <Input id="gratis-unidades" type="number" min="1" className="h-11" value={formData.envio_gratis_desde_unidades} onChange={e => handleChange("envio_gratis_desde_unidades", e.target.value)} placeholder="Sin mínimo por cantidad" />
+                <Label htmlFor="gratis-alcance">Dónde ofrecés envío gratis</Label>
+                <select id="gratis-alcance" className="h-11 w-full rounded-md border border-border bg-background px-3 text-sm" value={formData.envio_gratis_alcance} onChange={e => handleChange("envio_gratis_alcance", e.target.value)}>
+                  <option value="LOCAL">Solo en la localidad del comercio</option>
+                  <option value="TODOS">A todas las localidades</option>
+                </select>
+                <p className="text-xs text-muted-foreground">Dejá ambos mínimos vacíos para desactivar. Si completás los dos, alcanza con cumplir uno. El monto se calcula después de los descuentos.</p>
+              </div>
 
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-foreground uppercase tracking-widest">

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CartItemStore } from "@/entities/cart/types";
+import type { PromocionDB } from "@/shared/components/cart-sidebar/types";
 import {
   esFraccionable,
   pasoCantidad,
@@ -49,6 +50,8 @@ function topeDeLinea(item: CartItemStore): number {
 }
 
 interface CartState {
+  cuponCatalogo: { slug: string; codigo: string; promocion: PromocionDB } | null;
+  setCuponCatalogo: (cupon: CartState["cuponCatalogo"]) => void;
   items: CartItemStore[];
   isOpen: boolean;
   /** Negocio al que pertenece el carrito guardado. Ver `sincronizarNegocio`. */
@@ -132,6 +135,8 @@ export const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
       items: [],
+      cuponCatalogo: null,
+      setCuponCatalogo: (cuponCatalogo) => set({ cuponCatalogo }),
       isOpen: false,
       negocioId: null,
       listaPrecioId: null,
@@ -160,6 +165,7 @@ export const useCartStore = create<CartState>()(
 
             updatedItems[existingItemIndex] = {
               ...currentItem,
+              sugeridoCatalogo: currentItem.sugeridoCatalogo || (newQuantity > currentItem.cantidad && newItem.sugeridoCatalogo),
               cantidad: newQuantity,
               // Sumar más del mismo producto cambia el peso: el importe
               // fijado deja de valer y la línea vuelve al precio de lista.
@@ -332,7 +338,7 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      clearCart: () => set({ items: [], pedidoActivo: null }),
+      clearCart: () => set({ items: [], pedidoActivo: null, cuponCatalogo: null }),
 
       reemplazarCarrito: ({ items, listaPrecioId, pedidoActivo }) =>
         set({ items, listaPrecioId, pedidoActivo }),
@@ -405,8 +411,8 @@ export const useCartStore = create<CartState>()(
           // carrito esté vacío: `listas_precios` es por negocio, y un id de
           // otro comercio no lo devuelve ni la RLS.
           if (state.items.length === 0)
-            return { negocioId, listaPrecioId: null };
-          return { negocioId, items: [], listaPrecioId: null };
+            return { negocioId, listaPrecioId: null, cuponCatalogo: null };
+          return { negocioId, items: [], listaPrecioId: null, cuponCatalogo: null };
         });
       },
 
@@ -431,6 +437,7 @@ export const useCartStore = create<CartState>()(
         items: state.items,
         negocioId: state.negocioId,
         listaPrecioId: state.listaPrecioId,
+        cuponCatalogo: state.cuponCatalogo,
       }),
     },
   ),

@@ -12,10 +12,16 @@ export type CartItem = {
 };
 
 export interface CartItemStore {
+  /** Origen del renglón para medir las recomendaciones del catálogo. */
+  sugeridoCatalogo?: boolean;
   productoId: string;
   nombre: string;
   tipo: string;
   variante: string;
+  /** Atributos de la variante elegida ({ Talle: "40", Color: "Negro" }), para
+   * que el carrito público diga "Talle 40 · Color Negro" y no "40 / Negro".
+   * Opcional: carritos guardados antes no lo tienen y caen a `variante`. */
+  atributosVariante?: Record<string, string>;
   /** producto_variantes.id real, cuando la variante existe como fila propia. */
   varianteId?: string;
   /** Precio por UNIDAD DE MEDIDA: por kilo si `unidadMedida` es KG, por pieza

@@ -36,6 +36,10 @@ interface CartItemRowProps {
    * (catálogo público) la forma se muestra como texto.
    */
   onCambiarForma?: (presentacionIdNueva: string | null) => void;
+  /** Categoría y variante elegida, debajo del nombre ("Talle 40 · Color
+   * Negro"). Las manda el carrito público; el POS no, y queda como estaba. */
+  categoria?: string | null;
+  detalleVariante?: string | null;
 }
 
 /**
@@ -59,6 +63,8 @@ export function CartItemRow({
   onElegirUnidad,
   mostrarImagen = true,
   onCambiarForma,
+  categoria,
+  detalleVariante,
 }: Readonly<CartItemRowProps>) {
   const [selectorFormaAbierto, setSelectorFormaAbierto] = useState(false);
   const lineSubtotal = item.precio * item.cantidad;
@@ -115,6 +121,14 @@ export function CartItemRow({
             <p className="truncate text-xs font-bold uppercase tracking-wide text-foreground">
               {item.nombre}
             </p>
+            {categoria && (
+              <p className="mt-0.5 truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                {categoria}
+              </p>
+            )}
+            {detalleVariante && (
+              <p className="mt-1 text-xs text-foreground">{detalleVariante}</p>
+            )}
             {/* En la venta libre `variante` es la misma descripción que
                 `nombre`: repetirla no dice nada, y "Venta libre" sí — es lo
                 que avisa que este renglón no descuenta stock. */}

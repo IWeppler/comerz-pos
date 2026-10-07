@@ -54,8 +54,8 @@ export function CartSidebarHeader({
             // ocupando 36px de área táctil —que en un POS que se usa con el
             // dedo no se negocia— pero aporta 20px de alto, los mismos que el
             // texto que tiene al lado.
-            className="-my-2 -ml-2 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-            aria-label="Volver al ticket"
+            className={`${isPOSMode ? "-my-2 -ml-2 h-9 w-9" : "h-11 w-11"} inline-flex shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer`}
+            aria-label={isPOSMode ? "Volver al ticket" : "Volver a productos"}
           >
             <ArrowLeft className="h-4.5 w-4.5" />
           </button>
@@ -85,7 +85,7 @@ export function CartSidebarHeader({
         <button
           type="button"
           onClick={onClose}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+          className={`inline-flex ${isPOSMode ? "h-9 w-9 lg:hidden" : "h-11 w-11"} items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted hover:text-foreground`}
           aria-label={isPOSMode ? "Cerrar Ticket" : "Cerrar carrito"}
         >
           <X className="h-5 w-5" />

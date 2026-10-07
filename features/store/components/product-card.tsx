@@ -10,6 +10,7 @@ import { PrecioConDescuento } from "./precio-con-descuento";
 interface ProductCardProps {
   producto: Producto;
   priority?: boolean;
+  origenCarrito?: boolean;
 }
 
 const getImagenesProducto = (imagenUrl: Producto["imagen_url"]) => {
@@ -27,6 +28,7 @@ const getImagenesProducto = (imagenUrl: Producto["imagen_url"]) => {
 export function ProductCard({
   producto,
   priority = false,
+  origenCarrito = false,
 }: Readonly<ProductCardProps>) {
   const primeraImagen =
     getImagenesProducto(producto.grid_url)[0] ||
@@ -35,7 +37,7 @@ export function ProductCard({
   // El link es al catálogo del negocio que se está viendo: fuera de un
   // catálogo no hay tienda a la que ir.
   const linkCatalogo = useLinkCatalogo();
-  const linkDestino = producto.slug ? linkCatalogo(producto.slug) : "#";
+  const linkDestino = producto.slug ? `${linkCatalogo(producto.slug)}${origenCarrito ? "?origen=sugerencia-carrito" : ""}` : "#";
 
   return (
     <div

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Producto } from "@/entities/productos/types";
 import {
   ShoppingBag,
@@ -36,6 +37,7 @@ export function ProductDetail({
 }: Readonly<ProductDetailProps>) {
   const rutaDelCatalogo = useRutaCatalogo();
   const slugNegocio = useSlugNegocio();
+  const searchParams = useSearchParams();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [descOpen, setDescOpen] = useState(false);
   const mobileGalleryRef = useRef<HTMLDivElement>(null);
@@ -215,9 +217,11 @@ export function ProductDetail({
 
     addItem({
       productoId: producto.id,
+      sugeridoCatalogo: searchParams.get("origen") === "sugerencia-carrito",
       nombre: producto.nombre || "Sin nombre",
       tipo: producto.tipo || "",
       variante: stockDeVariante ? stockDeVariante.variante : "Unico",
+      atributosVariante: stockDeVariante?.atributos,
       precio: stockDeVariante?.precio ?? producto.precio,
       cantidad: 1,
       unidadMedida: producto.unidad_medida,
@@ -547,7 +551,7 @@ export function ProductDetail({
                 className={`w-full flex items-center justify-center gap-3 py-4 rounded-none font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer ${
                   estaAgotado
                     ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
-                    : "bg-primary text-white"
+                    : "bg-foreground text-background hover:bg-foreground/90"
                 }`}
               >
                 <ShoppingCart className="w-4 h-4" />
@@ -613,7 +617,7 @@ export function ProductDetail({
             className={`w-full flex items-center justify-center gap-3 py-4 rounded-none font-bold text-xs uppercase tracking-widest transition-colors cursor-pointer ${
               estaAgotado
                 ? "bg-muted text-muted-foreground cursor-not-allowed border border-border"
-                : "bg-primary text-white"
+                : "bg-foreground text-background hover:bg-foreground/90"
             }`}
           >
             <ShoppingCart className="w-4 h-4" />

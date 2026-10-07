@@ -3,12 +3,15 @@
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
+import { normalizarCodigoCupon, codigoCuponValido } from "@/features/store/lib/codigo-cupon";
 
 export async function createPromotionAction(
-  prevState: any,
+  prevState: unknown,
   formData: FormData,
 ) {
   try {
+    const codigo = normalizarCodigoCupon(formData.get("codigo"));
+    if (!codigoCuponValido(codigo)) return { error: "El código debe tener entre 4 y 20 letras o números.", success: false };
     const nombre = formData.get("nombre") as string;
     const tipoReglaRaw = formData.get("tipo_regla") as string;
     const tipo_regla = tipoReglaRaw === "SIN_CONDICION" ? null : tipoReglaRaw;
@@ -43,6 +46,7 @@ export async function createPromotionAction(
     const { data: promo, error: promoError } = await supabase
       .from("promociones")
       .insert({
+        codigo,
         nombre,
         tipo_regla,
         tipo_descuento,
@@ -62,7 +66,7 @@ export async function createPromotionAction(
     if (promoError || !promo) {
       console.error("Error creando promo:", promoError);
       return {
-        error: "No se pudo guardar la regla principal.",
+        error: promoError?.code === "23505" ? "Ya tenés una promoción con ese código" : "No se pudo guardar la regla principal.",
         success: false,
       };
     }

@@ -343,11 +343,16 @@ export function generarLinkWhatsAppPublico({
   if (totales.descuento) {
     mensaje += `\n${totales.descuento.etiqueta}: -${pesos(totales.descuento.monto)}`;
   }
+  for (const promo of totales.promosAplicadas.filter(p => p.codigo)) {
+    if (totales.descuento?.etiqueta === `Cupón ${promo.codigo}`) continue;
+    const monto = totales.descuentosPorPromocion?.find(d => d.id === promo.id)?.monto ?? calcularDescuentoPromo(promo, items);
+    mensaje += `\nIncluye cupón ${promo.codigo}: ${pesos(monto)} de descuento`;
+  }
   if (totales.recargo) {
     mensaje += `\n${totales.recargo.etiqueta}: +${pesos(totales.recargo.monto)}`;
   }
   if (totales.envio) {
-    mensaje += `\nEnvío: ${pesos(totales.envio.monto)}`;
+    mensaje += `\nEnvío: ${totales.envio.etiqueta === "Envío gratis" ? "gratis" : pesos(totales.envio.monto)}`;
   }
   mensaje += `\nTOTAL: ${pesos(totales.total)}`;
 

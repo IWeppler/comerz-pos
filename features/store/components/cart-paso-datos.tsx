@@ -19,6 +19,7 @@ export type CampoPedido = "nombre" | "localidad" | "direccion" | "pago";
 export type ErroresPedido = Partial<Record<CampoPedido, string>>;
 
 interface CartPasoDatosProps {
+  beneficio?: React.ReactNode;
   nombre: string;
   onNombreChange: (value: string) => void;
   modalidad: ModalidadEntregaPublica;
@@ -85,6 +86,7 @@ export function CartPasoDatos({
   refLocalidad,
   refDireccion,
   refPago,
+  beneficio,
 }: Readonly<CartPasoDatosProps>) {
   // Arranca abierta si ya hay algo escrito: volver al paso 1 y regresar no
   // puede esconder una nota que la clienta ya cargó.
@@ -93,6 +95,7 @@ export function CartPasoDatos({
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
       <div className="space-y-5">
+        {beneficio}
         <Campo
           id="nombre_cliente_publico"
           etiqueta="Nombre"
@@ -208,21 +211,6 @@ export function CartPasoDatos({
           </div>
         )}
 
-        {/* ─────────────────────────────────────────────────────────────────
-            ACÁ VA EL CÓDIGO DE DESCUENTO cuando exista.
-
-            Entre el método de pago y la nota a propósito: es lo último que
-            puede mover el total, y la nota no mueve nada.
-
-            Hoy la base NO tiene dónde guardarlo — `promociones` tiene
-            `limite_usos` y `usos_actuales` pero ninguna columna `codigo`, así
-            que es un cambio de schema antes que de UI. El desglose del pie ya
-            acepta un renglón más sin tocarse.
-
-            No se deja un input deshabilitado esperando: un campo que no hace
-            nada enseña a ignorar campos.
-            ───────────────────────────────────────────────────────────────── */}
-
         {notaAbierta ? (
           <Campo id="nota_publica" etiqueta="Nota">
             <Textarea
@@ -238,7 +226,7 @@ export function CartPasoDatos({
           <button
             type="button"
             onClick={() => setNotaAbierta(true)}
-            className="inline-flex cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            className="inline-flex min-h-11 cursor-pointer items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <Plus className="h-3.5 w-3.5" />
             Agregar una nota
@@ -302,7 +290,7 @@ function Opcion({
       aria-pressed={activo}
       className={`inline-flex h-11 cursor-pointer items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition-colors ${
         activo
-          ? "bg-primary text-primary-foreground"
+          ? "bg-foreground text-background"
           : "text-muted-foreground hover:bg-muted hover:text-foreground"
       }`}
     >

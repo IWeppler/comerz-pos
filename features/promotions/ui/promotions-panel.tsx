@@ -7,8 +7,6 @@ import {
   XCircle,
   Percent,
   DollarSign,
-  Wallet,
-  LayoutGrid,
   MoreVertical,
   Edit2,
   Trash2,
@@ -33,6 +31,7 @@ import {
 } from "@/shared/ui/dropdown-menu";
 
 export interface Promotion {
+  codigo?: string | null;
   id: string;
   nombre: string;
   tipo_regla: "METODO_PAGO" | "CATEGORIA" | "MONTO_MINIMO" | null;
@@ -172,7 +171,7 @@ export function PromotionsPanel({
                       {/* NOMBRE Y VIGENCIA */}
                       <td className="px-5 py-4 font-semibold text-foreground">
                         <div className="flex flex-col">
-                          <span>{promo.nombre}</span>
+                          <span>{promo.codigo ? `${promo.codigo} · ` : ""}{promo.nombre}</span>
                           {inicio || fin ? (
                             <span className="text-[10px] text-muted-foreground font-normal mt-1 flex items-center gap-1.5">
                               <CalendarDays className="w-3 h-3" />

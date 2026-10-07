@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { Button } from "@/shared/ui/button";
+import { BOTON_CATALOGO } from "../lib/estilos-catalogo";
 import type { TotalesPedido } from "@/shared/lib/totales-pedido-publico";
 
 const pesos = (monto: number) =>
@@ -64,7 +65,7 @@ export function CartDesglosePublico({
           />
         )}
         {totales.envio && (
-          <Renglon etiqueta="Envío" valor={pesos(totales.envio.monto)} />
+          <Renglon etiqueta="Envío" valor={totales.envio.etiqueta === "Envío gratis" ? "Gratis" : pesos(totales.envio.monto)} />
         )}
       </div>
 
@@ -81,7 +82,7 @@ export function CartDesglosePublico({
         type="button"
         onClick={onEnviarPedido}
         disabled={isPending}
-        className="mt-4 flex h-12 w-full cursor-pointer items-center justify-center gap-3 rounded-lg bg-[#25D366] text-sm font-bold uppercase tracking-widest text-white shadow-none hover:bg-[#1EBE57] disabled:cursor-not-allowed disabled:opacity-50"
+        className={`mt-4 flex h-12 w-full cursor-pointer items-center justify-center gap-3 text-sm font-bold uppercase tracking-widest shadow-none disabled:cursor-not-allowed ${BOTON_CATALOGO}`}
       >
         <Image src="/whatsappp.png" alt="" width={20} height={20} />
         Enviar pedido

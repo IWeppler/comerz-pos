@@ -6,6 +6,30 @@ import {
 } from "@/shared/components/cart-sidebar/cart-sidebar-utils";
 import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import type { OpcionPagoPublica } from "@/shared/lib/opciones-pago-publicas";
+import { esFraccionable } from "@/shared/lib/unidad-venta";
+import { calcularDescuentoPromocion } from "@/shared/lib/descuento-promocion";
+
+export interface ConfigEnvioGratis {
+  envio_gratis_desde_monto?: number | null;
+  envio_gratis_desde_unidades?: number | null;
+  envio_gratis_alcance?: "LOCAL" | "TODOS";
+}
+
+export function progresoEnvioGratis({ items, base, config }: {
+  items: CartItemStore[];
+  base: number;
+  config?: ConfigEnvioGratis | null;
+}) {
+  const monto = Number(config?.envio_gratis_desde_monto);
+  const unidades = Number(config?.envio_gratis_desde_unidades);
+  const porMonto = Number.isFinite(monto) && monto > 0;
+  const porUnidades = Number.isFinite(unidades) && unidades > 0;
+  const cantidad = items.reduce((s, i) => s + (esFraccionable(i.unidadMedida) ? 1 : i.cantidad), 0);
+  const faltaMonto = porMonto ? Math.max(0, monto - Math.max(0, base)) : null;
+  const faltaUnidades = porUnidades ? Math.max(0, unidades - cantidad) : null;
+  const porcentaje = Math.min(100, Math.max(0, porMonto ? base / monto * 100 : 0, porUnidades ? cantidad / unidades * 100 : 0));
+  return { aplica: porMonto || porUnidades, alcanzado: items.length > 0 && (faltaMonto === 0 || faltaUnidades === 0), faltaMonto, faltaUnidades, porcentaje };
+}
 
 /**
  * EL total del pedido del catálogo público, con su desglose.
@@ -52,6 +76,7 @@ export interface RenglonTotal {
 }
 
 export interface TotalesPedido {
+  descuentosPorPromocion?: { id: string; monto: number }[];
   subtotal: number;
   /** Null cuando no hay promo aplicable (o cuando todavía no se eligió pago). */
   descuento: RenglonTotal | null;
@@ -205,6 +230,8 @@ export function calcularTotalesPedido({
   promociones,
   opcionPago,
   costoEnvio = 0,
+  configEnvio,
+  destinoEnvio,
 }: {
   items: CartItemStore[];
   /** Las promociones activas del negocio, sin filtrar. */
@@ -213,6 +240,8 @@ export function calcularTotalesPedido({
   opcionPago: OpcionPagoPublica | null;
   /** Solo el envío con costo CONOCIDO (localidad del negocio). */
   costoEnvio?: number;
+  configEnvio?: ConfigEnvioGratis | null;
+  destinoEnvio?: "LOCAL" | "LEJOS" | null;
 }): TotalesPedido {
   const subtotal = subtotalDeItems(items);
 
@@ -244,13 +273,23 @@ export function calcularTotalesPedido({
 
   const recargoPorcentaje = opcionPago?.recargoPorcentaje ?? 0;
   const recargoMonto = calcularRecargoMonto(base, recargoPorcentaje);
+  const gratis = progresoEnvioGratis({ items, base, config: configEnvio }).alcanzado &&
+    !!destinoEnvio && (destinoEnvio === "LOCAL" || configEnvio?.envio_gratis_alcance === "TODOS");
+  const envioMonto = gratis ? 0 : costoEnvio;
+  let disponible = descuentoMonto;
+  const descuentosPorPromocion = hayMetodo ? calculablesAplicadas.map(promo => {
+    const monto = Math.min(disponible, calcularDescuentoPromocion({ promo, lineas: items, categorias: promo.promociones_categorias?.map(c => c.categoria_nombre.toLowerCase()) ?? [] }));
+    disponible -= monto;
+    return { id: promo.id, monto };
+  }) : [];
 
   return {
+    descuentosPorPromocion,
     subtotal,
     descuento:
       descuentoMonto > 0
         ? {
-            etiqueta: `Descuento ${opcionPago!.etiqueta.toLowerCase()}`,
+            etiqueta: calculablesAplicadas.length === 1 && calculablesAplicadas[0].codigo ? `Cupón ${calculablesAplicadas[0].codigo}` : `Descuento ${opcionPago!.etiqueta.toLowerCase()}`,
             monto: descuentoMonto,
           }
         : null,
@@ -261,8 +300,8 @@ export function calcularTotalesPedido({
             monto: recargoMonto,
           }
         : null,
-    envio: costoEnvio > 0 ? { etiqueta: "Envío", monto: costoEnvio } : null,
-    total: base + recargoMonto + costoEnvio,
+    envio: gratis ? { etiqueta: "Envío gratis", monto: 0 } : costoEnvio > 0 ? { etiqueta: "Envío", monto: costoEnvio } : null,
+    total: base + recargoMonto + envioMonto,
     promosAplicadas: hayMetodo ? calculablesAplicadas : [],
   };
 }

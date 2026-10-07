@@ -488,7 +488,7 @@ export function CartStepCheckout({
                         value={promo.id}
                         className="font-semibold text-success"
                       >
-                        {promo.nombre}
+                        {promo.codigo ? `${promo.codigo} · ` : ""}{promo.nombre}
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -123,6 +123,11 @@ export function CreatePromotionModal() {
           <form action={formAction} className="p-6 space-y-6">
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="codigo">Código (opcional)</Label>
+                <Input id="codigo" name="codigo" maxLength={20} autoCapitalize="characters" placeholder="Ej: VERANO10" className="h-11 uppercase" />
+                <p className="text-xs text-muted-foreground">Sin código se aplica automáticamente. Con código, la clienta debe ingresarlo en el catálogo.</p>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="nombre">Nombre de la promo</Label>
                 <Input
                   id="nombre"
@@ -225,8 +230,7 @@ export function CreatePromotionModal() {
                     Mostrar en catálogo público (/store)
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Se muestra como aviso informativo en el carrito. No aplica
-                    en el POS presencial.
+                    Habilita esta promoción en el catálogo. También se puede elegir en el POS.
                   </p>
                 </div>
                 <Switch

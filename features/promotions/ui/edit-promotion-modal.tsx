@@ -129,6 +129,9 @@ export function EditPromotionModal({
           <form action={formAction} className="p-6 space-y-6">
             <div className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="codigo">Código (opcional)</Label>
+                <Input id="codigo" name="codigo" defaultValue={promo.codigo ?? ""} maxLength={20} autoCapitalize="characters" placeholder="Ej: VERANO10" className="h-11 uppercase" />
+                <p className="text-xs text-muted-foreground">Vacío: promoción automática. Con código: se aplica al ingresarlo en el catálogo.</p>
                 <Label htmlFor="nombre">Nombre de la promo</Label>
                 <Input
                   id="nombre"

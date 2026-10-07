@@ -12,6 +12,16 @@ import {
   useSyncExternalStore,
 } from "react";
 import Image from "next/image";
+import { Dialog } from "radix-ui";
+import { useRouter, usePathname } from "next/navigation";
+import { Button } from "@/shared/ui/button";
+import { BOTON_CATALOGO } from "../lib/estilos-catalogo";
+import { useLinkCatalogo } from "@/shared/lib/use-negocio";
+import { ProgresoEnvioGratis } from "./progreso-envio-gratis";
+import { CuponCatalogo } from "./cupon-catalogo";
+import type { PromocionDB } from "@/shared/components/cart-sidebar/types";
+import { formatearPromoPublica } from "@/shared/components/cart-sidebar/cart-sidebar-utils";
+import { SugerenciasCarrito } from "./sugerencias-carrito";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { slugify } from "@/shared/utils/slugify";
 import { CartSidebarHeader } from "@/shared/components/cart-sidebar/cart-sidebar-header";
@@ -65,6 +75,7 @@ export function CartPanelPublico({
   numeroWhatsApp,
 }: Readonly<{ numeroWhatsApp?: string }>) {
   const { items, isOpen, setIsOpen, removeItem, updateQuantity, clearCart } =
+    // El carrito persiste al cerrar el panel.
     useCartStore(
       useShallow((state) => ({
         items: state.items,
@@ -81,6 +92,11 @@ export function CartPanelPublico({
     getClientSnapshot,
     getServerSnapshot,
   );
+  const router = useRouter();
+  const pathname = usePathname();
+  const linkCatalogo = useLinkCatalogo();
+  const cuponGuardado = useCartStore(s => s.cuponCatalogo);
+  const setCupon = useCartStore(s => s.setCuponCatalogo);
 
   const [branding, setBranding] = useState<ConfiguracionPOS | null>(null);
 
@@ -131,6 +147,22 @@ export function CartPanelPublico({
   // distintos, y el síntoma sería una tarjeta prometiendo un descuento que el
   // desglose no da. Ver `descuentos-pago-provider.tsx`.
   const { promociones: promocionesDB, opcionesPago } = useDescuentosPago();
+  const cupon = cuponGuardado?.slug === slugNegocio ? cuponGuardado : null;
+  const promocionesPedido = useMemo(() => cupon ? [...promocionesDB, cupon.promocion] : promocionesDB, [cupon, promocionesDB]);
+  const codigoGuardado = cuponGuardado?.codigo;
+  const slugCuponGuardado = cuponGuardado?.slug;
+  // La promo persistida se revalida al abrir: no conserva usos/fechas obsoletos.
+  useEffect(() => {
+    if (!isOpen || !codigoGuardado || slugCuponGuardado !== slugNegocio || !slugNegocio) return;
+    let vigente = true;
+    void Promise.resolve(supabase.rpc("validar_cupon_catalogo", { p_codigo: codigoGuardado })).then(({ data, error }) => {
+      if (!vigente) return;
+      if (error || !data) setCupon(null);
+      else setCupon({ slug: slugNegocio, codigo: codigoGuardado, promocion: { ...(data as PromocionDB), codigo: codigoGuardado } });
+    }).catch(() => { if (vigente) setCupon(null); });
+    return () => { vigente = false; };
+    // Solo al abrir/cambiar código, no al actualizar el snapshot validado.
+  }, [isOpen, slugNegocio, supabase, codigoGuardado, slugCuponGuardado, setCupon]);
 
   // Compara la localidad tipeada contra la localidad del negocio con el mismo
   // criterio de normalización que ya usa normalizarAtributoKeyValor (slugify:
@@ -163,16 +195,36 @@ export function CartPanelPublico({
     () =>
       calcularTotalesPedido({
         items,
-        promociones: promocionesDB,
+        promociones: promocionesPedido,
         opcionPago,
         costoEnvio,
+        configEnvio: branding,
+        destinoEnvio: envioInfo?.tipo,
       }),
-    [items, promocionesDB, opcionPago, costoEnvio],
+    [items, promocionesPedido, opcionPago, costoEnvio, branding, envioInfo],
   );
 
   if (!mounted) return null;
 
   const cerrarPanel = () => setIsOpen(false);
+  const verProductos = () => {
+    cerrarPanel();
+    const portada = linkCatalogo();
+    if (pathname !== portada) router.push(portada);
+  };
+  const progreso = <ProgresoEnvioGratis items={items} base={totales.subtotal - (totales.descuento?.monto ?? 0)} config={branding} destino={envioInfo?.tipo} />;
+  const cuponAplicado = cupon && totales.promosAplicadas.some(p => p.id === cupon.promocion.id);
+  const descuentoCupon = cuponAplicado ? totales.descuentosPorPromocion?.find(d => d.id === cupon.promocion.id)?.monto ?? 0 : 0;
+  const faltaCupon = cupon ? Math.max(0, cupon.promocion.monto_minimo - totales.subtotal) : 0;
+  const avisoCupon = faltaCupon > 0 ? `Te faltan $${faltaCupon.toLocaleString("es-AR")} para usar ${cupon!.codigo}` : cupon && !cuponAplicado ? "El descuento se confirma al elegir cómo pagás; se aplica la mejor promoción elegible." : undefined;
+  const aplicarCupon = async (codigo: string) => {
+    const { data, error } = await supabase.rpc("validar_cupon_catalogo", { p_codigo: codigo });
+    if (error) throw error;
+    if (!data || !slugNegocio) return false;
+    setCupon({ slug: slugNegocio, codigo, promocion: { ...(data as PromocionDB), codigo } });
+    return true;
+  };
+  const campoCupon = <CuponCatalogo codigo={cupon?.codigo} monto={descuentoCupon} aviso={avisoCupon} onAplicar={aplicarCupon} onQuitar={() => setCupon(null)} />;
 
   const volverAProductos = () => {
     setErrores({});
@@ -240,11 +292,30 @@ export function CartPanelPublico({
       modalidad,
       direccion,
       localidad,
-      envioACoordinar: envioInfo?.tipo === "LEJOS",
+      envioACoordinar: envioInfo?.tipo === "LEJOS" && totales.envio?.etiqueta !== "Envío gratis",
       nota,
     });
 
     if (href === "#") return;
+
+    // Medición (Fase 0 de la tienda online, docs/tienda-online.md): cuenta el
+    // pedido por comercio. SIN await y antes de abrir WhatsApp: el pedido sale
+    // igual aunque esto falle, y esperar la respuesta convertiría el
+    // `window.open` en un popup bloqueado. La RPC no guarda datos de la
+    // clienta, solo montos y cantidades.
+    void Promise.resolve(
+      supabase.rpc("registrar_pedido_catalogo", {
+        p_total: totales.total,
+        p_renglones: items.length,
+        p_unidades: items.reduce((suma, item) => suma + item.cantidad, 0),
+        p_modalidad: modalidad,
+        p_pago: opcionPago?.etiqueta ?? "A coordinar",
+        p_envio_a_coordinar: envioInfo?.tipo === "LEJOS" && totales.envio?.etiqueta !== "Envío gratis",
+        p_cupon: cuponAplicado ? cupon?.codigo : null,
+        p_envio_gratis: totales.envio?.etiqueta === "Envío gratis",
+        p_items_sugeridos: items.filter(i => i.sugeridoCatalogo).length,
+      }),
+    ).catch(() => {});
 
     // Sincrónico dentro del click: abrirlo después de un await lo convierte en
     // un popup y el navegador lo bloquea.
@@ -263,19 +334,18 @@ export function CartPanelPublico({
   };
 
   return (
-    <>
-      {isOpen && (
-        <button
+    <Dialog.Root open={isOpen} onOpenChange={setIsOpen}>
+      <Dialog.Portal>
+        <Dialog.Overlay
           className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity"
-          onClick={cerrarPanel}
         />
-      )}
 
-      <div
-        className={`fixed top-0 right-0 z-50 flex h-full w-full transform flex-col border-l border-border bg-card transition-transform duration-300 ease-in-out sm:w-100 ${
+      <Dialog.Content aria-describedby={undefined}
+        className={`carrito-publico fixed top-0 right-0 z-50 flex h-dvh w-full transform flex-col overflow-x-hidden border-l border-border bg-card pb-[env(safe-area-inset-bottom)] transition-transform duration-300 motion-reduce:transition-none ease-in-out sm:w-[440px] lg:w-[480px] ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
+        <Dialog.Title className="sr-only">Tu carrito</Dialog.Title>
         <CartSidebarHeader
           isPOSMode={false}
           onClose={cerrarPanel}
@@ -283,7 +353,7 @@ export function CartPanelPublico({
         />
 
         {items.length === 0 ? (
-          <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6 text-center text-muted-foreground">
             {/* `alt=""` a propósito: la ilustración no agrega nada que el texto
                 de abajo no diga. El PNG son 1230×1278 pero en pantalla nunca
                 pasa de 160px, así que `sizes` es lo que hace que Next sirva una
@@ -295,22 +365,28 @@ export function CartPanelPublico({
               width={1230}
               height={1278}
               sizes="160px"
-              className="mb-2 h-40 w-auto dark:opacity-50"
+              className="mx-auto mb-2 h-32 w-auto dark:opacity-50"
             />
-            <p className="text-sm font-medium">Tu carrito esta vacio</p>
+            <p className="text-base font-semibold text-foreground">Tu carrito está vacío</p>
+            <p className="mt-2 text-sm">Mirá lo que hay y agregá lo que te guste</p>
+            <Button className={`mt-5 h-11 w-full ${BOTON_CATALOGO}`} onClick={verProductos}>Ver productos</Button>
+            {promocionesDB.filter(p => p.mostrar_en_catalogo && !p.codigo).slice(0, 1).map(p => <p key={p.id} className="mt-4 text-sm">{formatearPromoPublica(p)}</p>)}
+            {isOpen && <div className="mt-6 text-left"><SugerenciasCarrito ids={[]} onVerFicha={cerrarPanel} /></div>}
           </div>
         ) : pasoEfectivo === "PRODUCTOS" ? (
           <CartPasoProductos
             items={items}
-            subtotal={totales.subtotal}
+            total={totales.total}
             onUpdateQuantity={updateQuantity}
             onRemoveItem={removeItem}
             onSeguirComprando={cerrarPanel}
             onContinuar={() => setPaso("DATOS")}
-          />
+            pie={campoCupon}
+          >{progreso}{isOpen && <SugerenciasCarrito ids={items.map(i => i.productoId)} onVerFicha={cerrarPanel} />}</CartPasoProductos>
         ) : (
           <>
             <CartPasoDatos
+              beneficio={<>{modalidad === "ENVIO" ? progreso : null}{campoCupon}</>}
               nombre={nombre}
               onNombreChange={setNombre}
               modalidad={modalidad}
@@ -319,7 +395,7 @@ export function CartPanelPublico({
               onLocalidadChange={setLocalidad}
               direccion={direccion}
               onDireccionChange={setDireccion}
-              envioInfo={envioInfo}
+              envioInfo={totales.envio?.etiqueta === "Envío gratis" ? null : envioInfo}
               opcionesPago={opcionesPago}
               opcionPago={opcionPago}
               onOpcionPagoChange={(opcion) => {
@@ -338,7 +414,8 @@ export function CartPanelPublico({
             <CartDesglosePublico totales={totales} onEnviarPedido={enviarPedido} />
           </>
         )}
-      </div>
-    </>
+      </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

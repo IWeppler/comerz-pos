@@ -24,6 +24,28 @@ const balde = {
 const EVENS = "44468525-8381-4c83-a558-eb7209e386b5";
 const CLICKTOSTADO = "1844badf-1a9a-457c-bfee-4d10122337e8";
 
+describe("marketing del catálogo", () => {
+  it("conserva el cupón con su negocio y lo descarta al vaciar o cambiar de comercio", () => {
+    const cupon = { slug: "evens-indumentaria", codigo: "VERANO10", promocion: { id: "promo", nombre: "Verano", tipo_regla: null, tipo_descuento: "PORCENTAJE", valor_descuento: 10, monto_minimo: 0 } };
+    useCartStore.setState({ items: [], negocioId: EVENS });
+    useCartStore.getState().setCuponCatalogo(cupon);
+    expect(useCartStore.getState().cuponCatalogo).toEqual(cupon);
+    useCartStore.getState().sincronizarNegocio(CLICKTOSTADO);
+    expect(useCartStore.getState().cuponCatalogo).toBeNull();
+    useCartStore.getState().setCuponCatalogo(cupon);
+    useCartStore.getState().clearCart();
+    expect(useCartStore.getState().cuponCatalogo).toBeNull();
+  });
+  it("marca agregado sugerido y no marca un intento que no agregó por falta de stock", () => {
+    useCartStore.setState({ items: [{ ...item("a"), cantidad: 1, stockMaximo: 1 }] });
+    useCartStore.getState().addItem({ ...item("a"), sugeridoCatalogo: true });
+    expect(useCartStore.getState().items[0].sugeridoCatalogo).toBeFalsy();
+    useCartStore.setState({ items: [] });
+    useCartStore.getState().addItem({ ...item("a"), sugeridoCatalogo: true });
+    expect(useCartStore.getState().items[0].sugeridoCatalogo).toBe(true);
+  });
+});
+
 describe("sincronizarNegocio", () => {
   beforeEach(() => {
     useCartStore.setState({ items: [], negocioId: null, isOpen: false });
