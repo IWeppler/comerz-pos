@@ -75,9 +75,13 @@ muestre no es control de acceso.
 - SELECT columna por columna solo sobre: `negocios` (activos), `configuracion_pos`
   (branding, contacto, envío), `categorias` (activas), `productos` (publicados, SIN
   `precio_costo` ni `id_master`), `producto_variantes` (activas, SIN `costo` ni
-  `stock_minimo`), `productos_stock`, `promociones` (activas) y pivotes,
+  `stock_minimo`), `productos_stock`, `promociones` (activas; cambio local de cupones debajo) y pivotes,
   `metodos_pago` (activos, SIN `comision`; sí `recargo_porcentaje`), e INSERT-only en
   `solicitudes_comercio`.
+- EXECUTE en `registrar_pedido_catalogo` (`20261007150000`): DEFINER, negocio desde
+  `negocio_publico()`, solo escribe un evento `PEDIDO_CATALOGO` en `eventos_uso` sin
+  datos personales, tope de 20 por minuto por negocio. `anon` sigue sin acceso a la
+  tabla. Ver [tienda-online.md](tienda-online.md).
 - Todas menos `negocios` llevan la RESTRICTIVE `aislamiento_negocio_publico`
   (`negocio_id = security.negocio_publico()`, fail-closed: sin header no hay tienda).
 - **Pedir una columna no concedida devuelve 403 y la tienda se cae ENTERA.**
@@ -86,6 +90,13 @@ muestre no es control de acceso.
   guard de que el costo sigue oculto).
 - Riesgo asumido: `anon` lista los negocios activos (lo necesita `tenant.ts` antes de
   saber el slug).
+- **Cupones, cambio local pendiente de aplicar** (`20261007200000`): `anon` solo
+  enumera promociones automáticas activas. No se concede `codigo`; la RPC
+  `validar_cupon_catalogo` devuelve una promoción concreta validada y sus
+  condiciones, con negocio desde `negocio_publico()`. El contador vive privado en
+  `security`. `sugerencias_carrito` (`20261007210000`, candidata pendiente de
+  medición) solo devuelve IDs públicos; nunca datos de ventas. Estado y validación:
+  [catalogo-marketing.md](catalogo-marketing.md).
 - El schema `archivo` guarda backups sin USAGE para nadie.
 
 ## Auth y sesión

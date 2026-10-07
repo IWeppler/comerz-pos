@@ -1,6 +1,9 @@
 import { getMetricasGlobalesAction } from "@/features/admin/actions/metricas-globales";
 import { resumirMetricasGlobales } from "@/features/admin/lib/metricas-globales";
 import { MetricasGlobalesPanel } from "@/features/admin/ui/metricas-globales-panel";
+import { getPedidosCatalogoAction } from "@/features/admin/actions/pedidos-catalogo";
+import { resumirPedidosCatalogo } from "@/features/admin/lib/pedidos-catalogo";
+import { PedidosCatalogoPanel } from "@/features/admin/ui/pedidos-catalogo-panel";
 import { formatearFechaHora } from "@/shared/utils/formatters";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +20,10 @@ export const metadata = { title: "Métricas | Comerz" };
  * hace que las dos se lean peor.
  */
 export default async function AdminMetricasPage() {
-  const crudas = await getMetricasGlobalesAction();
+  const [crudas, pedidosCatalogo] = await Promise.all([
+    getMetricasGlobalesAction(),
+    getPedidosCatalogoAction(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -39,6 +45,14 @@ export default async function AdminMetricasPage() {
         <div className="rounded-lg border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-200">
           No se pudieron cargar las métricas. Solo el super admin puede verlas;
           si sos vos, revisá el log del server.
+        </div>
+      )}
+
+      {pedidosCatalogo ? (
+        <PedidosCatalogoPanel resumen={resumirPedidosCatalogo(pedidosCatalogo)} />
+      ) : (
+        <div className="rounded-lg border border-rose-400/20 bg-rose-400/5 p-4 text-sm text-rose-200">
+          No se pudieron cargar los pedidos del catálogo. Revisá el log del server.
         </div>
       )}
     </div>
