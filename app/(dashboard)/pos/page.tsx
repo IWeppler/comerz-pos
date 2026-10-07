@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 import { puedeCobrarCuentaCorriente } from "@/features/clients/lib/puede-cobrar-cc";
 import { puedeElegirComprobante } from "@/features/sales/lib/puede-elegir-comprobante";
+import { puedeFiarSinRecargo } from "@/features/sales/lib/puede-fiar-sin-recargo";
 import { puedeCobrarAction } from "@/features/pedidos/actions/pedidos";
 import { leerConfigPos } from "@/entities/config/lib/leer-config-pos";
 import { normalizarRubro } from "@/entities/config/types";
@@ -17,11 +18,13 @@ export default async function PosPage() {
 
   // No cuesta un viaje: el layout ya lo resolvió en este mismo render y
   // `puedeCobrarCuentaCorriente` está cacheada por request.
-  const [puedeCobrarCc, puedeElegirCbte, puedeCobrar] = await Promise.all([
-    puedeCobrarCuentaCorriente(),
-    puedeElegirComprobante(),
-    puedeCobrarAction(),
-  ]);
+  const [puedeCobrarCc, puedeElegirCbte, puedeCobrar, puedeSinRecargo] =
+    await Promise.all([
+      puedeCobrarCuentaCorriente(),
+      puedeElegirComprobante(),
+      puedeCobrarAction(),
+      puedeFiarSinRecargo(),
+    ]);
 
   // El rubro, GRATIS: `leerConfigPos` ya la llamaron los dos layouts de este
   // mismo request y está cacheada con `cache()` de React, así que esto no
@@ -35,6 +38,7 @@ export default async function PosPage() {
       puedeCobrarCuentaCorriente={puedeCobrarCc}
       puedeElegirComprobante={puedeElegirCbte}
       puedeCobrar={puedeCobrar}
+      puedeFiarSinRecargo={puedeSinRecargo}
       rubroInicial={normalizarRubro(config?.rubro)}
     />
   );

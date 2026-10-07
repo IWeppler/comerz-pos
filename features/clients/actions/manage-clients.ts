@@ -909,6 +909,16 @@ export async function ajustarSaldoAction(
 
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  // La base lo exige igual (policy del débito manual, 20261007230000); acá
+  // se frena antes para dar un mensaje y no un "Error al registrar".
+  if (!(await tienePermiso(supabase, PERMISOS.CLIENTES_CARGAR_SALDO))) {
+    return {
+      error: "No tenés permiso para cargar saldo. Pedíselo a una administradora.",
+      success: false,
+    };
+  }
+
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -994,6 +1004,20 @@ export async function importarClientesCSVAction(formData: FormData) {
     if (!(await tienePermiso(supabase, PERMISOS.CLIENTES_CREAR))) {
       return {
         error: "No tenés permiso para crear clientes. Pedíselo al administrador.",
+        success: false,
+      };
+    }
+
+    // La deuda inicial es un débito manual: pide `clientes.cargar_saldo`. Sin
+    // él la policy rechaza el movimiento DESPUÉS de crear al cliente con su
+    // saldo, y el saldo quedaría sin libro. Se frena la importación entera.
+    if (
+      parsed.clientes.some((c) => c.deudaInicial > 0) &&
+      !(await tienePermiso(supabase, PERMISOS.CLIENTES_CARGAR_SALDO))
+    ) {
+      return {
+        error:
+          "La planilla trae deudas y no tenés permiso para cargar saldo. Importala sin la columna de deuda o pedíselo a una administradora.",
         success: false,
       };
     }

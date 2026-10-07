@@ -18,6 +18,9 @@ interface PosPageClientProps {
   puedeElegirComprobante?: boolean;
   /** Permiso `ventas.cobrar` (solo importa con "Enviar pedidos a la caja"). */
   puedeCobrar?: boolean;
+  /** Permiso `ventas.fiar_sin_recargo`: si el ticket ofrece anular el
+   * recargo de cuenta corriente. */
+  puedeFiarSinRecargo?: boolean;
   /**
    * El rubro, resuelto en el SERVER y sin costo (ver la página: sale de
    * `leerConfigPos`, que los layouts de este mismo request ya cachearon).
@@ -34,6 +37,7 @@ export function PosPageClient({
   puedeCobrarCuentaCorriente = false,
   puedeElegirComprobante = false,
   puedeCobrar = true,
+  puedeFiarSinRecargo = false,
   rubroInicial = RUBRO_DEFAULT,
 }: Readonly<PosPageClientProps> = {}) {
   // `?q=` es cómo entra un producto elegido en la paleta (Ctrl+K): en vez de
@@ -126,6 +130,7 @@ export function PosPageClient({
           rubro={data?.data?.rubro ?? rubroInicial}
           puedeElegirComprobante={puedeElegirComprobante}
           puedeCobrar={puedeCobrar}
+          puedeFiarSinRecargo={puedeFiarSinRecargo}
         />
       </div>
     </div>

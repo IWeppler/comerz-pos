@@ -1247,6 +1247,15 @@ export async function registrarVentaAction(
   // venta guarda el porcentaje aplicado y el monto, así que fiar sin recargo
   // se puede contar, no solo encontrar leyendo logs.
   if (isCuentaCorriente && ccSinRecargo && pctRecargoCC > 0) {
+    // Anular el recargo pide permiso (20261007230000). Se frena acá, antes de
+    // mover stock o pedir CAE; `registrar_venta` lo vuelve a exigir.
+    if (!(await tienePermiso(supabase, PERMISOS.VENTAS_FIAR_SIN_RECARGO))) {
+      return {
+        error:
+          "No tenés permiso para fiar sin recargo. Aplicá el recargo o pedíselo a una administradora.",
+        success: false,
+      };
+    }
     console.error("[VENTA CC SIN RECARGO]", {
       vendedorId: user.id,
       clienteId,
@@ -2023,10 +2032,15 @@ export async function registrarVentaAction(
     // quedó nada a medias.
     const sinRenglones = ventaError?.message?.includes("VENTA_SIN_RENGLONES");
     const sinSaldoAFavor = mensajeSaldoAFavorInsuficiente(ventaError);
+    const sinPermisoRecargo = ventaError?.message?.includes(
+      "SIN_PERMISO_FIAR_SIN_RECARGO",
+    );
     return {
       error: sinRenglones
         ? "No se pudo registrar el detalle de la venta. No se cobró nada ni se descontó stock: volvé a intentar."
-        : (sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
+        : sinPermisoRecargo
+          ? "No tenés permiso para fiar sin recargo. Aplicá el recargo o pedíselo a una administradora."
+          : (sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
       success: false,
     };
   }

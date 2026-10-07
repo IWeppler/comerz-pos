@@ -82,6 +82,8 @@ interface ClientDetailSheetProps {
   plantillaRecordatorio?: string | null;
   isAdmin?: boolean;
   puedeCorregirCobro?: boolean;
+  /** Permiso `clientes.cargar_saldo`: sin él no aparece "Cargar saldo". */
+  puedeCargarSaldo?: boolean;
   onClose: () => void;
   /** Después de mandar el resumen: lo registra en el ciclo de cobro si el
    * cliente está en él (ver `useAvisosCc`). */
@@ -103,6 +105,7 @@ export function ClientDetailSheet({
   plantillaRecordatorio = null,
   isAdmin = false,
   puedeCorregirCobro = false,
+  puedeCargarSaldo = false,
   onClose,
   onResumenEnviado,
   montoCiclo,
@@ -271,15 +274,17 @@ export function ClientDetailSheet({
           </div>
 
           <div className="flex items-center gap-2 mt-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsAdjustOpen(true)}
-              className="h-8 text-xs font-medium shadow-none border-border"
-            >
-              <PlusCircle className="w-3.5 h-3.5 mr-1.5 text-warning" />
-              Cargar saldo
-            </Button>
+            {puedeCargarSaldo && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsAdjustOpen(true)}
+                className="h-8 text-xs font-medium shadow-none border-border"
+              >
+                <PlusCircle className="w-3.5 h-3.5 mr-1.5 text-warning" />
+                Cargar saldo
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"

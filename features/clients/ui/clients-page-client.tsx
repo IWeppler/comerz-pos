@@ -13,10 +13,12 @@ export function ClientsPageClient({
   isAdmin,
   puedeCorregirCobro,
   puedeCrearCliente,
+  puedeCargarSaldo,
 }: {
   isAdmin: boolean;
   puedeCorregirCobro: boolean;
   puedeCrearCliente: boolean;
+  puedeCargarSaldo: boolean;
 }) {
   const negocioActivo = useNegocioActivo();
   const { data, isLoading, error } = useQuery({
@@ -63,6 +65,7 @@ export function ClientsPageClient({
         isAdmin={isAdmin}
         puedeCorregirCobro={puedeCorregirCobro}
         puedeCrearCliente={puedeCrearCliente}
+        puedeCargarSaldo={puedeCargarSaldo}
       />
     </div>
   );

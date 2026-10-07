@@ -291,6 +291,10 @@ persona toca Enviar y se abre WhatsApp. Sin API de Meta.
 "no se sabe", 0 = "se fió sin recargo") y `cuenta_corriente_movimientos.monto_recargo`.
 El default del negocio es `configuracion_pos.cc_recargo_default`, recalculado en el
 server.
+- Anularlo en el ticket ("Anular" en RECARGO CC) pide `ventas.fiar_sin_recargo`;
+  cargar deuda a mano pide `clientes.cargar_saldo`; corregir el medio de un cobro
+  (que cambia su recargo por método) quedó solo para ADMIN. Ver
+  [seguridad.md](seguridad.md) (`20261007230000`).
 
 ## Anular o devolver un fiado
 

@@ -51,6 +51,25 @@ AGENTS.md porque aplican a toda migración.
   cambian. Se asignó a todos los roles menos ENCARGADO/VENDEDOR de Librería Colores
   (las vendedoras duplicaban clientes); `crear_negocio_con_owner` se lo da a
   ENCARGADO y VENDEDOR al alta. El botón del POS y de /clientes se esconden sin él.
+- **Recargos de CC y deuda manual, solo ADMIN por default** (`20261007230000`,
+  aplicada el 7/10/2026):
+  - `ventas.fiar_sin_recargo` (nuevo): el "Anular" de RECARGO CC en el POS. Lo exigen
+    `create-sale.ts` (antes de mover stock o pedir CAE) y `registrar_venta`
+    (`SIN_PERMISO_FIAR_SIN_RECARGO` si el comercio tiene recargo > 0 y la venta
+    fiada llega con porcentaje o monto en 0). Sin permiso, el ticket sigue
+    mostrando "Aplicar" para deshacer un pedido que llegó a la caja sin recargo.
+  - `clientes.cargar_saldo` (nuevo): "Cargar saldo" de la ficha y la deuda de la
+    importación CSV. RESTRICTIVE de INSERT `cc_debito_manual_requiere_permiso`
+    sobre `cuenta_corriente_movimientos`: el DÉBITO sin `venta_id` ni `pago_id`
+    pide el permiso (los de las RPC llevan uno de los dos; la mora, `pago_id`).
+    La importación se frena entera si trae deudas y no hay permiso: si no, el
+    cliente nacía con saldo y sin su movimiento.
+  - `clientes.corregir_cobro_cc` se sacó de ENCARGADO y VENDEDOR (15 filas; en Evens
+    lo tenían las 4 vendedoras).
+  - Los dos nuevos se asignaron solo al ADMIN; cada comercio los da a otros roles
+    desde Empleados y permisos. Quedan abiertos, sin cambio: el UPDATE de
+    movimientos manuales (`editarMovimientoManualAction` chequea `is_admin` en
+    Node, la RLS no) y `ajustar_saldo_cliente` (INVOKER).
 - **Tres tablas quedan abiertas a propósito**: `producto_variantes`,
   `productos_stock` y el UPDATE de `promociones`. La venta las escribe con la RLS de
   quien vende (INVOKER) y la RLS es por fila, no por columna. Cerrarlas pide mover la

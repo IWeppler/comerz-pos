@@ -104,6 +104,9 @@ interface ClientsViewProps {
   /** Permiso `clientes.crear`: alta e importación. Solo decide si se muestran
    * los botones; la base lo exige igual (policy de INSERT en `clientes`). */
   puedeCrearCliente?: boolean;
+  /** Permiso `clientes.cargar_saldo`: el botón "Cargar saldo" de la ficha.
+   * La base lo exige igual (policy de INSERT del débito manual). */
+  puedeCargarSaldo?: boolean;
 }
 
 export function ClientsView({
@@ -119,6 +122,7 @@ export function ClientsView({
   isAdmin = false,
   puedeCorregirCobro = false,
   puedeCrearCliente = false,
+  puedeCargarSaldo = false,
 }: Readonly<ClientsViewProps>) {
   // El "ahora" se congela en el primer render: si saliera de `new Date()`
   // dentro del useMemo, cada recálculo daría puntajes microscópicamente
@@ -940,6 +944,7 @@ export function ClientsView({
         plantillaRecordatorio={plantillaRecordatorio}
         isAdmin={isAdmin}
         puedeCorregirCobro={puedeCorregirCobro}
+        puedeCargarSaldo={puedeCargarSaldo}
         onClose={() => setSelectedClientId(null)}
         onResumenEnviado={marcar}
         montoCiclo={

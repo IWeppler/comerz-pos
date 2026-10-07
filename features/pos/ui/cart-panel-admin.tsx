@@ -110,8 +110,13 @@ export function CartPanelAdmin({
   rubro,
   puedeElegirComprobante = false,
   puedeCobrar = true,
+  puedeFiarSinRecargo = false,
 }: Readonly<{
   numeroWhatsApp?: string;
+  /** Permiso `ventas.fiar_sin_recargo`. Sin él no aparece "Anular" en la
+   * línea RECARGO CC; "Aplicar" sí, para deshacer un pedido que llegó a la
+   * caja sin recargo. El server vuelve a chequearlo. */
+  puedeFiarSinRecargo?: boolean;
   /** Permiso `ventas.cobrar`. Solo importa con `pedidos_a_caja`: sin él,
    * el único botón del ticket es "Enviar a caja". */
   puedeCobrar?: boolean;
@@ -2249,7 +2254,11 @@ export function CartPanelAdmin({
                     recargoCuentaCorrientePotencial
                   }
                   ccSinRecargo={ccSinRecargo}
-                  onCcSinRecargoChange={setCcSinRecargo}
+                  onCcSinRecargoChange={
+                    puedeFiarSinRecargo || ccSinRecargo
+                      ? setCcSinRecargo
+                      : undefined
+                  }
                   recargoMetodoMonto={recargoMetodo.totalRecargo}
                   recargoMetodoEtiqueta={recargoMetodoEtiqueta}
                   totalFinal={totalACubrir}
