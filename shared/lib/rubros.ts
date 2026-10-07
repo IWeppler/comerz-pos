@@ -9,10 +9,10 @@ import type { Rubro } from "@/entities/config/types";
  * ─────────────────────────────────────────────────────────────────────────
  * OJO, son DOS rubros distintos y confundirlos rompe cosas:
  *
- *   `rubro_comercial` (esto)      14 valores. Segmentación: para saber a quién
+ *   `rubro_comercial` (esto)      17 valores. Segmentación: para saber a quién
  *                                 le estás vendiendo. Se lee en /admincomerz.
  *
- *   `configuracion_pos.rubro`     2 valores, con CHECK en la base. OPERATIVO:
+ *   `configuracion_pos.rubro`     9 valores, con CHECK en la base. OPERATIVO:
  *                                 decide cómo se muestra la identidad del
  *                                 producto en Inventario — indumentaria razona
  *                                 por talle/color ("N var."), electro por
@@ -31,6 +31,7 @@ export const RUBROS = [
   { valor: "bazar", etiqueta: "Bazar y decoración del hogar" },
   { valor: "electronica", etiqueta: "Electrónica y tecnología" },
   { valor: "ferreteria", etiqueta: "Ferretería y materiales" },
+  { valor: "pintureria", etiqueta: "Pinturería" },
   { valor: "libreria", etiqueta: "Librería y papelería" },
   { valor: "jugueteria", etiqueta: "Juguetería" },
   { valor: "farmacia", etiqueta: "Farmacia" },
@@ -54,7 +55,7 @@ export function etiquetaRubro(valor: string | null | undefined) {
 }
 
 /**
- * Traducción de los 15 rubros comerciales a los 7 operativos.
+ * Traducción de los 17 rubros comerciales a los 9 operativos.
  *
  * El criterio NO es "qué vende" sino "cómo se identifica su mercadería y qué
  * columnas necesita la planilla de ingreso": dos celulares del mismo modelo se
@@ -89,6 +90,7 @@ const OPERATIVO_POR_COMERCIAL: Record<RubroComercial, Rubro> = {
   // Medida y material son lo que distingue un tornillo de otro. Antes caía en
   // `electro`, que no tiene ninguna de las dos columnas.
   ferreteria: "ferreteria",
+  pintureria: "pintureria",
 
   // Presentación + laboratorio/marca. No es por peso: es por envase.
   farmacia: "farmacia",

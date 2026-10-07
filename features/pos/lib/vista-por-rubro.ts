@@ -33,6 +33,7 @@ const RUBROS_SIN_IMAGEN: readonly Rubro[] = [
   "alimentos",
   "farmacia",
   "ferreteria",
+  "pintureria",
 ] as const;
 
 /**

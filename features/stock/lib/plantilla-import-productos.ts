@@ -25,6 +25,11 @@ import { columnasDeRubro } from "./columnas-por-rubro";
 type FilaEjemplo = Record<string, string>;
 
 const EJEMPLOS: Record<Rubro, FilaEjemplo[]> = {
+  pintureria: [
+    { categoria: "Látex", producto: "Látex interior", marca: "Alba", capacidad: "4 L", color: "Blanco", acabado: "Mate", unidad_medida: "Unidad", stock: "8", precio_costo: "18000", precio_venta: "32000" },
+    { categoria: "Esmaltes", producto: "Esmalte sintético", marca: "Alba", capacidad: "1 L", color: "Negro", acabado: "Brillante", unidad_medida: "Unidad", stock: "6", precio_costo: "9000", precio_venta: "16000" },
+    { categoria: "Diluyentes", producto: "Aguarrás", unidad_medida: "Litro", stock: "20", precio_costo: "2000", precio_venta: "3500" },
+  ],
   indumentaria: [
     // El mismo producto en dos talles: dos filas, mismo nombre.
     { categoria: "Remeras", producto: "Remera lisa algodón", talle: "M", color: "Negro", stock: "12", precio_costo: "6000", precio_venta: "14900" },

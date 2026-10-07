@@ -264,6 +264,7 @@ export function StockFiltersToolbar({
             comparte. */}
         {isAdmin && isImportModalOpen && (
           <ImportarPedidoModal
+            rubro={rubro}
             open
             onOpenChange={setIsImportModalOpen}
             hideTrigger

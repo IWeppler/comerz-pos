@@ -6,6 +6,7 @@ import { tienePermiso, PERMISOS } from "@/shared/lib/permisos";
 import { procesarPedidoAction } from "@/features/purchases/actions/create-purchase";
 import { parseProductosSheet } from "@/features/stock/lib/parse-productos-csv";
 import { hashPlanillaProductos } from "@/features/stock/lib/hash-import-productos";
+import { normalizarRubro } from "@/entities/config/types";
 import {
   planillaALineasDeRemito,
   resumirPlanilla,
@@ -69,7 +70,9 @@ export async function planillaAConciliacionAction(
     return { error: "No tenés permiso para importar mercadería." };
   }
 
-  const parseo = parseProductosSheet(matriz);
+  const { data: config, error: configError } = await supabase.from("configuracion_pos").select("rubro").single();
+  if (configError) return { error: "No se pudo leer el rubro del comercio." };
+  const parseo = parseProductosSheet(matriz, normalizarRubro(config?.rubro));
   if (parseo.error) return { error: parseo.error };
   if (parseo.filas.length === 0) {
     return { error: "La planilla no tiene filas para importar." };

@@ -15,9 +15,13 @@
 
 import { redondearCantidad } from "@/shared/lib/unidad-venta";
 import { ALIAS_COLUMNA_GENERO } from "@/shared/lib/alias-columna-genero";
+import type { Rubro } from "@/entities/config/types";
+import { esColumnaCapacidad } from "@/shared/lib/alias-capacidad";
 
 /** Headers reconocidos por columna. El primero es el nombre "oficial". */
 const ALIASES = {
+  capacidad: ["litros", "lts"],
+  acabado: ["acabado", "terminacion", "terminación"],
   // "subcategoria" es la MISMA columna: en un catálogo por audiencia
   // (Hombre > Camperas) lo que el comercio escribe en su planilla es el hijo,
   // y llamarlo "categoría" en la plantilla lo hace dudar de si va el padre.
@@ -90,6 +94,8 @@ const ALIASES_NORMALIZADOS: Record<Columna, string[]> = Object.fromEntries(
  * hace normalizarAtributoKeyValor del lado del server.
  */
 export const COLUMNAS_ATRIBUTO: { columna: Columna; nombreAtributo: string }[] = [
+  { columna: "capacidad", nombreAtributo: "Capacidad" },
+  { columna: "acabado", nombreAtributo: "Acabado" },
   // El orden es el de lectura de una etiqueta: primero cómo se ve, después
   // cuánto mide, después de qué está hecho.
   { columna: "talle", nombreAtributo: "Talle" },
@@ -192,7 +198,7 @@ export function parseNumeroLocal(raw: string): number | null {
  * blanco arriba. El ancla es la columna `producto`, que es la única
  * obligatoria.
  */
-export function parseProductosSheet(rows: string[][]): ParseProductosResult {
+export function parseProductosSheet(rows: string[][], rubro?: Rubro): ParseProductosResult {
   const vacio = (r: ParseProductosResult) => r;
 
   if (!rows.length) {
@@ -227,7 +233,9 @@ export function parseProductosSheet(rows: string[][]): ParseProductosResult {
     });
   }
 
-  const headers = rows[headerIdx].map((c) => normalizeHeader(limpiarCelda(c)));
+  const headers = rows[headerIdx].map((c) =>
+    esColumnaCapacidad(limpiarCelda(c), rubro) ? "litros" : normalizeHeader(limpiarCelda(c)),
+  );
 
   // Índice de cada columna reconocida. -1 = no vino en la planilla, que es
   // un estado normal y no un error.

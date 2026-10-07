@@ -279,6 +279,17 @@ const FERRETERIA: ReglaTermino[] = [
   },
 ];
 
+const PINTURERIA: ReglaTermino[] = [
+  { terminos: ["aerosol"], categoria: "Aerosoles" },
+  { terminos: ["latex"], categoria: "Látex" },
+  { terminos: ["esmalte", "sintetico"], categoria: "Esmaltes" },
+  { terminos: ["barniz", "laca"], categoria: "Barnices" },
+  { terminos: ["membrana", "impermeabilizante"], categoria: "Impermeabilizantes" },
+  { terminos: ["enduido", "fijador", "sellador", "masilla"], categoria: "Preparación" },
+  { terminos: ["aguarras", "thinner", "diluyente"], categoria: "Diluyentes" },
+  { terminos: ["pincel", "rodillo", "espatula", "bandeja", "lija", "cinta de papel"], categoria: "Herramientas" },
+];
+
 const QUIOSCOS: ReglaTermino[] = [
   {
     terminos: ["cigarrillo", "tabaco", "encendedor"],
@@ -339,6 +350,7 @@ const COTILLON: ReglaTermino[] = [
  * mano — que es lo que la persona iba a hacer igual.
  */
 export const TERMINOS_POR_RUBRO: Record<Rubro, ReglaTermino[]> = {
+  pintureria: PINTURERIA,
   indumentaria: INDUMENTARIA,
   electro: ELECTRO,
   alimentos: ALIMENTOS,

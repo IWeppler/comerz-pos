@@ -191,7 +191,7 @@ export function ImportProductosModal({
 
     try {
       const rows = await leerPlanillaProductos(file);
-      const parsed = parseProductosSheet(rows);
+      const parsed = parseProductosSheet(rows, rubro);
 
       if (parsed.error) {
         toast.error(parsed.error);

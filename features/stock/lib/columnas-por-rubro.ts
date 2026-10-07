@@ -52,6 +52,14 @@ const CODIGO_BARRAS: ColumnaPlantilla = {
 };
 
 const ESPECIFICAS: Record<Rubro, ColumnaPlantilla[]> = {
+  pintureria: [
+    CODIGO_BARRAS,
+    { clave: "marca", descripcion: "Marca del fabricante" },
+    { clave: "capacidad", descripcion: "1 L, 4 L, 10 L, 20 L", esVariante: true },
+    { clave: "color", descripcion: "Blanco, Negro, Gris perla…", esVariante: true },
+    { clave: "acabado", descripcion: "Mate, satinado, brillante" },
+    { clave: "unidad_medida", descripcion: "Unidad, Litro… para lo suelto" },
+  ],
   indumentaria: [
     // El género NO parte variantes: es la categoría de arriba del árbol
     // (Hombre > Camperas, Nena > Remeras). Marcarlo `esVariante` duplicaría
@@ -163,6 +171,7 @@ export function todasLasColumnasConocidas(): string[] {
 }
 
 export const ETIQUETA_RUBRO: Record<Rubro, string> = {
+  pintureria: "Pinturería",
   indumentaria: "Indumentaria",
   electro: "Electro y tecnología",
   alimentos: "Alimentos y bebidas",

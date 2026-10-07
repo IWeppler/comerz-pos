@@ -69,6 +69,8 @@ describe("las dos puertas reconocen lo mismo", () => {
     "talle",
     "color",
     "memoria",
+    "capacidad",
+    "acabado",
     "peso",
     "medida",
     "material",

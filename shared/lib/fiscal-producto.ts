@@ -193,6 +193,7 @@ export interface DefaultsFiscales {
  *   el 21% es el lado barato de equivocarse.
  */
 const DEFAULTS_POR_RUBRO: Record<Rubro, DefaultsFiscales> = {
+  pintureria: { unidad_medida: "UNIDAD", tratamiento_iva: "GRAVADO_21" },
   indumentaria: { unidad_medida: "UNIDAD", tratamiento_iva: "GRAVADO_21" },
   electro: { unidad_medida: "UNIDAD", tratamiento_iva: "GRAVADO_21" },
   ferreteria: { unidad_medida: "UNIDAD", tratamiento_iva: "GRAVADO_21" },

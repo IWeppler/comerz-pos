@@ -34,6 +34,7 @@ import {
 
 type ExcelCell = string | number | boolean | Date | null | undefined;
 type ImportarPedidoModalProps = {
+  rubro?: import("@/entities/config/types").Rubro;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hideTrigger?: boolean;
@@ -43,6 +44,7 @@ export function ImportarPedidoModal({
   open,
   onOpenChange,
   hideTrigger = false,
+  rubro,
 }: Readonly<ImportarPedidoModalProps>) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -129,7 +131,7 @@ export function ImportarPedidoModal({
       // una regla. Estaba adentro de este componente, sin exportar, así que no
       // se le podía escribir un test — y por eso nadie vio que un membrete de
       // tres celdas o una fila de totales rompían el archivo entero.
-      const analisis = parseRemitoProveedor(rawRows);
+      const analisis = parseRemitoProveedor(rawRows, rubro);
 
       if (analisis.error) {
         throw new Error(analisis.error);

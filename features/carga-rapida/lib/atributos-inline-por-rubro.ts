@@ -32,6 +32,8 @@ export type AtributoInline = {
  * acento para que el parser la reconozca; el atributo se muestra bien
  * escrito. Una clave que no esté acá cae a la clave capitalizada. */
 const ETIQUETA_POR_CLAVE: Record<string, string> = {
+  capacidad: "Capacidad",
+  acabado: "Acabado",
   talle: "Talle",
   color: "Color",
   memoria: "Memoria",

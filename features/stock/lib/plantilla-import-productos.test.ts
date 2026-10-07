@@ -17,6 +17,7 @@ const RUBROS: Rubro[] = [
   "ferreteria",
   "quioscos",
   "cotillon",
+  "pintureria",
   "otros",
 ];
 
@@ -108,7 +109,7 @@ describe("plantillaImportProductos", () => {
     // columna a un rubro y el parser no la conoce, el comercio baja una
     // plantilla que su propia importación descarta. Acá salta.
     for (const rubro of RUBROS) {
-      const res = parseProductosSheet(comoMatriz(plantillaImportProductos(rubro)));
+      const res = parseProductosSheet(comoMatriz(plantillaImportProductos(rubro)), rubro);
 
       expect(res.error, `rubro ${rubro}`).toBeNull();
       expect(res.columnasIgnoradas, `rubro ${rubro}`).toEqual([]);

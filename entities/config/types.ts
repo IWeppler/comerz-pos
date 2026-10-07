@@ -27,6 +27,7 @@ export type Rubro =
   | "ferreteria"
   | "quioscos"
   | "cotillon"
+  | "pintureria"
   | "otros";
 
 export const RUBROS_VALIDOS: readonly Rubro[] = [
@@ -37,6 +38,7 @@ export const RUBROS_VALIDOS: readonly Rubro[] = [
   "ferreteria",
   "quioscos",
   "cotillon",
+  "pintureria",
   "otros",
 ] as const;
 
@@ -93,6 +95,9 @@ export interface ConfiguracionPOS {
   localidad_negocio?: string | null;
   envio_costo_local?: number | null;
   envio_mensaje_lejos?: string | null;
+  envio_gratis_desde_monto?: number | null;
+  envio_gratis_desde_unidades?: number | null;
+  envio_gratis_alcance?: "LOCAL" | "TODOS";
 
   // Banner Promocional
   banner_activo?: boolean;

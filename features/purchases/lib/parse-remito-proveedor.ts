@@ -6,6 +6,8 @@ import {
   type CampoIngreso,
 } from "@/shared/lib/columnas-archivo-ingreso";
 import type { RawOrderItem } from "../actions/create-purchase";
+import type { Rubro } from "@/entities/config/types";
+import { esColumnaCapacidad } from "@/shared/lib/alias-capacidad";
 
 /**
  * El archivo del proveedor, convertido en renglones de remito.
@@ -268,6 +270,7 @@ function buscarFilaEncabezado(filas: CeldaExcel[][]): number {
 
 export function parseRemitoProveedor(
   filasCrudas: CeldaExcel[][],
+  rubro?: Rubro,
 ): ResultadoParseRemito {
   const vacio: ResultadoParseRemito = {
     filas: [],
@@ -302,7 +305,9 @@ export function parseRemitoProveedor(
     };
   }
 
-  const encabezados = (filasCrudas[indiceEncabezado] ?? []).map(encabezado);
+  const encabezados = (filasCrudas[indiceEncabezado] ?? []).map((c) =>
+    esColumnaCapacidad(texto(c), rubro) ? "CAPACIDAD" : encabezado(c),
+  );
   const avisos: AvisoRemito[] = [];
 
   // Qué columna aporta cada campo. La PRIMERA gana: cuando el remito trae dos

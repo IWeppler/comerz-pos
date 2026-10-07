@@ -28,7 +28,7 @@ import { ALIAS_COLUMNA_GENERO } from "./alias-columna-genero";
  * con una regla y dos listas es la regla aplicada a medias.
  *
  * QUÉ NO ESTÁ ACÁ, y es a propósito: `modelo`, `memoria`, `talle`, `color`,
- * `peso`, `medida`, `material` y `presentacion`. Esas columnas no tienen campo
+ * `peso`, `medida`, `material`, `presentacion`, `capacidad` y `acabado`. Esas columnas no tienen campo
  * propio en `ordenes_items`, así que su lugar correcto sigue siendo el texto
  * de la variante — que es donde la conciliación las lee. La lista de abajo es
  * la de las columnas que tienen OTRO destino, y por lo tanto no deben terminar
