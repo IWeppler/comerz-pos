@@ -538,3 +538,111 @@ describe("calcularSaldoConRecargo — una vez por venta", () => {
     expect(r.montoRecargo).toBe(3000);
   });
 });
+
+// Auditoría del 8/10/2026 (CELESTE SCHOFER, Evens): cada venta vence en su
+// plazo y recarga una vez; el monto fijo es uno POR VENTA vencida.
+describe("calcularSaldoConRecargo — monto fijo por venta vencida", () => {
+  it("cobra un fijo por cada venta vencida que todavía no recargó", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 90000,
+        fecha_vencimiento: haceDias(10),
+        capital_vencido: 60000,
+        ventas_vencidas_nuevas: 3,
+      },
+      { ...FIJO, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.montoRecargo).toBe(15000);
+  });
+
+  it("sin ventas vencidas nuevas no hay fijo, aunque la cuenta esté vencida", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 90000,
+        fecha_vencimiento: haceDias(10),
+        capital_vencido: 60000,
+        recargado_vencido: 60000,
+        ventas_vencidas_nuevas: 0,
+      },
+      { ...FIJO, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.montoRecargo).toBe(0);
+  });
+
+  it("acepta la cantidad como string", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 90000,
+        fecha_vencimiento: haceDias(10),
+        capital_vencido: 60000,
+        ventas_vencidas_nuevas: "2",
+      },
+      { ...FIJO, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.montoRecargo).toBe(10000);
+  });
+
+  it("sin el dato (base vieja) queda uno por cobro, como antes", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 90000,
+        fecha_vencimiento: haceDias(10),
+        capital_vencido: 60000,
+      },
+      { ...FIJO, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.montoRecargo).toBe(5000);
+  });
+
+  it("antes del vencimiento no cobra aunque venga una cantidad", () => {
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 90000,
+        fecha_vencimiento: haceDias(-5),
+        ventas_vencidas_nuevas: 2,
+      },
+      FIJO,
+    );
+    expect(r.montoRecargo).toBe(0);
+  });
+});
+
+describe("calcularSaldoConRecargo — PORCION_VENCIDA con la imputación por venta", () => {
+  it("Vero duarte (Estilo Bonito, 10%): la base es lo vivo de su compra vencida", () => {
+    // Con el FIFO viejo de `deuda_cc_vencida` la mora pagada aparecía viva
+    // ($4.500) y la base daba $10.000. Imputando como `cc_deudas_vivas`: su
+    // compra del 22/8 tiene $14.500 vivos, vencidos y sin recargar.
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 14500,
+        fecha_vencimiento: haceDias(16),
+        mora_previa: 0,
+        capital_vencido: 14500,
+        recargado_vencido: 0,
+        ventas_vencidas_nuevas: 1,
+      },
+      {
+        recargo_mora_tipo: "PORCENTAJE",
+        recargo_mora_valor: 10,
+        recargo_mora_base: "PORCION_VENCIDA",
+      },
+    );
+    expect(r.baseRecargo).toBe(14500);
+    expect(r.montoRecargo).toBe(1450);
+  });
+
+  it("una compra que no venció no entra en la mora (CELESTE SCHOFER, 7/10)", () => {
+    // Compró $43.700 y 40 segundos después pagó con la cuenta vencida por su
+    // compra del 29/8. Lo vencido sin recargar era solo ese ticket.
+    const r = calcularSaldoConRecargo(
+      {
+        monto_pendiente: 97911.44,
+        fecha_vencimiento: haceDias(4),
+        capital_vencido: 13831.44,
+        recargado_vencido: 0,
+      },
+      { ...PORCENTAJE, recargo_mora_base: "PORCION_VENCIDA" },
+    );
+    expect(r.montoRecargo).toBeCloseTo(2074.72, 2);
+  });
+});

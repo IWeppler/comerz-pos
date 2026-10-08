@@ -120,6 +120,7 @@ export async function getDatosCobroCuentaCorrienteAction(): Promise<DatosCobroCu
         capital_vencido: v.capital_vencido,
         recargado_saldo: v.recargado_saldo,
         recargado_vencido: v.recargado_vencido,
+        ventas_vencidas_nuevas: v.ventas_vencidas_nuevas,
       },
     ]),
   );

@@ -157,6 +157,37 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
 
 ## Mora
 
+- **La regla (Ignacio con Evelyn, 8/10/2026)**: cada venta vence en su plazo
+  y es independiente. Hay mora nueva SOLO cuando vence una venta nueva (un
+  cobro sin venta nueva vencida no recarga), y entonces el porcentaje va sobre
+  TODO el capital vencido vivo, sin la mora anterior (el 15% de fiar sí entra:
+  es parte del ticket). Ejemplo: A $10.000 vence 6/10, B $20.000 vence 20/10;
+  cobro del 10/10 → 15% × 10.000; cobro del 14/10 → nada; cobro del 25/10 →
+  15% × 30.000. Monto fijo: uno por cada venta vencida. Una compra hecha con la
+  cuenta vencida no entra en mora hasta que vence ella.
+  - Evens y Estilo Bonito (`20261008150000`) y ClickTostado
+    (`20261008170000`) pasaron a `PORCION_VENCIDA`: ningún comercio queda en
+    `SALDO_COMPLETO`.
+  - **`deuda_cc_vencida` imputa como `cc_deudas_vivas`** (`20261008180000`):
+    la mora dentro de su venta y pagada primero (capital vivo =
+    `least(capital, vivo)`). Antes armaba su propio FIFO con la mora como
+    deuda aparte, al final de la fila: `mora_viva` inflada y base de menos
+    (Vero duarte: $10.000 contra $14.500 vivos). Medido al aplicar: el saldo
+    vivo no cambió para nadie y la base solo cambió para Vero.
+  - **Monto fijo: uno por cada venta vencida que no recargó**
+    (`ventas_vencidas_nuevas`). Sin el dato, el TS cae al criterio viejo (uno
+    por cobro).
+  - **Pendiente de decidir**: `PORCION_VENCIDA` recarga solo el capital
+    vencido que todavía no recargó; el ejemplo de arriba (15% × 30.000 el
+    25/10, A otra vez) todavía no está implementado.
+  - **Corrección de lo mal cobrado** (`20261008160000`, decisión de la dueña):
+    a los 6 clientes de Evens que todavía deben, cada recargo bajó al monto que
+    correspondía con esta regla y los que no correspondían se borraron, sin
+    rastro de "perdón" ni saldo a favor ($53.256,34; CELESTE SCHOFER
+    $23.278,84: 26/9 $18.828,75 → $30,19 y 7/10 $6.555 → $2.074,72). A los 7
+    que ya tienen saldo cero no se les tocó nada ("lo que se cobró se cobró").
+    Cálculo: cada mora REALMENTE cobrada contra el libro de ese momento, plazo
+    30 días hasta el 28/8 y 35 después. Reversión en `supabase/reversals/`.
 - **La base la elige cada comercio** (`configuracion_pos.recargo_mora_base`,
   `20261005120000`): `SALDO_COMPLETO` (default, cláusula de aceleración) o
   `PORCION_VENCIDA` (solo `capital_vencido` de `deuda_cc_vencida`). Nació del
@@ -234,6 +265,31 @@ Botón "Recordar" del detalle del cliente; arma el texto `construirMensajeDeuda`
   "vence el" (el vencimiento más viejo) para todo el saldo: EESO 405 en Colores leía
   $276.450 "vence el 10/10" cuando ese día vencían $98.850. Sin botón "Escribirle al
   comercio" ni pie de emisión (pedido del 5/10/2026).
+- **En stand by: "Pagar cuenta" desde el resumen** (charlado el 8/10/2026).
+  Decidido hasta acá: el pago entra a la cuenta de Mercado Pago del comercio
+  por default (sin turno de caja), con la cuenta destino CONFIGURABLE; el monto
+  se recalcula al pagar (la mora pudo cambiar desde que se mandó el link).
+  Falta decidir y auditar: el aviso de pago (un redirect a Mercado Pago no
+  alcanza para registrar el cobro: hace falta el webhook, idempotente por id
+  de pago, que llame a `registrar_cobro_cc`) y cómo entra la comisión de
+  Mercado Pago. Mismo OAuth por comercio que la Fase 3 de
+  [tienda-online.md](tienda-online.md).
+- **Alias para transferir** (`20261008200000`, 8/10/2026):
+  `configuracion_pos.alias_transferencia` (alias de 6 a 20 caracteres o
+  CBU/CVU de 22 dígitos, CHECK + espejo `validarAliasTransferencia`), cargado
+  en Configuración > Clientes. El resumen muestra "Pagá por transferencia" con
+  alias y monto para copiar (`CopiarDato`), solo si debe algo. No hay forma
+  estándar de abrir la transferencia ya cargada sin pasarela. Sin botón
+  "Avisar que pagué": la clienta confirma mandando el comprobante por
+  WhatsApp. anon no lee la columna: sale solo por la RPC, a quien tiene el
+  link.
+- **Cabecera, catálogo y firma** (`20261008190000`, pedido del 8/10/2026):
+  arriba el logo de la tienda (`posLogo`; sin logo, la inicial) y el nombre;
+  al final un botón "Ver el catálogo de …" solo si el catálogo no está
+  cerrado (`catalogo_activo` distinto de false, mismo criterio que la tienda:
+  la RPC devuelve `catalogo_slug` o null y la URL la arma `urlDeCatalogo`); y
+  afuera de la tarjeta, discreto, "Gestión de cuenta corriente con Comerz ·
+  www.comerz.app".
 - **Con cierre mensual, el resumen es el del ciclo** (`20261006120000`, pedido del
   6/10/2026 para Colores): el mensaje y el link muestran lo que vence hasta el
   vencimiento del ciclo vigente, deuda vieja incluida (cada mes en su renglón);

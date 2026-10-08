@@ -30,6 +30,13 @@ export interface BasesMora {
   /** Lo mismo con PORCION_VENCIDA: ventas que ya estaban vencidas cuando se
    * cobró una mora. */
   recargado_vencido?: number | string | null;
+  /**
+   * Cuántas ventas vencidas con capital vivo todavía no recargaron. El MONTO
+   * FIJO se cobra uno por cada una (8/10/2026: "por cada venta vencida");
+   * antes era uno por cobro. Sin el dato (una base vieja que no lo devuelve)
+   * queda el criterio anterior: uno si hay algo por recargar.
+   */
+  ventas_vencidas_nuevas?: number | string | null;
 }
 
 export interface TicketConVencimiento extends BasesMora {
@@ -171,9 +178,17 @@ export function calcularSaldoConRecargo(
 
   let montoRecargo = 0;
   if (config.recargo_mora_tipo === "MONTO_FIJO") {
-    // También una vez: si todo lo que debe ya pagó su recargo, no hay otro.
-    montoRecargo =
-      baseRecargo > 0 ? Math.max(0, Number(config.recargo_mora_valor) || 0) : 0;
+    // Uno por cada venta vencida que todavía no recargó; también una vez por
+    // venta: si todo lo que debe ya pagó su recargo, no hay otro.
+    const fijo = Math.max(0, Number(config.recargo_mora_valor) || 0);
+    const sinDato =
+      ticket.ventas_vencidas_nuevas === undefined ||
+      ticket.ventas_vencidas_nuevas === null;
+    montoRecargo = sinDato
+      ? baseRecargo > 0
+        ? fijo
+        : 0
+      : fijo * Math.floor(numero(ticket.ventas_vencidas_nuevas));
   } else if (config.recargo_mora_tipo === "PORCENTAJE") {
     const pct = Math.max(0, Number(config.recargo_mora_valor) || 0);
     // Sobre el CAPITAL: todo (SALDO_COMPLETO, cláusula de aceleración) o solo

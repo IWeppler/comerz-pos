@@ -194,6 +194,7 @@ export async function getClientesPageDataAction() {
       capital_vencido: Number(fila.capital_vencido ?? 0),
       recargado_saldo: Number(fila.recargado_saldo ?? 0),
       recargado_vencido: Number(fila.recargado_vencido ?? 0),
+      ventas_vencidas_nuevas: fila.ventas_vencidas_nuevas,
     };
   }
 
@@ -497,6 +498,8 @@ export async function registrarPagoDeudaAction(
       capital_vencido: (deudaVencida as BasesMora | null)?.capital_vencido,
       recargado_saldo: (deudaVencida as BasesMora | null)?.recargado_saldo,
       recargado_vencido: (deudaVencida as BasesMora | null)?.recargado_vencido,
+      ventas_vencidas_nuevas: (deudaVencida as BasesMora | null)
+        ?.ventas_vencidas_nuevas,
     },
     recargoConfig,
   );
@@ -526,7 +529,7 @@ export async function registrarPagoDeudaAction(
       ? recargoConfig.recargo_mora_base === "PORCION_VENCIDA"
         ? `${recargoConfig.recargo_mora_valor}% sobre la deuda vencida`
         : `${recargoConfig.recargo_mora_valor}% sobre el saldo adeudado`
-      : "monto fijo por deuda vencida";
+      : "monto fijo por venta vencida";
 
   // El crédito va por la BASE, no por el bruto: el recargo por método es
   // plata del cobro, no capital amortizado.
