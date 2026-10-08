@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { WizardInicioServer } from "@/features/onboarding/ui/wizard-inicio-server";
 import { RUTA_SALIR } from "@/shared/lib/salir-sesion";
 import {
   BarraPrueba,
@@ -240,6 +241,7 @@ export default async function DashboardLayout({
               paleta: dos instancias serían dos sincronizaciones compitiendo
               por la misma cola. */}
           <SincronizadorVentas />
+          {userRole === "ADMIN" && <Suspense fallback={null}><WizardInicioServer /></Suspense>}
 
           <main className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <TooltipProvider>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { PosInicio } from "@/features/onboarding/ui/pos-inicio";
 import { useSearchParams } from "next/navigation";
 import { soloVendibles } from "@/features/pos/lib/solo-vendibles";
 import { useCatalogoPanel } from "@/shared/hooks/use-catalogo-panel";
@@ -133,6 +134,7 @@ export function PosPageClient({
           puedeFiarSinRecargo={puedeFiarSinRecargo}
         />
       </div>
+      <PosInicio />
     </div>
   );
 }

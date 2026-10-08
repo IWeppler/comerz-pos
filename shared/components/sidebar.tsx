@@ -267,6 +267,9 @@ export function Sidebar({
               userId={userId}
               puedeRegistrarIngreso={puedeRegistrarIngreso}
               className="mr-1"
+              // El modal lo monta el chip del navbar: con los dos se abrían
+              // dos modales iguales a la vez (ver `montarModal`).
+              montarModal={false}
             />
           )}
           <span className="hidden sm:block">

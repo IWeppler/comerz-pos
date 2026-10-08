@@ -11,7 +11,6 @@ import {
   useSyncExternalStore,
   useTransition,
 } from "react";
-import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { toast } from "sonner";
@@ -73,6 +72,8 @@ import {
 import { ClienteBasico } from "../../../shared/components/cart-sidebar/client-selector";
 import { AtajosCarrito } from "./atajos-carrito";
 import { VentaExitosa } from "./venta-exitosa";
+import { useWizardInicioStore } from "@/shared/store/wizard-inicio-store";
+import { useCajaStatusStore } from "@/shared/store/caja-status-store";
 import type { TipoVenta } from "./atajos-carrito";
 import { esFraccionable } from "@/shared/lib/unidad-venta";
 import { rubroUsaReservas } from "@/features/pos/lib/reservas-por-rubro";
@@ -163,7 +164,6 @@ export function CartPanelAdmin({
     })),
   );
 
-  const router = useRouter();
   const queryClient = useQueryClient();
 
   // Negocio activo, resuelto por el layout en el server desde la membresía —
@@ -601,6 +601,9 @@ export function CartPanelAdmin({
    * en celular. El catálogo sigue a la vista y usable.
    */
   const [ventaExitosa, setVentaExitosa] = useState<TicketData | null>(null);
+  useEffect(() => {
+    useWizardInicioStore.getState().actualizarTicket(items.length > 0, ventaExitosa !== null);
+  }, [items.length, ventaExitosa]);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("CART");
   const [vistaTicket, setVistaTicket] = useState<VistaTicket>(() =>
     items.length > 0 || pedidoActivo ? "VENTA_ACTUAL" : "POR_COBRAR",
@@ -659,6 +662,22 @@ export function CartPanelAdmin({
       }),
     [setIsOpen],
   );
+  // Al retomar el wizard en celular, el control de venta libre vive en el
+  // drawer. Caja cerrada: dejar su chip accesible; caja abierta: mostrar ticket.
+  useEffect(() => {
+    const sincronizarWizard = () => {
+      const wizard = useWizardInicioStore.getState();
+      if (!wizard.activo || wizard.ventaExitosa || wizard.negocioId !== negocioId) return;
+      const abierta = useCajaStatusStore.getState().isCajaAbierta;
+      if (abierta === null) return;
+      if (isPhoneLayout) setPhoneCartOpen(abierta);
+      else if (isMobileLayout) setIsOpen(abierta);
+    };
+    const frame = requestAnimationFrame(sincronizarWizard);
+    const desuscribirWizard = useWizardInicioStore.subscribe(sincronizarWizard);
+    const desuscribirCaja = useCajaStatusStore.subscribe(sincronizarWizard);
+    return () => { cancelAnimationFrame(frame); desuscribirWizard(); desuscribirCaja(); };
+  }, [isPhoneLayout, isMobileLayout, setIsOpen, negocioId]);
   // Qué letra saldría si se factura, con la MISMA matriz que aplica el
   // server al cobrar: emisor + cliente elegido + preferencias. Sin el corte
   // por conexión con ARCA, que acá no se conoce; si al cobrar ARCA no está,
@@ -1237,6 +1256,44 @@ export function CartPanelAdmin({
     setPhoneCartOpen(false);
   };
 
+  /**
+   * Se quiso cobrar con la caja cerrada: se abre el modal de apertura ACÁ, sin
+   * navegar. Antes el aviso mandaba a /caja, que no es donde se abre el turno
+   * (ver caja-modal-store), y era la primera venta de todo comercio nuevo la
+   * que terminaba en esa pantalla equivocada.
+   *
+   * En el celular el drawer del ticket se cierra para que el modal se pueda
+   * tocar (vaul le saca los eventos a lo que queda afuera), sin volver al paso
+   * 1: cuando el modal se cierra —abrió la caja o se arrepintió— el ticket
+   * vuelve tal cual. La venta NO se reintenta sola: es plata, y confirmarla es
+   * un toque de la vendedora.
+   */
+  const abrirCajaParaCobrar = () => {
+    const modalCaja = useCajaModalStore.getState();
+    // Sin el chip de caja montado no hay modal que abrir: quien no opera la
+    // caja no puede abrir el turno, y prometerle un botón sería mentirle.
+    if (!modalCaja.disponible) {
+      toast.error("La caja está cerrada", {
+        description:
+          "Pedile a quien maneja la caja que abra el turno para poder cobrar.",
+      });
+      return;
+    }
+
+    toast.info("Abrí la caja para cobrar", {
+      description: "El ticket queda como está.",
+    });
+    const volverAlTicket = isPhoneLayout;
+    if (volverAlTicket) setPhoneCartOpen(false);
+    modalCaja.abrir();
+
+    const desuscribir = useCajaModalStore.subscribe((estado) => {
+      if (estado.abierto) return;
+      desuscribir();
+      if (volverAlTicket) setPhoneCartOpen(true);
+    });
+  };
+
   const clearCartAndResetStep = () => {
     clearCart();
     setMotivosSinImei([]);
@@ -1755,17 +1812,7 @@ export function CartPanelAdmin({
 
         if (!result.success) {
           if (result.error === "CAJA_CERRADA") {
-            toast.error("La caja está cerrada", {
-              description:
-                "Debes abrir un turno en el módulo de Caja para poder cobrar.",
-              action: {
-                label: "Ir a Caja",
-                onClick: () => {
-                  closeSidebar();
-                  router.push("/caja");
-                },
-              },
-            });
+            abrirCajaParaCobrar();
           } else if (result.error === "TURNO_DE_OTRO_DIA") {
             toast.error("La caja quedó abierta desde otro día", {
               description: "Cerrala y abrí un turno nuevo para cobrar.",

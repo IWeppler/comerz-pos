@@ -18,10 +18,21 @@ interface CajaModalState {
   abierto: boolean;
   abrir: () => void;
   setAbierto: (abierto: boolean) => void;
+  /**
+   * Hay un modal montado que responda a `abrir()`. El chip del navbar solo se
+   * monta para quien opera caja; sin él, `abrir()` no muestra nada. Quien
+   * quiera mandar a abrir la caja pregunta esto primero, para decirle a la
+   * vendedora sin permiso que se lo pida a otra persona en vez de prometerle
+   * un modal que no va a aparecer.
+   */
+  disponible: boolean;
+  setDisponible: (disponible: boolean) => void;
 }
 
 export const useCajaModalStore = create<CajaModalState>((set) => ({
   abierto: false,
   abrir: () => set({ abierto: true }),
   setAbierto: (abierto) => set({ abierto }),
+  disponible: false,
+  setDisponible: (disponible) => set({ disponible }),
 }));

@@ -19,6 +19,7 @@ const SIN_NADA: EstadoActivacion = {
   catalogo_publicado: false,
   caja: false,
   primera_venta: false,
+  venta_libre_elegida: false,
 };
 
 // Prueba de 14 días: arrancó el 1/10 a las 10 (hora argentina), vence el 15/10.
@@ -51,8 +52,8 @@ describe("construirBarraPrueba", () => {
   it("sin ventas, nombra el próximo paso de la guía", () => {
     const barra = construirBarraPrueba({ ...base, ahora: el("2026-10-04T15:00:00Z") });
     expect(barra.titulo).toBe("Te quedan 11 días de prueba");
-    expect(barra.detalle).toBe("Ponele tu cara al negocio");
-    expect(barra.cta).toEqual({ etiqueta: "Configurar", href: "/configuracion" });
+    expect(barra.detalle).toBe("Prepará tus productos");
+    expect(barra.cta).toEqual({ etiqueta: "Elegir cómo empezar", href: "/?empezar=1" });
     expect(barra.tono).toBe("neutral");
     expect(barra.porcentajeRestante).toBe(79);
   });
@@ -82,7 +83,7 @@ describe("construirBarraPrueba", () => {
     expect(barra.titulo).toBe("Te quedan 7 días de prueba");
     expect(barra.detalle).toBe("Ya hiciste 23 ventas con Comerz");
     // Queda la guía por la mitad: el CTA sigue siendo el próximo paso.
-    expect(barra.cta?.etiqueta).toBe("Configurar");
+    expect(barra.cta?.etiqueta).toBe("Elegir cómo empezar");
   });
 
   it("con todo hecho, el CTA son los planes", () => {

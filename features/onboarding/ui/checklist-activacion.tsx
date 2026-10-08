@@ -1,212 +1,179 @@
 "use client";
-
-import { useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Check, ChevronDown, ChevronUp, Circle } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Check, ChevronDown } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import {
   calcularProgresoActivacion,
   type EstadoActivacion,
-} from "@/features/onboarding/lib/pasos-activacion";
+} from "../lib/pasos-activacion";
 import { useCajaModalStore } from "@/shared/store/caja-modal-store";
-
-/**
- * Guía de inicio: qué le falta al comercio para empezar a vender.
- *
- * Va arriba de todo en el panel y desaparece sola cuando están los pasos
- * obligatorios — no hay botón de "no mostrar más" ni flag guardado, porque el
- * estado es derivado: el día que la lista se completa deja de aparecer, y si el
- * comercio se queda sin productos vuelve, que es cuando conviene que vuelva.
- *
- * El plegado sí es estado de UI (useState, se pierde al recargar): es para
- * sacarla del camino un rato, no para esconderla para siempre.
- */
+import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
+import { useElegirCaminoStore } from "@/shared/store/elegir-camino-store";
+import { ElegirCaminoDialog } from "./elegir-camino-dialog";
 export function ChecklistActivacion({
   estado,
 }: Readonly<{ estado: EstadoActivacion }>) {
   const [abierta, setAbierta] = useState(true);
-  // Un solo paso desplegado por vez: la card vive arriba del panel y no puede
-  // empujar todo lo demás fuera de la pantalla.
-  const [pasoAbierto, setPasoAbierto] = useState<string | null>(null);
-  const abrirCaja = useCajaModalStore((state) => state.abrir);
+  const { abierto: elegir, setAbierto: setElegir } = useElegirCaminoStore();
+  const [ocultoPara, setOcultoPara] = useState<string | null>(null);
+  const negocio = useNegocioActivo();
+  const negocioId = negocio?.id;
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const abrirCaja = useCajaModalStore((s) => s.abrir);
   const { pasos, completados, total, activado, siguiente } =
     calcularProgresoActivacion(estado);
-
-  // Todo lo obligatorio hecho: el comercio ya vende, la guía no tiene nada que
-  // decir. Los opcionales que queden sueltos no la sostienen viva.
-  if (activado) return null;
-
+  const clave = negocio ? "comerz:preparacion-oculta:" + negocio.id : null;
+  useEffect(() => {
+    // Al volver a montar el panel, no al elegir y navegar desde esta misma card.
+    if (!negocioId || useElegirCaminoStore.getState().refrescarNegocioId !== negocioId) return;
+    useElegirCaminoStore.getState().consumirRefresco();
+    router.refresh();
+  }, [negocioId, router]);
+  const ocultoPersistido = useSyncExternalStore(
+    (avisar) => {
+      window.addEventListener("storage", avisar);
+      return () => window.removeEventListener("storage", avisar);
+    },
+    () => {
+      try {
+        return clave ? localStorage.getItem(clave) === "1" : false;
+      } catch {
+        return false;
+      }
+    },
+    () => false,
+  );
+  useEffect(() => {
+    if (params.get("empezar") !== "1" || activado) return;
+    setElegir(true);
+    const q = new URLSearchParams(params.toString());
+    q.delete("empezar");
+    router.replace(pathname + (q.size ? "?" + q : ""), { scroll: false });
+  }, [params, pathname, router, activado, setElegir]);
+  const visibles = activado
+    ? pasos.filter((p) => p.opcional && !p.hecho)
+    : pasos.filter((p) => !p.opcional);
+  if (
+    !visibles.length ||
+    (activado && clave && (ocultoPara === clave || ocultoPersistido))
+  )
+    return null;
   return (
     <section
-      aria-label="Guía de inicio"
-      className="rounded-xl border border-border bg-card p-3 sm:p-4"
+      aria-label={activado ? "Preparación del negocio" : "Guía de inicio"}
+      className="rounded-xl border border-border bg-card p-4"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-sm font-medium text-foreground">
-            Primeros pasos
+        <div>
+          <h2 className="text-sm font-semibold">
+            {activado ? "Seguí preparando tu negocio" : "Poné Comerz en marcha"}
           </h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {siguiente
-              ? `Te falta: ${siguiente.titulo.toLowerCase()}.`
-              : "Ya casi."}{" "}
-            {completados} de {total} listos.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setAbierta((v) => !v)}
-          aria-expanded={abierta}
-          className="flex h-8 shrink-0 items-center gap-1 rounded-lg px-2 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-        >
-          {abierta ? "Ocultar" : "Ver pasos"}
-          {abierta ? (
-            <ChevronUp className="size-3.5" />
-          ) : (
-            <ChevronDown className="size-3.5" />
+          {!activado && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              {completados} de {total} listos.
+            </p>
           )}
-        </button>
+        </div>
+        <Button
+          variant="ghost"
+          className="h-11 shrink-0"
+          onClick={() => {
+            if (activado && clave) {
+              try {
+                localStorage.setItem(clave, "1");
+              } catch {}
+              setOcultoPara(clave);
+            } else setAbierta((v) => !v);
+          }}
+        >
+          {activado || abierta ? "Ocultar" : "Ver pasos"}
+          <ChevronDown aria-hidden className="size-4" />
+        </Button>
       </div>
-
-      <div
-        className="mt-3 h-1 overflow-hidden rounded-full bg-border"
-        role="progressbar"
-        aria-valuenow={completados}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        aria-label="Progreso de la puesta en marcha"
-      >
+      {!activado && (
         <div
-          className="h-full rounded-full bg-primary transition-[width] duration-300"
-          style={{ width: `${(completados / total) * 100}%` }}
-        />
-      </div>
-
+          role="progressbar"
+          aria-label="Progreso de la puesta en marcha"
+          aria-valuenow={completados}
+          aria-valuemin={0}
+          aria-valuemax={total}
+          className="mt-3 h-1 rounded-full bg-border"
+        >
+          <div
+            className="h-full rounded-full bg-primary"
+            style={{ width: (completados / total) * 100 + "%" }}
+          />
+        </div>
+      )}
       {abierta && (
-        <ol className="mt-3 flex flex-col gap-1">
-          {pasos.map((paso) => (
+        <ol className="mt-3 space-y-2">
+          {visibles.map((paso) => (
             <li
               key={paso.clave}
-              className={`rounded-lg px-2 py-2 ${
-                paso.hecho ? "opacity-60" : "hover:bg-muted/40"
-              }`}
+              className="grid grid-cols-[20px_minmax(0,1fr)] gap-x-3 gap-y-2 rounded-lg py-2 sm:grid-cols-[20px_minmax(0,1fr)_auto]"
             >
-             <div className="flex items-center gap-3">
               <span
                 aria-hidden
-                className={`flex size-5 shrink-0 items-center justify-center rounded-full ${
-                  paso.hecho
+                className={
+                  "flex size-5 shrink-0 items-center justify-center rounded-full " +
+                  (paso.hecho
                     ? "bg-primary text-primary-foreground"
-                    : "border border-border text-transparent"
-                }`}
+                    : "border border-border")
+                }
               >
-                {paso.hecho ? (
-                  <Check className="size-3" />
-                ) : (
-                  <Circle className="size-3" />
-                )}
+                {paso.hecho && <Check className="size-3" />}
               </span>
-
               <div className="min-w-0 flex-1">
-                <p className="flex items-center gap-2 text-sm text-foreground">
-                  <span className={paso.hecho ? "line-through" : ""}>
-                    {paso.titulo}
-                  </span>
-                  {paso.opcional && !paso.hecho && (
-                    <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                      opcional
-                    </span>
-                  )}
-                </p>
+                <p className="text-sm font-medium">{paso.titulo}</p>
                 {!paso.hecho && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <p className="mt-1 text-sm text-muted-foreground">
                     {paso.detalle}
                   </p>
                 )}
-                {/* "Cargar productos" son tres caminos distintos según de
-                    dónde venga la mercadería, y "abrir caja" no está donde
-                    parece. Un link solo no alcanza para eso. */}
-                {!paso.hecho && paso.opciones && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPasoAbierto((actual) =>
-                        actual === paso.clave ? null : paso.clave,
-                      )
-                    }
-                    aria-expanded={pasoAbierto === paso.clave}
-                    className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline"
-                  >
-                    {pasoAbierto === paso.clave
-                      ? "Ocultar opciones"
-                      : `Ver las ${paso.opciones.length} formas de hacerlo`}
-                    <ChevronDown
-                      className={`size-3 transition-transform ${
-                        pasoAbierto === paso.clave ? "rotate-180" : ""
-                      }`}
-                    />
-                  </button>
-                )}
               </div>
-
               {!paso.hecho &&
-                (paso.accion === "abrir-caja" ? (
-                  // No navega: abre el modal del navbar, que es el único lugar
-                  // donde se abre un turno.
+                (paso.accion ? (
                   <Button
-                    size="sm"
+                    className="col-start-2 h-11 justify-self-start sm:col-start-3 sm:row-start-1 sm:self-center"
                     variant={
-                      paso.clave === siguiente?.clave ? "default" : "ghost"
+                      paso.clave === siguiente?.clave && !activado
+                        ? "default"
+                        : "ghost"
                     }
-                    className="h-8 shrink-0"
-                    onClick={abrirCaja}
+                    onClick={
+                      paso.accion === "elegir-camino"
+                        ? () => setElegir(true)
+                        : abrirCaja
+                    }
                   >
                     {paso.cta}
                   </Button>
                 ) : (
                   <Button
                     asChild
-                    size="sm"
+                    className="col-start-2 h-11 justify-self-start sm:col-start-3 sm:row-start-1 sm:self-center"
                     variant={
-                      paso.clave === siguiente?.clave ? "default" : "ghost"
+                      paso.clave === siguiente?.clave && !activado
+                        ? "default"
+                        : "ghost"
                     }
-                    className="h-8 shrink-0"
                   >
                     <Link href={paso.href}>{paso.cta}</Link>
                   </Button>
                 ))}
-             </div>
-
-              {pasoAbierto === paso.clave && paso.opciones && (
-                <ul className="mt-2 ml-8 flex flex-col gap-2 border-l border-border pl-3">
-                  {paso.opciones.map((opcion) => (
-                    <li key={opcion.titulo}>
-                      <p className="text-xs font-medium text-foreground">
-                        {opcion.titulo}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground">
-                        {opcion.detalle}
-                      </p>
-                      {/* Sin href cuando la opción no es una pantalla sino
-                          algo que ya está a la vista: mandar a ningún lado es
-                          mejor que inventar un destino. */}
-                      {opcion.href && (
-                        <Link
-                          href={opcion.href}
-                          className="mt-0.5 inline-block text-[11px] font-medium text-primary hover:underline"
-                        >
-                          Ir
-                        </Link>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
             </li>
           ))}
         </ol>
       )}
+      <ElegirCaminoDialog
+        rubro={estado.rubro}
+        open={elegir}
+        onOpenChange={setElegir}
+      />
     </section>
   );
 }

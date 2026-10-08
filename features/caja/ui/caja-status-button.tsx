@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Wallet } from "lucide-react";
 import { useCajaStatusStore } from "@/shared/store/caja-status-store";
 import { useCajaModalStore } from "@/shared/store/caja-modal-store";
@@ -22,6 +22,15 @@ interface CajaStatusButtonProps {
   className?: string;
   /** `caja.registrar_ingreso`: habilita "Anotar ingreso" en el modal. */
   puedeRegistrarIngreso?: boolean;
+  /**
+   * Monta el modal de caja (y los de gasto e ingreso). Va en UNA sola de las
+   * instancias: el chip está en el navbar y en el header del celular, las dos
+   * montadas siempre (el CSS esconde una), y cada una traía su modal atado al
+   * mismo `abierto` del store — o sea dos modales iguales abriéndose uno
+   * encima del otro. El modal se portalea al body, así que funciona desde la
+   * instancia que sea aunque esté escondida.
+   */
+  montarModal?: boolean;
 }
 
 /**
@@ -35,6 +44,7 @@ export function CajaStatusButton({
   userId,
   className = "",
   puedeRegistrarIngreso = false,
+  montarModal = true,
 }: Readonly<CajaStatusButtonProps>) {
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const turno = useCajaStatusStore((state) => state.turno);
@@ -42,6 +52,14 @@ export function CajaStatusButton({
   // modal desde el panel (ver caja-modal-store).
   const isModalOpen = useCajaModalStore((state) => state.abierto);
   const setIsModalOpen = useCajaModalStore((state) => state.setAbierto);
+  const setDisponible = useCajaModalStore((state) => state.setDisponible);
+  // Avisa que el modal existe: el POS lo consulta antes de ofrecer "abrí la
+  // caja" (ver `disponible` en caja-modal-store).
+  useEffect(() => {
+    if (!montarModal) return;
+    setDisponible(true);
+    return () => setDisponible(false);
+  }, [montarModal, setDisponible]);
   // El egreso se dispara desde el modal de caja, pero se monta acá como
   // hermano: anidar un Dialog dentro de otro rompe foco y scroll-lock.
   const [isEgresoOpen, setIsEgresoOpen] = useState(false);
@@ -55,6 +73,7 @@ export function CajaStatusButton({
 
   const boton = (
     <button
+      data-wizard="caja"
       type="button"
       onClick={() => setIsModalOpen(true)}
       aria-label={
@@ -100,29 +119,33 @@ export function CajaStatusButton({
         boton
       )}
 
-      <CajaQuickModal
-        open={isModalOpen}
-        onOpenChange={setIsModalOpen}
-        modoCaja={modoCaja}
-        userId={userId}
-        onAnotarGasto={() => setIsEgresoOpen(true)}
-        onAnotarIngreso={
-          puedeRegistrarIngreso ? () => setIsIngresoOpen(true) : undefined
-        }
-      />
+      {montarModal && (
+        <>
+          <CajaQuickModal
+            open={isModalOpen}
+            onOpenChange={setIsModalOpen}
+            modoCaja={modoCaja}
+            userId={userId}
+            onAnotarGasto={() => setIsEgresoOpen(true)}
+            onAnotarIngreso={
+              puedeRegistrarIngreso ? () => setIsIngresoOpen(true) : undefined
+            }
+          />
 
-      <EgresoModal
-        open={isEgresoOpen}
-        onOpenChange={setIsEgresoOpen}
-        mostrarTrigger={false}
-      />
+          <EgresoModal
+            open={isEgresoOpen}
+            onOpenChange={setIsEgresoOpen}
+            mostrarTrigger={false}
+          />
 
-      {puedeRegistrarIngreso && (
-        <IngresoModal
-          open={isIngresoOpen}
-          onOpenChange={setIsIngresoOpen}
-          mostrarTrigger={false}
-        />
+          {puedeRegistrarIngreso && (
+            <IngresoModal
+              open={isIngresoOpen}
+              onOpenChange={setIsIngresoOpen}
+              mostrarTrigger={false}
+            />
+          )}
+        </>
       )}
     </>
   );

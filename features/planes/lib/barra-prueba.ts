@@ -123,8 +123,8 @@ export function construirBarraPrueba(params: {
   // del navbar): se manda al inicio, donde la guía tiene el botón que lo hace.
   const ctaPaso = siguiente
     ? {
-        etiqueta: siguiente.accion ? "Ver guía" : siguiente.cta,
-        href: siguiente.accion ? "/" : siguiente.href,
+        etiqueta: siguiente.accion === "abrir-caja" ? "Ver guía" : siguiente.cta,
+        href: siguiente.accion === "elegir-camino" ? "/?empezar=1" : siguiente.accion ? "/" : siguiente.href,
       }
     : null;
 

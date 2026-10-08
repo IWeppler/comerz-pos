@@ -15,6 +15,7 @@ import {
   cssImpresionTicket,
   normalizarAnchoTicket,
 } from "@/shared/lib/ancho-ticket";
+import { FestejoPrimeraVenta } from "@/features/onboarding/ui/festejo-primera-venta";
 import { resumirVentaExitosa } from "../lib/resumen-venta-exitosa";
 
 /**
@@ -125,8 +126,9 @@ export function VentaExitosa({
   }, [detalleAbierto]);
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
+    <div className="relative flex h-full min-h-0 min-w-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-10">
       <div className="flex w-full max-w-xs flex-col items-center gap-8 text-center">
+        <FestejoPrimeraVenta onSeguir={nuevaVenta} />
         <Image
           src="/icon-check.webp"
           alt=""

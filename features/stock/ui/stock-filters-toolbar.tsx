@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { StockInicio } from "@/features/onboarding/ui/stock-inicio";
 import dynamic from "next/dynamic";
 import { useSlugNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { useDragScroll } from "@/shared/hooks/use-drag-scroll";
@@ -250,6 +251,7 @@ export function StockFiltersToolbar({
 
   return (
     <>
+      <StockInicio permitido={isAdmin} onImportar={() => setIsIngresoOpen(true)} onNuevo={abrirAltaProducto} />
       {/* 1. BARRA SUPERIOR: Buscador y Acciones */}
       <div className="flex flex-row gap-2 px-2 py-1.5 border-b border-border">
         {/* Los dos caminos de ingreso se montan SIEMPRE, sin importar el

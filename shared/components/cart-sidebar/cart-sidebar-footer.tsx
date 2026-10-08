@@ -250,6 +250,7 @@ export function CartSidebarFooter({
           </Button>
         ) : isPOSMode ? (
           <Button
+            data-wizard="cobrar"
             onClick={handleCobrar}
             disabled={isPrimaryDisabled}
             className="w-full h-12 flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white transition-colors shadow-none cursor-pointer"

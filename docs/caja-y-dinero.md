@@ -46,6 +46,13 @@ aplican igual.
   cobrada el mismo día del turno. `cerrarTurnoAction` fecha el cierre un minuto
   después de su último movimiento (`ultimo_movimiento_turno`), en el día del turno.
   El chip de caja del navbar se pone ámbar.
+- **El turno se abre desde el modal del chip, nunca navegando a `/caja`** (que
+  no tiene ese botón). Todo lo que pida "abrí la caja" usa `useCajaModalStore`
+  y antes pregunta `disponible` (sin `caja.operar` no hay chip ni modal). El
+  modal se monta UNA vez (chip del navbar; el del header del celular va con
+  `montarModal={false}`): con los dos montados se abrían dos modales iguales.
+  El POS, ante `CAJA_CERRADA`, abre ese modal y devuelve el ticket en el mismo
+  paso al cerrarse; la venta no se reintenta sola (8/10/2026).
 - **"Día" siempre es el día comercial argentino**, nunca UTC ni el huso del
   navegador: `diaComercial` / `rangoDiaComercial` (offset fijo −03:00, sin DST).
 

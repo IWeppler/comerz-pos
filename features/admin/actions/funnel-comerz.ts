@@ -4,6 +4,14 @@ import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import type { FilaFunnel } from "@/features/admin/lib/funnel";
 import { esNegocioDemo } from "@/shared/lib/estado-negocio";
+import type { EmbudoActivacion } from "../lib/activacion-autonoma";
+
+export async function getEmbudoActivacionAction(): Promise<EmbudoActivacion | null> {
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase.rpc("embudo_activacion_autonoma");
+  if (error) { console.error("[EMBUDO ACTIVACION]", error.message); return null; }
+  return data as EmbudoActivacion | null;
+}
 
 /**
  * Los hechos crudos del funnel, por negocio.

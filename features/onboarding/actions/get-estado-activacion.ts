@@ -1,5 +1,6 @@
 "use server";
 
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import type { EstadoActivacion } from "@/features/onboarding/lib/pasos-activacion";
@@ -16,16 +17,27 @@ import type { EstadoActivacion } from "@/features/onboarding/lib/pasos-activacio
  * la guía no se monta. Romper el panel de inicio —que es lo que ve el comercio
  * que YA trabaja— por un checklist es peor que no mostrar el checklist.
  */
+const leerEstadoActivacion = cache(
+  async (): Promise<EstadoActivacion | null> => {
+    const cookieStore = await cookies();
+    const supabase = createClient(cookieStore);
+
+    const { data, error } = await supabase.rpc("estado_activacion");
+
+    if (error) {
+      console.error("[ACTIVACION] No se pudo leer el estado:", error);
+      return null;
+    }
+
+    return data
+      ? {
+          ...(data as EstadoActivacion),
+          venta_libre_elegida: data.venta_libre_elegida === true,
+        }
+      : null;
+  },
+);
+
 export async function getEstadoActivacionAction(): Promise<EstadoActivacion | null> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const { data, error } = await supabase.rpc("estado_activacion");
-
-  if (error) {
-    console.error("[ACTIVACION] No se pudo leer el estado:", error);
-    return null;
-  }
-
-  return (data as EstadoActivacion | null) ?? null;
+  return leerEstadoActivacion();
 }

@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { ActivacionAutonomaPanel } from "@/features/admin/ui/activacion-autonoma-panel";
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import { getPanelComerzAction } from "@/features/admin/actions/metricas-comerz";
@@ -269,6 +271,7 @@ export default async function AdminComerzPage() {
       />
 
       <FunnelPanel resumen={resumenFunnel} riesgo={comerciosEnRiesgo} />
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-white/5" aria-label="Cargando activación" />}><ActivacionAutonomaPanel /></Suspense>
 
       {/* Comercios pasa a ancho completo: con las notificaciones arriba, la
           tabla ya no comparte fila y sus 7 columnas dejan de ir apretadas. */}

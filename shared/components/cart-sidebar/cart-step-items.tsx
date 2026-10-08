@@ -193,6 +193,7 @@ export function CartStepItems({
           </div>
           <Button
             type="button"
+            data-wizard="cobrar"
             onClick={onContinueToPayment}
             className="h-12 w-full"
           >
