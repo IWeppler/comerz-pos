@@ -73,6 +73,25 @@ export function esNegocioDeBaja(estado: string | null | undefined): boolean {
   return estado === ESTADO_BAJA;
 }
 
+/**
+ * Suma al MRR: está activo (paga) Y Comerz no lo sacó de la cuenta.
+ *
+ * Son dos ejes a propósito. `estado` dice si el comercio opera y si ya dejó la
+ * prueba; `cuenta_en_mrr` dice si esa operación es plata que entra. Un
+ * comercio amigo o de cortesía está activo —tiene que poder trabajar sin que
+ * la barra de prueba le avise que se terminó— pero no paga, y sumarlo
+ * inflaría el MRR. `undefined` cuenta como true: es el default de la columna.
+ *
+ * El panel (`metricas-comerz.ts`) y las métricas (`metricas-globales.ts`)
+ * preguntan acá: dos filtros escritos a mano terminan en dos MRR distintos.
+ */
+export function sumaAlMrr(negocio: {
+  estado: string | null | undefined;
+  cuenta_en_mrr?: boolean | null;
+}): boolean {
+  return negocio.estado === "activo" && negocio.cuenta_en_mrr !== false;
+}
+
 /** Cómo se llama cada estado en pantalla. */
 export const ETIQUETA_ESTADO: Record<string, string> = {
   activo: "activo",

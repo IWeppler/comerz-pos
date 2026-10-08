@@ -38,6 +38,7 @@ export async function getMetricasGlobalesAction(): Promise<MetricasGlobalesCruda
       plan_id: (n.plan_id as string | null) ?? null,
       plan_nombre: (n.plan_nombre as string | null) ?? null,
       plan_precio: numero(n.plan_precio),
+      cuenta_en_mrr: n.cuenta_en_mrr !== false,
       rubro: (n.rubro as string | null) ?? null,
       usuarios: numero(n.usuarios),
       productos: numero(n.productos),

@@ -87,7 +87,7 @@ export async function registrarPagoAction(
 
   const { data: negocio } = await supabase
     .from("negocios")
-    .select("plan_vencimiento, planes(nombre)")
+    .select("estado, plan_vencimiento, planes(nombre)")
     .eq("id", negocioId)
     .maybeSingle();
 
@@ -125,9 +125,21 @@ export async function registrarPagoAction(
     return { error: "No se pudo registrar el pago.", success: false };
   }
 
+  // `prueba` es "todavía no pagó nunca" (ver `estado-negocio.ts`): el primer
+  // pago lo pasa a `activo`. Antes eso no lo hacía nadie, y los comercios que
+  // ya pagaban seguían en prueba —fuera del MRR y con la barra de prueba
+  // avisándoles que se les terminó—. Los demás estados no se tocan: un pago de
+  // un suspendido se reactiva a mano, a propósito.
+  const pasaAActivo = negocio?.estado === "prueba";
+
   const { error: errorVenc } = await supabase
     .from("negocios")
-    .update({ plan_vencimiento: hasta })
+    .update({
+      plan_vencimiento: hasta,
+      ...(pasaAActivo
+        ? { estado: "activo", estado_cambiado_en: new Date().toISOString() }
+        : {}),
+    })
     .eq("id", negocioId);
 
   if (errorVenc) {
@@ -194,14 +206,48 @@ export async function cambiarEstadoNegocioAction(
   const { supabase, autorizado } = await comoSuperAdmin();
   if (!autorizado) return { error: "No autorizado.", success: false };
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("negocios")
     .update({ estado, estado_cambiado_en: new Date().toISOString() })
-    .eq("id", negocioId);
+    .eq("id", negocioId)
+    .select("id");
 
   if (error) {
     console.error("[CAMBIAR ESTADO]", error);
     return { error: "No se pudo cambiar el estado.", success: false };
+  }
+  // Un UPDATE que la RLS filtra vuelve con 0 filas y sin error.
+  if (!data?.length) {
+    return { error: "No se encontró el comercio.", success: false };
+  }
+
+  refrescarPanel();
+  return { error: null, success: true };
+}
+
+/**
+ * Mete o saca al comercio del MRR. No toca el estado: un comercio de cortesía
+ * está `activo` (trabaja, sin barra de prueba) y no suma. Ver `sumaAlMrr`.
+ */
+export async function cambiarCuentaEnMrrAction(
+  negocioId: string,
+  cuentaEnMrr: boolean,
+): Promise<ResultadoAccion> {
+  const { supabase, autorizado } = await comoSuperAdmin();
+  if (!autorizado) return { error: "No autorizado.", success: false };
+
+  const { data, error } = await supabase
+    .from("negocios")
+    .update({ cuenta_en_mrr: cuentaEnMrr })
+    .eq("id", negocioId)
+    .select("id");
+
+  if (error) {
+    console.error("[CUENTA EN MRR]", error);
+    return { error: "No se pudo cambiar el MRR.", success: false };
+  }
+  if (!data?.length) {
+    return { error: "No se encontró el comercio.", success: false };
   }
 
   refrescarPanel();

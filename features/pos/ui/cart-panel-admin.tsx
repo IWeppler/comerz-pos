@@ -2041,7 +2041,7 @@ export function CartPanelAdmin({
               type="button"
               onClick={() => crearNuevaVenta()}
               disabled={!ventaActualTieneContenido()}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
+              className="inline-flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-md text-muted-foreground transition-[scale,transform,background-color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-95 motion-reduce:active:scale-100 motion-reduce:transition-none disabled:active:scale-100 hover:bg-muted hover:text-foreground cursor-pointer disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:bg-transparent"
               aria-label="Nueva venta"
               title={
                 ventaActualTieneContenido()

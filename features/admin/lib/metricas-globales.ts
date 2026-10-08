@@ -1,4 +1,4 @@
-import { esNegocioDemo } from "@/shared/lib/estado-negocio";
+import { esNegocioDemo, sumaAlMrr } from "@/shared/lib/estado-negocio";
 import { etiquetaRubro as etiquetaRubroComercial } from "@/shared/lib/rubros";
 
 /**
@@ -28,6 +28,8 @@ export interface NegocioGlobal {
   plan_id: string | null;
   plan_nombre: string | null;
   plan_precio: number;
+  /** Comerz lo cuenta en el MRR (ver `sumaAlMrr`). */
+  cuenta_en_mrr: boolean;
   rubro: string | null;
   usuarios: number;
   productos: number;
@@ -86,7 +88,7 @@ export interface ResumenGlobal {
   /** Cómo se reparten los CLIENTES (habilitados) entre los planes. Incluye
    * los planes con cero y una fila "Sin plan" si hace falta. */
   planes: Reparto[];
-  /** MRR de los que pagan (estado activo), a precio de lista. */
+  /** MRR de los que pagan (activos y dentro de la cuenta), a precio de lista. */
   mrr: number;
   /** Rubros COMERCIALES de los clientes (habilitados). */
   rubros: Reparto[];
@@ -193,7 +195,7 @@ export function resumirMetricasGlobales(
       clientes: clientes.length,
     },
     planes,
-    mrr: suma(activos.map((n) => n.plan_precio)),
+    mrr: suma(todos.filter(sumaAlMrr).map((n) => n.plan_precio)),
     rubros,
     ventas: {
       cantidad,

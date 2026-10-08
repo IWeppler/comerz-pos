@@ -1,4 +1,9 @@
+import { Suspense } from "react";
 import { RUTA_SALIR } from "@/shared/lib/salir-sesion";
+import {
+  BarraPrueba,
+  BarraPruebaEsqueleto,
+} from "@/features/planes/ui/barra-prueba";
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -201,6 +206,18 @@ export default async function DashboardLayout({
             puedeRegistrarIngreso={puedeRegistrarIngreso}
             userName={perfil?.nombre || undefined}
           />
+
+          {/* Prueba gratis: días que quedan y el próximo paso. Solo ADMIN y
+              solo negocios en prueba; el resto no paga ni un viaje. En su
+              propio Suspense para no frenar la pantalla. */}
+          {userRole === "ADMIN" && contextoPlan.prueba && (
+            <Suspense fallback={<BarraPruebaEsqueleto />}>
+              <BarraPrueba
+                inicio={contextoPlan.prueba.inicio}
+                vencimiento={contextoPlan.prueba.vencimiento}
+              />
+            </Suspense>
+          )}
 
           {/* Montado UNA vez para toda la app: lo abren el botón del POS y el
               modal de caja, y dos instancias serían dos formularios de cobro

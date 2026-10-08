@@ -337,6 +337,7 @@ export function ComerciosTabla({
                   planVencimiento={c.plan_vencimiento}
                   planes={planes}
                   moduloPresupuestos={c.moduloPresupuestos}
+                  cuentaEnMrr={c.cuentaEnMrr}
                 />
               </div>
             </div>
@@ -352,9 +353,16 @@ export function ComerciosTabla({
               <span className="text-white/80">
                 {c.plan_nombre ?? "Sin plan"}
                 {c.plan_precio > 0 && (
-                  <span className="ml-1 font-mono text-white/35 tabular-nums">
+                  <span
+                    className={`ml-1 font-mono tabular-nums ${
+                      c.cuentaEnMrr ? "text-white/35" : "text-white/25 line-through"
+                    }`}
+                  >
                     {formatearMoneda(c.plan_precio)}
                   </span>
+                )}
+                {!c.cuentaEnMrr && (
+                  <span className="ml-1.5 text-amber-400/80">fuera del MRR</span>
                 )}
               </span>
               {c.plan_vencimiento && (
@@ -439,9 +447,16 @@ export function ComerciosTabla({
                       {c.plan_nombre ?? "Sin plan"}
                     </p>
                     {c.plan_precio > 0 && (
-                      <p className="font-mono text-[11px] text-white/35 tabular-nums">
+                      <p
+                        className={`font-mono text-[11px] tabular-nums ${
+                          c.cuentaEnMrr ? "text-white/35" : "text-white/25 line-through"
+                        }`}
+                      >
                         {formatearMoneda(c.plan_precio)}
                       </p>
+                    )}
+                    {!c.cuentaEnMrr && (
+                      <p className="text-[11px] text-amber-400/80">fuera del MRR</p>
                     )}
                   </td>
 
@@ -489,6 +504,7 @@ export function ComerciosTabla({
                         planVencimiento={c.plan_vencimiento}
                         planes={planes}
                         moduloPresupuestos={c.moduloPresupuestos}
+                        cuentaEnMrr={c.cuentaEnMrr}
                       />
                     </div>
                   </td>

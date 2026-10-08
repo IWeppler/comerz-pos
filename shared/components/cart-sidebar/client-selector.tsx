@@ -196,8 +196,10 @@ export function ClientSelector({
             </div>
 
             <div className="max-h-55 overflow-y-auto p-1">
-              <div
-                className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm outline-none font-medium"
+              <button
+                type="button"
+                aria-pressed={!clienteSeleccionado}
+                className="relative flex min-h-11 w-full text-left cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm focus-visible:outline-2 focus-visible:outline-primary hover:bg-muted font-medium"
                 onClick={() => {
                   onClienteChange(null);
                   setOpen(false);
@@ -207,7 +209,7 @@ export function ClientSelector({
                   className={`mr-2 h-4 w-4 ${!clienteSeleccionado ? "opacity-100 text-success" : "opacity-0"}`}
                 />
                 Consumidor Final
-              </div>
+              </button>
 
               {isLoading ? (
                 <div className="py-6 text-center text-sm text-muted-foreground flex items-center justify-center">
@@ -219,9 +221,11 @@ export function ClientSelector({
                 </div>
               ) : (
                 filteredClientes.map((cliente) => (
-                  <div
+                  <button
+                    type="button"
+                    aria-pressed={clienteSeleccionado?.id === cliente.id}
                     key={cliente.id}
-                    className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm outline-none hover:bg-muted font-medium"
+                    className="relative flex min-h-11 w-full text-left cursor-pointer select-none items-center rounded-sm px-2 py-2 text-sm focus-visible:outline-2 focus-visible:outline-primary hover:bg-muted font-medium"
                     onClick={() => {
                       onClienteChange(cliente);
                       setOpen(false);
@@ -238,7 +242,7 @@ export function ClientSelector({
                         </span>
                       ) : null}
                     </div>
-                  </div>
+                  </button>
                 ))
               )}
             </div>
@@ -247,7 +251,7 @@ export function ClientSelector({
               <div className="p-2 border-t border-border bg-muted/20">
                 <Button
                   variant="ghost"
-                  className="w-full justify-start text-primary hover:text-info hover:bg-info/10 h-9 font-semibold"
+                  className="w-full justify-start text-primary hover:text-info hover:bg-info/10 h-11 font-semibold"
                   onClick={() => {
                     setOpen(false);
                     setIsCreateOpen(true);

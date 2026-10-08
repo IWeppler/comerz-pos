@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { ClienteBasico } from "./client-selector";
 import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
+import { montosRapidosEfectivo } from "@/features/pos/lib/montos-efectivo";
 
 interface PaymentModalProps {
   /** Total de la mercadería, SIN recargo por método. */
@@ -76,6 +77,7 @@ export function PaymentModal({
     const montoACobrar = totalACobrar ?? totalFinal;
     const recibidoNum = Number(montoRecibido) || 0;
     const vuelto = recibidoNum > montoACobrar ? recibidoNum - montoACobrar : 0;
+    const falta = montoRecibido !== "" && recibidoNum < montoACobrar;
 
     return (
       <Dialog open onOpenChange={(open) => !open && onClose()}>
@@ -102,7 +104,7 @@ export function PaymentModal({
               pagos para no descuadrar la caja.
             </div>
           ) : (
-            <div className="space-y-5 animate-in fade-in zoom-in-95">
+            <div className="space-y-5">
               <div className="space-y-2">
                 <Label className="text-sm font-semibold">Monto a cobrar</Label>
                 <div className="relative">
@@ -128,7 +130,7 @@ export function PaymentModal({
               {isEfectivoOnly ? (
                 <>
                   <div className="space-y-2">
-                    <Label className="text-sm font-semibold">
+                    <Label htmlFor="efectivo-recibido" className="text-sm font-semibold">
                       ¿Con cuánto billete físico paga?
                     </Label>
                     <div className="relative">
@@ -137,7 +139,9 @@ export function PaymentModal({
                       </span>
                       <Input
                         ref={inputRef}
+                        id="efectivo-recibido"
                         type="number"
+                        inputMode="decimal"
                         min="0"
                         step="any"
                         value={montoRecibido}
@@ -149,13 +153,28 @@ export function PaymentModal({
                         className="pl-8 font-mono font-medium h-11"
                       />
                     </div>
+                    <div className="flex flex-wrap gap-2" aria-label="Montos rápidos de efectivo">
+                      {[montoACobrar, ...montosRapidosEfectivo(montoACobrar)].map((monto, index) => (
+                        <Button
+                          key={index === 0 ? "justo" : monto}
+                          type="button"
+                          variant="outline"
+                          className="h-11 flex-1 px-3 font-mono text-sm aria-pressed:border-primary aria-pressed:bg-primary/10 aria-pressed:text-primary"
+                          disabled={isPending}
+                          aria-pressed={montoRecibido !== "" && recibidoNum === monto}
+                          onClick={() => setMontoRecibido(String(monto))}
+                        >
+                          {index === 0 ? "Justo" : `$${monto.toLocaleString("es-AR")}`}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex justify-between pt-2 pb-2 font-semibold text-xl text-foreground border-t border-border mt-4">
+                  <div aria-live="polite" className={`flex justify-between pt-2 pb-2 font-semibold text-xl border-t border-border mt-4 ${falta ? "text-warning" : "text-foreground"}`}>
                     <span className="text-sm self-center">
-                      Valor a devolver
+                      {falta ? "Falta" : "Valor a devolver"}
                     </span>
                     <span className="font-mono font-medium">
-                      $ {vuelto.toLocaleString("es-AR")}
+                      $ {(falta ? montoACobrar - recibidoNum : vuelto).toLocaleString("es-AR")}
                     </span>
                   </div>
                 </>
@@ -172,10 +191,10 @@ export function PaymentModal({
             <Button
               onClick={() => onConfirm()}
               disabled={isPending || isSobrePagoError}
-              className="w-full"
+              className="h-12 w-full"
             >
               {isPending ? (
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Confirmando…</>
               ) : (
                 "Confirmar Venta"
               )}
@@ -209,7 +228,7 @@ export function PaymentModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5 animate-in fade-in zoom-in-95">
+        <div className="space-y-5">
           <div className="flex justify-between items-center text-sm font-semibold mb-2">
             <span className="text-foreground">TOTAL</span>
             <span className="text-lg font-mono font-medium">
@@ -228,6 +247,7 @@ export function PaymentModal({
               <Input
                 ref={inputRef}
                 type="number"
+                inputMode="decimal"
                 min="0"
                 step="any"
                 value={anticipoLocal}
@@ -316,7 +336,7 @@ export function PaymentModal({
             className="bg-warning hover:bg-warning/80 text-white h-12 w-full"
           >
             {isPending ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Confirmando…</>
             ) : (
               "Confirmar y Fiar"
             )}

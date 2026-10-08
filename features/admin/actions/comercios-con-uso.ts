@@ -50,6 +50,8 @@ export interface ComercioConUso {
   /** `negocios.modulo_presupuestos`: si tiene el módulo de presupuestos y
    * planes en cuotas. Lo prende solo el super admin. */
   moduloPresupuestos: boolean;
+  /** `negocios.cuenta_en_mrr`: suma al MRR si además está activo. */
+  cuentaEnMrr: boolean;
 }
 
 /**
@@ -73,7 +75,7 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
   // el tipo de retorno) por un booleano que ya se lee directo de `negocios`.
   const [{ data, error }, { data: modulos }] = await Promise.all([
     supabase.rpc("comercios_con_uso"),
-    supabase.from("negocios").select("id, modulo_presupuestos"),
+    supabase.from("negocios").select("id, modulo_presupuestos, cuenta_en_mrr"),
   ]);
 
   if (error) {
@@ -84,6 +86,13 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
   const conPresupuestos = new Set(
     (modulos ?? [])
       .filter((m) => m.modulo_presupuestos === true)
+      .map((m) => m.id as string),
+  );
+
+  // Fail-closed hacia lo que ya era: sin dato, suma (default de la columna).
+  const fueraDelMrr = new Set(
+    (modulos ?? [])
+      .filter((m) => m.cuenta_en_mrr === false)
       .map((m) => m.id as string),
   );
 
@@ -137,6 +146,7 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
         : null,
       whatsapp: (fila.whatsapp as string | null) ?? null,
       moduloPresupuestos: conPresupuestos.has(fila.id as string),
+      cuentaEnMrr: !fueraDelMrr.has(fila.id as string),
     };
   });
 }

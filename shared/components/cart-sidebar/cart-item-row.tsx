@@ -142,7 +142,7 @@ export function CartItemRow({
               <button
                 type="button"
                 onClick={() => setSelectorFormaAbierto(true)}
-                className="mt-1 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary transition-colors hover:bg-primary/15"
+                className="mt-1 inline-flex max-w-full cursor-pointer items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary transition-[scale,transform,background-color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:transition-none hover:bg-primary/15"
               >
                 <span className="truncate">{etiquetaForma}</span>
                 <ChevronRight className="size-3 shrink-0" />
@@ -191,7 +191,7 @@ export function CartItemRow({
           <button
             type="button"
             onClick={onRemove}
-            className="flex h-7 w-7 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
+            className="flex h-11 w-11 sm:h-7 sm:w-7 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground cursor-pointer"
             aria-label={`Quitar ${item.nombre}`}
           >
             <X className="h-4 w-4" />

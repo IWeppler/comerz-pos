@@ -83,7 +83,7 @@ function BotonPaso({
       onClick={onClick}
       disabled={deshabilitado}
       aria-label={etiqueta}
-      className={`flex h-full w-11 items-center justify-center transition-colors sm:w-9 ${
+      className={`flex h-full w-11 items-center justify-center transition-[scale,transform,background-color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-95 motion-reduce:active:scale-100 motion-reduce:transition-none sm:w-9 ${
         deshabilitado
           ? "cursor-not-allowed bg-muted/40 text-muted-foreground/35"
           : "cursor-pointer text-foreground hover:bg-muted active:bg-muted"
@@ -184,7 +184,7 @@ function PesoEnCelular({
         type="button"
         onClick={() => setAbierto(true)}
         aria-label={`Cambiar peso o importe de ${productoNombre ?? "la línea"}`}
-        className="flex h-11 items-center gap-2 rounded-md border border-border px-3 font-mono text-sm font-medium text-foreground active:bg-muted"
+        className="flex h-11 items-center gap-2 rounded-md border border-border px-3 font-mono text-sm font-medium text-foreground transition-[scale,transform,background-color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:transition-none active:bg-muted"
       >
         {formatearParaInput(cantidad)} {abreviatura}
         <Pencil className="h-3.5 w-3.5 text-muted-foreground" />

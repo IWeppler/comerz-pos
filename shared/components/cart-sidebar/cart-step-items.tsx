@@ -113,7 +113,7 @@ export function CartStepItems({
               sizes="160px"
               className="mb-2 h-40 w-auto dark:opacity-50"
             />
-            <p className="text-sm font-medium">Tu carrito esta vacio</p>
+            <p className="text-sm font-medium">Tu carrito está vacío</p>
             {pieDeLineas && (
               <div className="mt-4 w-full max-w-sm text-left">
                 {pieDeLineas}
@@ -187,7 +187,7 @@ export function CartStepItems({
             <span className="font-mono text-xl font-medium uppercase text-foreground">
               Subtotal
             </span>
-            <span className="font-mono text-xl font-medium text-foreground">
+            <span className="font-mono text-2xl font-medium text-foreground">
               ${totalCarrito.toLocaleString("es-AR")}
             </span>
           </div>

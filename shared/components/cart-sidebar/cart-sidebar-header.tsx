@@ -46,15 +46,9 @@ export function CartSidebarHeader({
           <button
             type="button"
             onClick={onBack}
-            // `-my-2` es lo que mantiene la altura del header CONSTANTE entre
-            // el paso de ticket y el de pago. El botón mide 36px (`h-9`) y el
-            // título 20px, así que sin esto entrar al pago estiraba el header
-            // de 52px a 68px y todo el panel daba un salto. Los -8px de arriba
-            // y abajo le descuentan al layout justo esos 16px: el botón sigue
-            // ocupando 36px de área táctil —que en un POS que se usa con el
-            // dedo no se negocia— pero aporta 20px de alto, los mismos que el
-            // texto que tiene al lado.
-            className={`${isPOSMode ? "-my-2 -ml-2 h-9 w-9" : "h-11 w-11"} inline-flex shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer`}
+            // El margen compensa la altura del botón al cambiar de paso.
+            // Área táctil de 44px en celular y control compacto en desktop.
+            className={`${isPOSMode ? "-my-3 -ml-2 h-11 w-11 sm:-my-2 sm:h-9 sm:w-9" : "h-11 w-11"} inline-flex shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-[scale,transform,background-color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-95 motion-reduce:active:scale-100 motion-reduce:transition-none hover:bg-muted hover:text-foreground cursor-pointer`}
             aria-label={isPOSMode ? "Volver al ticket" : "Volver a productos"}
           >
             <ArrowLeft className="h-4.5 w-4.5" />
@@ -85,7 +79,7 @@ export function CartSidebarHeader({
         <button
           type="button"
           onClick={onClose}
-          className={`inline-flex ${isPOSMode ? "h-9 w-9 lg:hidden" : "h-11 w-11"} items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted hover:text-foreground`}
+          className={`inline-flex ${isPOSMode ? "h-11 w-11 sm:h-9 sm:w-9 lg:hidden" : "h-11 w-11"} items-center justify-center rounded-lg text-foreground transition-[scale,transform,background-color] duration-150 ease-[cubic-bezier(0.16,1,0.3,1)] active:scale-95 motion-reduce:active:scale-100 motion-reduce:transition-none hover:bg-muted hover:text-foreground`}
           aria-label={isPOSMode ? "Cerrar Ticket" : "Cerrar carrito"}
         >
           <X className="h-5 w-5" />

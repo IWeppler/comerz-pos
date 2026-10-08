@@ -36,6 +36,13 @@ export interface ContextoPlan {
   /** Reglas del plan de HOY. El paywall las compara contra las del plan
    * destino para decir "hasta 5 usuarios" en vez de "más usuarios". */
   reglasActuales: ReglasPlan;
+  /**
+   * El negocio está en prueba gratis (`estado = 'prueba'`, "todavía no pagó
+   * nunca") y la prueba tiene fecha de fin. Null para todos los demás,
+   * incluido `demo`, que no vence. Viaja en la misma consulta del negocio que
+   * ya hacía este action: la barra de prueba no le cuesta un viaje a nadie.
+   */
+  prueba: { inicio: string; vencimiento: string } | null;
 }
 
 export async function getContextoPlanAction(): Promise<ContextoPlan> {
@@ -54,7 +61,7 @@ export async function getContextoPlanAction(): Promise<ContextoPlan> {
       negocioId
         ? supabase
             .from("negocios")
-            .select("plan_id, planes(nombre)")
+            .select("plan_id, estado, plan_vencimiento, created_at, planes(nombre)")
             .eq("id", negocioId)
             .maybeSingle()
         : Promise.resolve({ data: null }),
@@ -96,5 +103,12 @@ export async function getContextoPlanAction(): Promise<ContextoPlan> {
     planMinimoPorFeature,
     sinPlan: !negocio?.plan_id,
     reglasActuales: reglas,
+    prueba:
+      negocio?.estado === "prueba" && negocio.plan_vencimiento
+        ? {
+            inicio: negocio.created_at as string,
+            vencimiento: negocio.plan_vencimiento as string,
+          }
+        : null,
   };
 }

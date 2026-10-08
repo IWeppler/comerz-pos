@@ -5,6 +5,7 @@ import {
   esNegocioDeBaja,
   esNegocioDemo,
   negocioHabilitado,
+  sumaAlMrr,
 } from "./estado-negocio";
 
 describe("negocioHabilitado", () => {
@@ -50,5 +51,22 @@ describe("esNegocioDeBaja", () => {
     expect(ESTADO_BAJA).toBe("cancelado");
     expect(esNegocioDeBaja("cancelado")).toBe(true);
     expect(esNegocioDeBaja("baja")).toBe(false);
+  });
+});
+
+describe("sumaAlMrr", () => {
+  it("activo y dentro de la cuenta suma; sin dato, también (default de la columna)", () => {
+    expect(sumaAlMrr({ estado: "activo", cuenta_en_mrr: true })).toBe(true);
+    expect(sumaAlMrr({ estado: "activo" })).toBe(true);
+  });
+
+  it("activo de cortesía no suma", () => {
+    expect(sumaAlMrr({ estado: "activo", cuenta_en_mrr: false })).toBe(false);
+  });
+
+  it("prueba, demo y suspendido no suman aunque estén en la cuenta", () => {
+    for (const estado of ["prueba", "demo", "suspendido", "cancelado"]) {
+      expect(sumaAlMrr({ estado, cuenta_en_mrr: true })).toBe(false);
+    }
   });
 });

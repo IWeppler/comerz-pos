@@ -3,6 +3,7 @@
 import { ReactNode, useEffect } from "react";
 import {
   Banknote,
+  Check,
   CreditCard,
   Plus,
   Smartphone,
@@ -63,6 +64,14 @@ const getPaymentIcon = (tipo: string) => {
   if (tipo === "BILLETERA_VIRTUAL") return Wallet;
   if (tipo === "TARJETA") return CreditCard;
   return Banknote;
+};
+
+// Hasta 3 métodos van en una sola fila; 4 van en 2×2 para no dejar uno solo
+// abajo; de 5 en adelante, filas de 3. Clases literales para que Tailwind las vea.
+const columnasMetodosPago = (cantidad: number) => {
+  if (cantidad <= 1) return "grid-cols-1";
+  if (cantidad === 2 || cantidad === 4) return "grid-cols-2";
+  return "grid-cols-3";
 };
 
 export function CartStepCheckout({
@@ -310,27 +319,29 @@ export function CartStepCheckout({
             <section className="space-y-3 rounded-lg border border-border bg-muted p-4">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-foreground">
-                  Metodos de Pago
+                  Métodos de pago
                 </h3>
                 {metodosPagoDB.length > 1 ? (
                   <Button
                     type="button"
                     variant="ghost"
                     onClick={handleToggleMixto}
-                    className="h-8 px-2 text-xs text-primary"
+                    className="h-11 sm:h-8 px-2 text-xs text-primary"
                   >
                     <Split className="mr-1.5 h-3.5 w-3.5" />
-                    {modoMixto ? "Pago rapido" : "Pago Mixto"}
+                    {modoMixto ? "Pago rápido" : "Pago Mixto"}
                   </Button>
                 ) : null}
               </div>
 
               {metodosPagoDB.length === 0 ? (
                 <div className="border border-dashed border-border bg-card p-3 text-center text-xs text-muted-foreground">
-                  Sin metodos de pago activos.
+                  Sin métodos de pago activos.
                 </div>
               ) : !modoMixto ? (
-                <div className="grid grid-cols-3 gap-2">
+                <div
+                  className={`grid gap-2 ${columnasMetodosPago(metodosPagoDB.length)}`}
+                >
                   {metodosPagoDB.map((metodo) => {
                     const Icon = getPaymentIcon(metodo.tipo);
                     const isSelected = pagos[0]?.metodoPagoId === metodo.id;
@@ -340,14 +351,24 @@ export function CartStepCheckout({
                         key={metodo.id}
                         type="button"
                         onClick={() => handleSelectPagoRapido(metodo.id)}
-                        className={`flex min-h-18 flex-col items-center justify-center gap-2 border px-2 py-3 text-xs font-bold transition-colors rounded-lg cursor-pointer ${
+                        aria-pressed={isSelected}
+                        // Se elige decenas de veces por día: respuesta al
+                        // dedo (scale) y cambio de estado instantáneo, sin
+                        // animar la marca de un botón a otro.
+                        className={`relative flex min-h-18 flex-col items-center justify-center gap-2 border px-2 py-3 text-xs font-bold rounded-lg cursor-pointer transition-[scale,transform,color,border-color,background-color] duration-150 ease-out active:scale-[0.97] motion-reduce:active:scale-100 motion-reduce:transition-none ${
                           isSelected
-                            ? "border-primary bg-card text-primary"
+                            ? "border-primary bg-primary/10 text-primary"
                             : "border-border bg-card text-muted-foreground hover:text-foreground"
                         }`}
                       >
+                        {isSelected ? (
+                          <Check
+                            aria-hidden
+                            className="absolute right-1.5 top-1.5 h-3.5 w-3.5"
+                          />
+                        ) : null}
                         <Icon className="h-5 w-5" />
-                        <span className="w-full truncate text-center">
+                        <span className="line-clamp-2 w-full text-center leading-tight break-words">
                           {metodo.nombre}
                         </span>
                         {Number(metodo.recargo_porcentaje) > 0 ? (
@@ -394,7 +415,7 @@ export function CartStepCheckout({
                             $
                           </span>
                           <Input
-                            type="number"
+                            type="number" inputMode="decimal"
                             min="0"
                             step="any"
                             value={pago.montoAsignado || ""}
@@ -440,7 +461,7 @@ export function CartStepCheckout({
 
                   {Math.abs(diferencia) > 0.05 ? (
                     <div
-                      className={`border p-2 text-[11px] font-bold uppercase tracking-widest rounded-lg text-center ${diferencia > 0 ? "border-border bg-muted text-foreground" : "border-danger/20 bg-danger/10 text-danger"}`}
+                      className={`border p-2 text-sm font-medium rounded-lg text-center font-mono ${diferencia > 0 ? "border-border bg-muted text-foreground" : "border-danger/20 bg-danger/10 text-danger"}`}
                     >
                       {diferencia > 0
                         ? `Falta asignar: $${diferencia.toLocaleString("es-AR")}`
@@ -453,9 +474,9 @@ export function CartStepCheckout({
                       type="button"
                       variant="outline"
                       onClick={handleAddPago}
-                      className="h-10 w-full border-dashed rounded-lg text-xs font-bold text-muted-foreground hover:text-foreground"
+                      className="h-11 w-full border-dashed rounded-lg text-xs font-bold text-muted-foreground hover:text-foreground"
                     >
-                      <Plus className="mr-1.5 h-4 w-4" /> Agregar otro metodo
+                      <Plus className="mr-1.5 h-4 w-4" /> Agregar otro método
                     </Button>
                   ) : null}
                 </div>

@@ -5,6 +5,7 @@ import { createClient } from "@/shared/config/supabase/server";
 import {
   esNegocioDemo,
   negocioHabilitado,
+  sumaAlMrr,
 } from "@/shared/lib/estado-negocio";
 
 export interface NegocioAdmin {
@@ -18,6 +19,8 @@ export interface NegocioAdmin {
   plan_nombre: string | null;
   plan_precio: number;
   plan_vencimiento: string | null;
+  /** Comerz lo cuenta en el MRR (ver `sumaAlMrr`). */
+  cuenta_en_mrr: boolean;
   /** Se calcula acá y no en el cliente: comparar contra "ahora" durante el
    * render hace que el componente deje de ser puro. */
   vencido: boolean;
@@ -56,7 +59,7 @@ export async function getPanelComerzAction(): Promise<{
     supabase
       .from("negocios")
       .select(
-        "id, nombre, slug, estado, created_at, estado_cambiado_en, plan_id, plan_vencimiento, planes(nombre, precio_mensual)",
+        "id, nombre, slug, estado, cuenta_en_mrr, created_at, estado_cambiado_en, plan_id, plan_vencimiento, planes(nombre, precio_mensual)",
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -89,6 +92,7 @@ export async function getPanelComerzAction(): Promise<{
       plan_nombre: (plan?.nombre as string | undefined) ?? null,
       plan_precio: Number(plan?.precio_mensual ?? 0),
       plan_vencimiento: (n.plan_vencimiento as string | null) ?? null,
+      cuenta_en_mrr: n.cuenta_en_mrr !== false,
       vencido: n.plan_vencimiento
         ? new Date(n.plan_vencimiento as string).getTime() < Date.now()
         : false,
@@ -115,8 +119,11 @@ export async function getPanelComerzAction(): Promise<{
   const inactivos = negocios.filter((n) => !negocioHabilitado(n.estado));
 
   const metricas: MetricasComerz = {
-    // Solo factura lo que está activo: un negocio suspendido no cobra.
-    mrr: activos.reduce((suma, n) => suma + n.plan_precio, 0),
+    // Solo factura lo que está activo (un negocio suspendido no cobra) y lo
+    // que Comerz no sacó de la cuenta (un comercio de cortesía no paga).
+    mrr: negocios
+      .filter(sumaAlMrr)
+      .reduce((suma, n) => suma + n.plan_precio, 0),
     activos: activos.length,
     suspendidos: inactivos.length,
     sinPlan: activos.filter((n) => !n.plan_id).length,

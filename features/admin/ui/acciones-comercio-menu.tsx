@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import {
   MoreHorizontal,
   Ban,
+  CircleDollarSign,
+  CircleOff,
   FileText,
   Link2,
   LogIn,
@@ -22,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 import {
+  cambiarCuentaEnMrrAction,
   cambiarEstadoNegocioAction,
   cambiarModuloPresupuestosAction,
   cambiarPlanAction,
@@ -60,6 +63,7 @@ export function AccionesComercioMenu({
   planVencimiento,
   planes,
   moduloPresupuestos,
+  cuentaEnMrr,
 }: Readonly<{
   negocioId: string;
   nombre: string;
@@ -70,6 +74,8 @@ export function AccionesComercioMenu({
   planVencimiento: string | null;
   planes: PlanOpcion[];
   moduloPresupuestos: boolean;
+  /** Suma al MRR (si además está activo). Ver `sumaAlMrr`. */
+  cuentaEnMrr: boolean;
 }>) {
   const [pendiente, startTransition] = useTransition();
   const [pagoAbierto, setPagoAbierto] = useState(false);
@@ -189,6 +195,40 @@ export function AccionesComercioMenu({
           <DropdownMenuItem onClick={pedirSlug}>
             <Link2 className="mr-2 size-4 text-muted-foreground" />
             Cambiar link de la tienda
+          </DropdownMenuItem>
+
+          {/* Sale de la prueba sin pasar por "Registrar pago": para el que ya
+              paga y nunca se le cargó el pago, o para el de cortesía. Con un
+              pago registrado pasa solo (`registrarPagoAction`). */}
+          {estado === "prueba" ? (
+            <DropdownMenuItem
+              onClick={() =>
+                correr(() => cambiarEstadoNegocioAction(negocioId, "activo"))
+              }
+            >
+              <Play className="mr-2 size-4 text-success" />
+              Pasar a activo (ya paga)
+            </DropdownMenuItem>
+          ) : null}
+
+          {/* Un eje aparte del estado: activo y de cortesía = trabaja pero no
+              suma. Se ve en cualquier estado para dejarlo decidido antes. */}
+          <DropdownMenuItem
+            onClick={() =>
+              correr(() => cambiarCuentaEnMrrAction(negocioId, !cuentaEnMrr))
+            }
+          >
+            {cuentaEnMrr ? (
+              <>
+                <CircleOff className="mr-2 size-4 text-muted-foreground" />
+                Sacar del MRR
+              </>
+            ) : (
+              <>
+                <CircleDollarSign className="mr-2 size-4 text-success" />
+                Contar en el MRR
+              </>
+            )}
           </DropdownMenuItem>
 
           {/* El comercio de muestra sigue funcionando igual: lo que cambia es

@@ -14,6 +14,7 @@ const negocio = (
   plan_id: "gestion",
   plan_nombre: "Gestión",
   plan_precio: 50000,
+  cuenta_en_mrr: true,
   rubro: "indumentaria",
   usuarios: 2,
   productos: 100,
@@ -100,6 +101,17 @@ describe("resumirMetricasGlobales", () => {
 
   it("MRR solo de los activos, a precio de lista", () => {
     expect(r.mrr).toBe(50000 + 50000 + 30000);
+  });
+
+  it("un activo fuera del MRR sigue siendo cliente pero no suma", () => {
+    const conCortesia = resumirMetricasGlobales({
+      ...crudas,
+      negocios: crudas.negocios.map((n) =>
+        n.id === "click" ? { ...n, cuenta_en_mrr: false } : n,
+      ),
+    });
+    expect(conCortesia.mrr).toBe(50000 + 50000);
+    expect(conCortesia.locales.activos).toBe(3);
   });
 
   it("rubros comerciales de los clientes, sin demo ni cancelados", () => {

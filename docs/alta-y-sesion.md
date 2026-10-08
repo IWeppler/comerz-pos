@@ -62,6 +62,21 @@ una salida antes de prender `GOOGLE_AUTH_HABILITADO`** (env var, solo el literal
 - `crear_negocio_con_owner` siembra CAJA_DIARIA, POR_ACREDITAR, CAJA_GENERAL,
   métodos de pago (el trigger les crea cuenta), categorías de gasto y todos los
   permisos al ADMIN. Un negocio nace en `prueba`.
+- **Estado y MRR son dos ejes** (8/10/2026, `20261008120000`): `estado` dice si
+  opera y si ya dejó la prueba; `negocios.cuenta_en_mrr` (default true, solo
+  super admin) dice si suma. MRR = `sumaAlMrr` (activo Y en la cuenta), el mismo
+  criterio en el panel y en /admincomerz/metricas (la RPC
+  `metricas_globales_comerz` devuelve la columna). Un comercio de cortesía va
+  `activo` + fuera del MRR (Ninja Camisetas). Registrar el primer pago pasa
+  `prueba` → `activo`; también hay "Pasar a activo (ya paga)" en el menú.
+- Barra de prueba (8/10/2026, `features/planes/lib/barra-prueba.ts` con tests):
+  franja entre el navbar y el contenido, solo ADMIN y solo `estado = 'prueba'`
+  con vencimiento. Antes de vender pide el próximo paso OBLIGATORIO de la guía;
+  vendiendo muestra las ventas; a ≤3 días o vencida pide plan; con una
+  solicitud pendiente deja de apurar. Días por día comercial argentino
+  (`plan_vencimiento` es timestamptz y el server corre en UTC). Los datos del
+  negocio viajan en `getContextoPlanAction` (sin viaje nuevo); activación,
+  conteo de ventas y solicitud solo para negocios en prueba, en un Suspense.
 - `tieneFeature` falla ABIERTO (un negocio sin plan tiene todo); un módulo que mueve
   plata usa además un interruptor propio fail-closed (ver
   [presupuestos.md](presupuestos.md)).
