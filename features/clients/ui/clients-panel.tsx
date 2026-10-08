@@ -77,6 +77,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/shared/config/supabase/client";
+import { validarAliasTransferencia } from "../lib/alias-transferencia";
 
 interface ClientsPanelProps {
   config: ConfiguracionPOS;
@@ -110,6 +111,10 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
   // Vacío = mensaje por defecto (se guarda NULL, no "").
   const [plantilla, setPlantilla] = useState(
     config.mensaje_recordatorio_cc ?? "",
+  );
+  // Vacío = no se muestra en el resumen (se guarda NULL).
+  const [aliasTransferencia, setAliasTransferencia] = useState(
+    config.alias_transferencia ?? "",
   );
 
   const handleChange = (field: string, value: string | number | boolean) => {
@@ -173,6 +178,12 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
       return;
     }
 
+    const alias = validarAliasTransferencia(aliasTransferencia);
+    if (!alias.ok) {
+      toast.error(alias.error);
+      return;
+    }
+
     // Con 0 una compra vence el mismo día y al siguiente toda la cuenta está
     // en mora. La base lo rechaza igual (CHECK `cc_plazo_mora >= 1`); acá se
     // avisa con un mensaje que se entiende.
@@ -213,6 +224,7 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
         cc_dia_vencimiento: formData.cc_dia_vencimiento || null,
         mensaje_recordatorio_cc:
           plantillaLimpia === "" ? null : plantillaLimpia,
+        alias_transferencia: alias.valor,
       })
       .eq("id", config.id)
       .select("id");
@@ -661,6 +673,36 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+
+          {/* ALIAS PARA TRANSFERIR — sale en el resumen que abre la clienta */}
+          <div className="mt-8 bg-card border border-border rounded-2xl p-5 space-y-3">
+            <div className="space-y-0.5 border-b border-border/50 pb-3">
+              <h3 className="font-bold text-foreground">
+                Alias para transferencias
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Se muestra en el resumen de cuenta que le llega al cliente por
+                WhatsApp, con un botón para copiarlo junto con el monto. Vacío =
+                no se muestra.
+              </p>
+            </div>
+            <div className="space-y-1.5 max-w-sm">
+              <Label htmlFor="alias-transferencia" className="text-sm font-semibold">
+                Alias o CBU/CVU
+              </Label>
+              <Input
+                id="alias-transferencia"
+                value={aliasTransferencia}
+                onChange={(e) => setAliasTransferencia(e.target.value)}
+                placeholder="mi.comercio.mp"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                maxLength={30}
+                className="bg-muted/50 border-border font-mono"
+              />
             </div>
           </div>
 

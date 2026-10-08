@@ -1,6 +1,10 @@
 import { createPublicClient } from "@/shared/config/supabase/server";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { buttonVariants } from "@/shared/ui/button";
+import { cn } from "@/lib/utils";
+import { urlDeCatalogo } from "@/shared/lib/dominios";
 import type { Metadata } from "next";
+import Image from "next/image";
 import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import {
   agruparDeudaPorMes,
@@ -8,6 +12,7 @@ import {
   type FilaDeudaViva,
 } from "@/features/clients/lib/deuda-por-mes";
 import { DeudaPorMesLista } from "@/features/clients/ui/deuda-por-mes-lista";
+import { CopiarDato } from "@/features/clients/ui/copiar-dato";
 import {
   corteResumenCc,
   montoHastaCorte,
@@ -27,7 +32,17 @@ export const metadata: Metadata = {
 type MovimientoResumen = MovimientoResumenCc;
 
 type Resumen = {
-  comercio: { nombre: string | null; direccion: string | null; whatsapp: string | null };
+  comercio: {
+    nombre: string | null;
+    direccion: string | null;
+    whatsapp: string | null;
+    /** El logo de la tienda (`posLogo`). Opcional: una base vieja no lo trae. */
+    logo?: string | null;
+    /** Solo si el catálogo está abierto (`20261008190000`). */
+    catalogo_slug?: string | null;
+    /** Alias o CBU/CVU para transferir (`20261008200000`). */
+    alias?: string | null;
+  };
   cliente: { nombre: string; telefono: string | null; dni: string | null };
   desde: string;
   hasta: string;
@@ -146,17 +161,43 @@ export default async function ResumenCuentaPage({
       <div className="mx-auto w-full max-w-2xl bg-card border border-border rounded-xl overflow-hidden">
         {/* CABECERA — de quién es la cuenta y con quién */}
         <header className="p-5 border-b border-border">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="flex items-center gap-3">
+            {comercio.logo ? (
+              <div className="size-12 shrink-0 rounded-lg overflow-hidden border border-border bg-background">
+                <Image
+                  src={comercio.logo}
+                  alt={`Logo de ${comercio.nombre ?? "el comercio"}`}
+                  width={48}
+                  height={48}
+                  className="size-full object-cover"
+                />
+              </div>
+            ) : (
+              // Sin logo, la inicial: el comercio se reconoce igual y la
+              // cabecera no salta de forma según quién la mande.
+              <div
+                aria-hidden
+                className="size-12 shrink-0 rounded-lg bg-muted flex items-center justify-center text-lg font-bold text-foreground"
+              >
+                {(comercio.nombre ?? "?").trim().charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold text-foreground leading-tight truncate">
+                {comercio.nombre}
+              </h1>
+              {comercio.direccion && (
+                <p className="text-xs text-muted-foreground truncate">
+                  {comercio.direccion}
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="mt-4 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
             Resumen de cuenta corriente
           </p>
-          <h1 className="text-lg font-bold text-foreground mt-1">
-            {comercio.nombre}
-          </h1>
-          {comercio.direccion && (
-            <p className="text-xs text-muted-foreground">{comercio.direccion}</p>
-          )}
 
-          <div className="mt-4 pt-3 border-t border-border">
+          <div className="mt-1">
             <p className="text-sm font-semibold text-foreground">
               {cliente.nombre}
             </p>
@@ -269,7 +310,56 @@ export default async function ResumenCuentaPage({
             )
           )}
         </div>
+
+        {/* TRANSFERENCIA — alias y monto para copiar y pegar en su app. No
+            hay forma estándar de abrir la transferencia ya cargada sin una
+            pasarela; la clienta confirma mandando el comprobante por
+            WhatsApp. Solo si debe algo y el comercio cargó su alias. */}
+        {comercio.alias && saldoMostrado > 0 && (
+          <div className="p-5 border-t border-border space-y-2">
+            <p className="text-sm font-semibold text-foreground">
+              Pagá por transferencia
+            </p>
+            <CopiarDato etiqueta="Alias" valor={comercio.alias} />
+            <CopiarDato
+              etiqueta="Monto"
+              valor={formatearMoneda(saldoMostrado)}
+              textoACopiar={saldoMostrado.toFixed(2).replace(/\.00$/, "")}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Después mandale el comprobante a {comercio.nombre} por WhatsApp.
+            </p>
+          </div>
+        )}
+
+        {/* CATÁLOGO — solo si el comercio lo tiene abierto. La clienta ya
+            está mirando al comercio: es el momento de mostrarle la vidriera. */}
+        {comercio.catalogo_slug && (
+          <div className="p-5 border-t border-border">
+            <a
+              href={urlDeCatalogo(comercio.catalogo_slug)}
+              className={cn(
+                buttonVariants({ size: "lg" }),
+                "w-full whitespace-normal text-center",
+              )}
+            >
+              Ver el catálogo de {comercio.nombre}
+            </a>
+          </div>
+        )}
       </div>
+
+      <footer className="mx-auto w-full max-w-2xl mt-4 text-center text-[11px] text-muted-foreground">
+        Gestión de cuenta corriente con Comerz ·{" "}
+        <a
+          href="https://www.comerz.app"
+          target="_blank"
+          rel="noopener"
+          className="underline-offset-2 hover:text-foreground hover:underline"
+        >
+          www.comerz.app
+        </a>
+      </footer>
     </main>
   );
 }
