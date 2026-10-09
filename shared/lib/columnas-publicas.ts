@@ -21,7 +21,7 @@
  * 20260819140000): sin ella, "$8.500" en una carnicería es un precio
  * equivocado, no uno incompleto. */
 export const COLUMNAS_PRODUCTO_PUBLICO =
-  "id, negocio_id, nombre, slug, tipo, categoria_id, precio, unidad_medida, descripcion, marca, modelo, genero, atributos_globales, imagen_url, thumbnail_url, grid_url, publicado, creado_en, destacado_en";
+  "id, negocio_id, nombre, slug, tipo, categoria_id, precio, precios_por_cantidad, unidad_medida, descripcion, marca, modelo, genero, atributos_globales, imagen_url, thumbnail_url, grid_url, publicado, creado_en, destacado_en";
 
 /**
  * Las de arriba menos lo que la LISTA no dibuja.
@@ -50,7 +50,7 @@ export const COLUMNAS_PRODUCTO_PUBLICO =
  * regla del comentario de arriba es sobre agregar, no sobre sacar.
  */
 export const COLUMNAS_PRODUCTO_LISTA =
-  "id, negocio_id, nombre, slug, tipo, categoria_id, precio, unidad_medida, marca, modelo, genero, atributos_globales, imagen_url, grid_url, publicado, creado_en, destacado_en";
+  "id, negocio_id, nombre, slug, tipo, categoria_id, precio, precios_por_cantidad, unidad_medida, marca, modelo, genero, atributos_globales, imagen_url, grid_url, publicado, creado_en, destacado_en";
 
 /** Ojo: sin `costo` ni `stock_minimo`. */
 export const COLUMNAS_VARIANTE_PUBLICA =

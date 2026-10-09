@@ -1,4 +1,5 @@
 "use server";
+import { claveCantidad, precioPorCantidad, type TramoCantidad } from "@/shared/lib/precio-por-cantidad";
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
@@ -424,7 +425,7 @@ export async function registrarVentaAction(
     // request y con él se podría meter cualquier renglón en una promo).
     supabase
       .from("productos")
-      .select("id, nombre, precio, precio_costo, unidad_medida, tipo, tratamiento_iva")
+      .select("id, nombre, precio, precios_por_cantidad, precio_costo, unidad_medida, tipo, tratamiento_iva")
       .in("id", productoIds),
     supabase
       .from("producto_variantes")
@@ -486,6 +487,21 @@ export async function registrarVentaAction(
   const presentacionPorId = new Map(
     (presentacionesFilas ?? []).map((p) => [p.id as string, p]),
   );
+
+  // Agrupar por la variante REAL, también si un request separa la misma
+  // variante en dos líneas o mezcla su id y su nombre. Sólo unidad base.
+  const cantidadesPorVariante = new Map<string, number>();
+  for (const item of items) {
+    if (esRenglonLibre(item) || item.presentacionId) continue;
+    const productoId = item.productoId ?? item.id;
+    const producto = productoPorId.get(productoId);
+    const variante = (item.varianteId ? variantePorId.get(item.varianteId) : null)
+      ?? variantePorNombre.get(productoId + "|" + item.variante);
+    const cantidad = normalizarCantidadVendible(item.cantidad ?? 1, producto?.unidad_medida);
+    if (cantidad === null) return { error: "Cantidad inválida en el ticket.", success: false };
+    const clave = claveCantidad({ productoId, varianteId: variante && variante.producto_id === productoId ? variante.id : null, variante: item.variante });
+    cantidadesPorVariante.set(clave, redondearCantidad((cantidadesPorVariante.get(clave) ?? 0) + cantidad));
+  }
 
   const itemsResueltos: ItemResuelto[] = [];
   for (const item of items) {
@@ -735,7 +751,9 @@ export async function registrarVentaAction(
     // ella es el precio de siempre.
     const precioServer = presentacionPedida
       ? precioPresentacionServer! / factor
-      : resueltoPorLista.precio;
+      : precioPorCantidad(resueltoPorLista.precio,
+          cantidadesPorVariante.get(claveCantidad({ productoId: productoIdReal, varianteId: varianteDeEsteProducto?.id, variante: item.variante })) ?? Number(item.cantidad),
+          productoData.precios_por_cantidad as TramoCantidad[] | undefined).precio;
 
     // El cliente manda el precio en la unidad en que VENDE: por presentación
     // cuando hay una, por unidad base si no. Se compara en esa misma unidad.
@@ -820,6 +838,10 @@ export async function registrarVentaAction(
     // más de lo que vale un gramo (`importe-por-peso.ts`): es el "leve
     // margen", y sin ese tope sería una forma de cobrar cualquier precio. La
     // línea queda con un precio por kilo EFECTIVO (importe / peso).
+    if (item.importeFijado != null && !presentacionPedida &&
+      (productoData.precios_por_cantidad as TramoCantidad[] | undefined)?.length) {
+      return { error: "Los productos con precios por cantidad se venden indicando la cantidad, sin fijar un importe.", success: false };
+    }
     let precioLinea = precioUsado;
     if (
       item.importeFijado != null &&

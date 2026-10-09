@@ -38,6 +38,9 @@ Lo que la venta hace con la PLATA (arqueo, ledger, reintegros) está en
 - **Precios revalidados en el server** (`create-sale.ts`): nunca se confía en el
   precio del navegador. Mismo criterio para todo lo que toque plata: validación
   espejo en el server siempre.
+  Precio por cantidad: agrupar la variante real antes de resolver el unitario;
+  configuración, prioridad frente a listas y estado de implementación en
+  [stock-y-catalogo.md](stock-y-catalogo.md#precio-unitario-por-tramo-de-cantidad-8102026).
 - **Cantidad validada en el server** con `normalizarCantidadVendible`
   (`shared/lib/unidad-venta.ts`): rechaza cero, negativos, NaN y decimales en
   productos no fraccionables. Antes una cantidad negativa en un request

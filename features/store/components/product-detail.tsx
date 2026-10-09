@@ -217,10 +217,12 @@ export function ProductDetail({
 
     addItem({
       productoId: producto.id,
+      preciosPorCantidad: producto.precios_por_cantidad,
       sugeridoCatalogo: searchParams.get("origen") === "sugerencia-carrito",
       nombre: producto.nombre || "Sin nombre",
       tipo: producto.tipo || "",
       variante: stockDeVariante ? stockDeVariante.variante : "Unico",
+      varianteId: producto.producto_variantes?.find(v => v.id === stockDeVariante?.id_real)?.id,
       atributosVariante: stockDeVariante?.atributos,
       precio: stockDeVariante?.precio ?? producto.precio,
       cantidad: 1,
@@ -466,6 +468,15 @@ export function ProductDetail({
               classNamePrecio="text-xl md:text-2xl font-medium text-foreground"
               tamano="ficha"
             />
+            {!!producto.precios_por_cantidad?.length && (
+              <div className="mt-3 text-sm text-muted-foreground space-y-1">
+                <p className="font-medium text-foreground">Precios por cantidad</p>
+                {producto.precios_por_cantidad.map(tramo => <p key={tramo.desde}>
+                  Desde {tramo.desde}: ${tramo.precio.toLocaleString("es-AR")} por unidad
+                </p>)}
+                <p className="text-xs">Se aplica a todas las unidades de la misma variante.</p>
+              </div>
+            )}
           </div>
         )}
 

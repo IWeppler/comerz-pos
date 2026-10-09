@@ -1,4 +1,5 @@
 "use client";
+import { precioPorCantidad, claveCantidad, sumarCantidadesBase } from "@/shared/lib/precio-por-cantidad";
 
 import { useCartStore } from "@/shared/store/cart-store";
 import { createClient } from "@/shared/config/supabase/client";
@@ -450,6 +451,7 @@ export function CartPanelAdmin({
       ? (item.presentaciones?.find((p) => p.id === item.presentacionId) ?? null)
       : null;
 
+  const cantidadesBase = sumarCantidadesBase(items);
   const preciosPara = (nuevaListaId: string | null) => {
     const precios: Record<
       string,
@@ -478,10 +480,8 @@ export function CartPanelAdmin({
       });
       // La lista se resuelve sobre la unidad base; la línea cobra en su
       // forma (por balde si es balde). Con precio FIJO la lista no toca.
-      const precio = precioEnForma(
-        precioBaseConLista,
-        presentacionDeLinea(item),
-      );
+      const precio = item.presentacionId ? precioEnForma(precioBaseConLista, presentacionDeLinea(item))
+        : precioPorCantidad(precioBaseConLista, cantidadesBase.get(claveCantidad(item)) ?? item.cantidad, item.preciosPorCantidad).precio;
 
       precios[claveLinea(item)] = {
         precio,
@@ -512,10 +512,8 @@ export function CartPanelAdmin({
         precioBase: base,
         precioCosto: item.costoBase,
       });
-      const precio = precioEnForma(
-        precioBaseConLista,
-        presentacionDeLinea(item),
-      );
+      const precio = item.presentacionId ? precioEnForma(precioBaseConLista, presentacionDeLinea(item))
+        : precioPorCantidad(precioBaseConLista, cantidadesBase.get(claveCantidad(item)) ?? item.cantidad, item.preciosPorCantidad).precio;
       return acc + precio * item.cantidad;
     }, 0);
 
@@ -1473,6 +1471,7 @@ export function CartPanelAdmin({
         precio: i.precio,
         precioBase: i.precioBase,
         precioBaseEfectivo: i.precioBaseEfectivo,
+        preciosPorCantidad: i.preciosPorCantidad,
         cantidad: i.cantidad,
         unidadMedida: i.unidadMedida ?? null,
         imagenUrl: i.imagenUrl ?? null,

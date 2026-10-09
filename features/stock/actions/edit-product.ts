@@ -1,4 +1,5 @@
 "use server";
+import { leerTramosCantidad, ERROR_TRAMOS_CANTIDAD, type TramoCantidad } from "@/shared/lib/precio-por-cantidad";
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
@@ -80,6 +81,9 @@ export async function editarProductoAction(
   prevState: EditarProductoResult,
   formData: FormData,
 ): Promise<EditarProductoResult> {
+  let tramos: TramoCantidad[] | null;
+  try { tramos = leerTramosCantidad(formData); }
+  catch { return { imagenes: { success: false, error: ERROR_TRAMOS_CANTIDAD }, variantes: { success: false, error: ERROR_TRAMOS_CANTIDAD } }; }
   const id = formData.get("id") as string;
   const nombre = formData.get("nombre") as string;
   const categoria_id = formData.get("categoria_id") as string;
@@ -147,7 +151,8 @@ export async function editarProductoAction(
   // sus inputs. Con `get()`, un producto al 10,5% volvería al default 21%
   // cada vez que alguien le corrige el precio. Es el mismo error que borraba
   // los datos fiscales de un cliente al guardar sin tocar el toggle.
-  const camposOpcionales: Record<string, string | boolean | null> = {};
+  const camposOpcionales: Record<string, string | boolean | null | TramoCantidad[]> = {};
+  if (tramos !== null) camposOpcionales.precios_por_cantidad = tramos;
   if (formData.has("marca")) {
     // Contra el catálogo, no tal cual viene: tipear "Popys" donde ya hay
     // "popys" tiene que guardar "popys". Sin esto el combobox sugiere bien y
@@ -512,7 +517,7 @@ async function actualizarImagenesYCabecera(
     masters: File[];
     imagenesAEliminar: string[];
     /** Columnas de cabecera que solo se tocan si el form las mandó. */
-    camposOpcionales: Record<string, string | boolean | null>;
+    camposOpcionales: Record<string, string | boolean | null | TramoCantidad[]>;
     /** Para leer `imagenes_urls`, el camino nuevo en el que el navegador ya
      * subió las fotos a Storage y solo manda las URLs. */
     formData: FormData;
@@ -640,6 +645,7 @@ async function actualizarImagenesYCabecera(
     thumbnail_url?: string;
     grid_url?: string;
     master_url?: string;
+    precios_por_cantidad?: TramoCantidad[];
   } = {
     nombre,
     categoria_id: categoria_id || null,

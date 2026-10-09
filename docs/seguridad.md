@@ -86,6 +86,11 @@ AGENTS.md porque aplican a toda migración.
 
 ## Acceso anónimo: cerrado por default (`20260811140000`)
 
+Precios por cantidad (8/10, migración aplicada): columna pública de productos,
+CHECK de forma y trigger INVOKER que protege su escritura con
+`stock.editar_producto`. Mantiene las policies de aislamiento existentes.
+Detalle y verificación en [stock-y-catalogo.md](stock-y-catalogo.md#precio-unitario-por-tramo-de-cantidad-8102026).
+
 La anon key es pública y el tenant del catálogo se elige con un header: **todo lo que
 `anon` pueda leer es público para todos los negocios con un `curl`.** Que la UI no lo
 muestre no es control de acceso.

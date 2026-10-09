@@ -1,4 +1,5 @@
 "use server";
+import { leerTramosCantidad, ERROR_TRAMOS_CANTIDAD, type TramoCantidad } from "@/shared/lib/precio-por-cantidad";
 
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
@@ -54,6 +55,9 @@ export async function crearProductoAction(
     };
   }
 
+  let tramos: TramoCantidad[] | null;
+  try { tramos = leerTramosCantidad(formData); }
+  catch { return { error: ERROR_TRAMOS_CANTIDAD, success: false }; }
   const nombre = formData.get("nombre") as string;
   const categoria_id = formData.get("categoria_id") as string;
   const descripcion = formData.get("descripcion") as string;
@@ -205,6 +209,7 @@ export async function crearProductoAction(
     .from("productos")
     .insert({
       negocio_id: negocioId,
+      ...(tramos === null ? {} : { precios_por_cantidad: tramos }),
       nombre,
       tipo,
       categoria_id: categoria_id || null,

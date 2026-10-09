@@ -64,7 +64,7 @@ export async function getStockAction(): Promise<{
           .from("productos")
           .select(
             `
-        id, nombre, tipo, precio, precio_costo, imagen_url, thumbnail_url, slug, publicado, descripcion, categoria_id, creado_en, unidad_medida,
+        id, nombre, tipo, precio, precios_por_cantidad, precio_costo, imagen_url, thumbnail_url, slug, publicado, descripcion, categoria_id, creado_en, unidad_medida,
         categoria:categorias(id, nombre, slug),
         producto_variantes(
           id, sku, nombre_display, precio, costo, stock, atributos
@@ -186,7 +186,7 @@ export async function getStockIndexAction(): Promise<{
         .from("productos")
         .select(
           `
-        id, nombre, tipo, precio, precio_costo, categoria_id, marca, modelo,
+        id, nombre, tipo, precio, precios_por_cantidad, precio_costo, categoria_id, marca, modelo,
         imagen_url, thumbnail_url, grid_url, slug, publicado, unidad_medida, destacado_en,
         categoria:categorias(id, nombre, slug),
         producto_variantes(
@@ -289,7 +289,7 @@ export async function getStockDetalleProductoAction(id: string): Promise<{
       .from("productos")
       .select(
         `
-        id, nombre, tipo, precio, precio_costo, imagen_url, thumbnail_url, grid_url, slug, publicado, descripcion, categoria_id, creado_en,
+        id, nombre, tipo, precio, precios_por_cantidad, precio_costo, imagen_url, thumbnail_url, grid_url, slug, publicado, descripcion, categoria_id, creado_en,
         marca, modelo, unidad_medida, tratamiento_iva, genero,
         categoria:categorias(id, nombre, slug),
         producto_variantes(

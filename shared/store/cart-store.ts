@@ -1,3 +1,4 @@
+import { retarifarPorCantidad } from "@/shared/lib/precio-por-cantidad";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CartItemStore } from "@/entities/cart/types";
@@ -108,6 +109,7 @@ interface CartState {
     presentacionIdActual: string | null,
     presentacionIdNueva: string | null,
   ) => void;
+  actualizarTramos: (productos: { id: string; precios_por_cantidad?: CartItemStore["preciosPorCantidad"] }[]) => void;
   clearCart: () => void;
   /** Reemplaza atómicamente la venta activa al cambiar de pestaña. */
   reemplazarCarrito: (venta: {
@@ -133,18 +135,25 @@ interface CartState {
 
 export const useCartStore = create<CartState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      const actualizar = (partial: Partial<CartState> | ((state: CartState) => Partial<CartState>)) => {
+        set((state) => {
+          const cambio = typeof partial === "function" ? partial(state) : partial;
+          return cambio.items ? { ...cambio, items: retarifarPorCantidad(cambio.items) } : cambio;
+        });
+      };
+      return ({
       items: [],
       cuponCatalogo: null,
-      setCuponCatalogo: (cuponCatalogo) => set({ cuponCatalogo }),
+      setCuponCatalogo: (cuponCatalogo) => actualizar({ cuponCatalogo }),
       isOpen: false,
       negocioId: null,
       listaPrecioId: null,
       pedidoActivo: null,
-      setPedidoActivo: (pedidoActivo) => set({ pedidoActivo }),
+      setPedidoActivo: (pedidoActivo) => actualizar({ pedidoActivo }),
 
       addItem: (newItem) => {
-        set((state) => {
+        actualizar((state) => {
           const existingItemIndex = state.items.findIndex(
             (item) => claveLinea(item) === claveLinea(newItem),
           );
@@ -167,6 +176,7 @@ export const useCartStore = create<CartState>()(
               ...currentItem,
               sugeridoCatalogo: currentItem.sugeridoCatalogo || (newQuantity > currentItem.cantidad && newItem.sugeridoCatalogo),
               cantidad: newQuantity,
+              preciosPorCantidad: newItem.preciosPorCantidad ?? currentItem.preciosPorCantidad,
               // Sumar más del mismo producto cambia el peso: el importe
               // fijado deja de valer y la línea vuelve al precio de lista.
               ...sinImporteFijado(currentItem),
@@ -191,14 +201,14 @@ export const useCartStore = create<CartState>()(
 
       removeItem: (productoId, variante, presentacionId = null) => {
         const clave = claveLinea({ productoId, variante, presentacionId });
-        set((state) => ({
+        actualizar((state) => ({
           items: state.items.filter((item) => claveLinea(item) !== clave),
         }));
       },
 
       updateQuantity: (productoId, variante, cantidad, presentacionId = null) => {
         const clave = claveLinea({ productoId, variante, presentacionId });
-        set((state) => ({
+        actualizar((state) => ({
           items: state.items.map((item) => {
             if (claveLinea(item) === clave) {
               // No pasar el stock máximo ni bajar del mínimo vendible. Ese
@@ -230,11 +240,11 @@ export const useCartStore = create<CartState>()(
 
       fijarImporte: (productoId, variante, importe, presentacionId = null) => {
         const clave = claveLinea({ productoId, variante, presentacionId });
-        set((state) => ({
+        actualizar((state) => ({
           items: state.items.map((item) => {
             if (claveLinea(item) !== clave) return item;
             // Solo por peso suelto: una presentación se vende entera.
-            if (item.presentacionId || !esFraccionable(item.unidadMedida)) {
+            if (item.presentacionId || item.preciosPorCantidad?.length || !esFraccionable(item.unidadMedida)) {
               return item;
             }
             const precioLista = item.precioSinImporte ?? item.precio;
@@ -277,7 +287,7 @@ export const useCartStore = create<CartState>()(
           variante,
           presentacionId: actual,
         });
-        set((state) => {
+        actualizar((state) => {
           const origen = state.items.find(
             (i) => claveLinea(i) === claveActual,
           );
@@ -338,10 +348,24 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      clearCart: () => set({ items: [], pedidoActivo: null, cuponCatalogo: null }),
+      actualizarTramos: (productos) => {
+        const porId = new Map(productos.map(p => [p.id, p]));
+        actualizar(state => {
+          let cambio = false;
+          const items = state.items.map(item => {
+            const producto = porId.get(item.productoId);
+            if (item.ventaLibre || producto?.precios_por_cantidad === undefined ||
+              JSON.stringify(item.preciosPorCantidad ?? []) === JSON.stringify(producto.precios_por_cantidad ?? [])) return item;
+            cambio = true;
+            return { ...item, preciosPorCantidad: producto.precios_por_cantidad };
+          });
+          return cambio ? { items } : {};
+        });
+      },
+      clearCart: () => actualizar({ items: [], pedidoActivo: null, cuponCatalogo: null }),
 
       reemplazarCarrito: ({ items, listaPrecioId, pedidoActivo }) =>
-        set({ items, listaPrecioId, pedidoActivo }),
+        actualizar({ items, listaPrecioId, pedidoActivo }),
 
       /**
        * Cambia la lista Y los precios de las líneas EN LA MISMA ESCRITURA.
@@ -365,7 +389,7 @@ export const useCartStore = create<CartState>()(
        * descuento sobre un descuento, cada vez que se toca el selector.
        */
       setListaPrecio: (listaPrecioId, preciosPorLinea) => {
-        set((state) => ({
+        actualizar((state) => ({
           listaPrecioId,
           items: state.items.map((item) => {
             const nuevo = preciosPorLinea[claveLinea(item)];
@@ -400,7 +424,7 @@ export const useCartStore = create<CartState>()(
        * cuenta como "de otro": no hay forma de saber de quién era.
        */
       sincronizarNegocio: (negocioId) => {
-        set((state) => {
+        actualizar((state) => {
           if (state.negocioId === negocioId) return {};
           // Sin negocio activo no se decide nada: es el estado en tránsito de
           // un render antes de que el layout resuelva la membresía, no un
@@ -416,9 +440,9 @@ export const useCartStore = create<CartState>()(
         });
       },
 
-      toggleCart: () => set((state) => ({ isOpen: !state.isOpen })),
+      toggleCart: () => actualizar((state) => ({ isOpen: !state.isOpen })),
 
-      setIsOpen: (isOpen) => set({ isOpen }),
+      setIsOpen: (isOpen) => actualizar({ isOpen }),
 
       getTotalItems: () => {
         return get().items.reduce((total, item) => total + item.cantidad, 0);
@@ -430,9 +454,14 @@ export const useCartStore = create<CartState>()(
           0,
         );
       },
-    }),
+    });
+    },
     {
       name: "vivero-tostado-storage",
+      merge: (persistido, actual) => {
+        const guardado = persistido as Partial<CartState>;
+        return { ...actual, ...guardado, items: retarifarPorCantidad(guardado.items ?? actual.items) };
+      },
       partialize: (state) => ({
         items: state.items,
         negocioId: state.negocioId,

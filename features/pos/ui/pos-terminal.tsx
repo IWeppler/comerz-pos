@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSlugNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { Producto } from "@/entities/productos/types";
@@ -160,6 +160,8 @@ export function PosTerminal({
 
   const addItem = useCartStore((state) => state.addItem);
   const itemsCarrito = useCartStore((state) => state.items);
+  const actualizarTramos = useCartStore(state => state.actualizarTramos);
+  useEffect(() => { actualizarTramos(productos); }, [productos, actualizarTramos]);
 
   /**
    * Cuántas unidades de cada producto ya están en el ticket.
@@ -346,6 +348,7 @@ export function PosTerminal({
 
     addItem({
       productoId: producto.id,
+      preciosPorCantidad: producto.precios_por_cantidad,
       nombre: producto.nombre || "Sin nombre",
       tipo: producto.tipo || "",
       variante: variante.variante,

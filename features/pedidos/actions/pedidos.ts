@@ -25,6 +25,7 @@ export interface PedidoItem {
   precio: number;
   precioBase?: number;
   precioBaseEfectivo?: number;
+  preciosPorCantidad?: CartItemStore["preciosPorCantidad"];
   cantidad: number;
   unidadMedida?: string | null;
   imagenUrl?: string | null;
@@ -88,6 +89,7 @@ function aItemPedido(i: CartItemStore): PedidoItem {
     precio: i.precio,
     precioBase: i.precioBase,
     precioBaseEfectivo: i.precioBaseEfectivo,
+    preciosPorCantidad: i.preciosPorCantidad,
     cantidad: i.cantidad,
     unidadMedida: i.unidadMedida ?? null,
     imagenUrl: i.imagenUrl ?? null,

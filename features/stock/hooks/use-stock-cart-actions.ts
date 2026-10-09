@@ -32,6 +32,7 @@ export function useStockCartActions(userRole: string) {
 
     addItem({
       productoId: producto.id,
+      preciosPorCantidad: producto.precios_por_cantidad,
       nombre: producto.nombre,
       tipo: producto.tipo,
       variante,

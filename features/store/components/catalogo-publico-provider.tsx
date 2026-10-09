@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useRef, useState } from "react";
+import { useCartStore } from "@/shared/store/cart-store";
 import type { Producto } from "@/entities/productos/types";
 import { getIndiceCatalogoPublicoAction } from "@/shared/actions/indice-catalogo-publico";
 
@@ -28,6 +29,7 @@ export function CatalogoPublicoProvider({ children }: { children: React.ReactNod
       .then((res) => {
         if (res.error || !res.data) throw new Error(res.error || "Sin índice");
         cargado.current = true;
+        useCartStore.getState().actualizarTramos(res.data);
         setIndice(res.data);
       })
       .catch(() => setError("No pudimos cargar los productos. Intentá de nuevo."))

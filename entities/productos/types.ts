@@ -71,6 +71,7 @@ export interface CategoriaRelacion {
 }
 
 export interface Producto {
+  precios_por_cantidad?: import("@/shared/lib/precio-por-cantidad").TramoCantidad[];
   id: string;
   nombre: string;
   tipo: string;

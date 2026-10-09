@@ -221,6 +221,7 @@ function QuickAddModalContent({
           );
           addItem({
             productoId: producto.id,
+            preciosPorCantidad: producto.precios_por_cantidad,
             nombre: producto.nombre || "Sin nombre",
             tipo: producto.tipo || "",
             variante: stockDeVariante.variante,

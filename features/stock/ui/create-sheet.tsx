@@ -15,6 +15,7 @@ import { ProductBasicInfoSection } from "./create-product/product-basic-info-sec
 import { ProductCategorySection } from "./create-product/product-category-section";
 import { ProductInventorySection } from "./create-product/product-inventory-section";
 import { ProductMediaSection } from "./create-product/product-media-section";
+import { ProductTramosSection } from "./create-product/product-tramos-section";
 import { ProductPriceSection } from "./create-product/product-price-section";
 import { ProductVariantsSection } from "./create-product/product-variants-section";
 import { ProductFiscalSection } from "./create-product/product-fiscal-section";
@@ -121,6 +122,8 @@ export function CrearProductoSheet({
                 gananciaNeta={form.gananciaNeta}
                 recargoPorcentaje={form.recargoPorcentaje}
               />
+
+              <ProductTramosSection precioHabitual={form.precioVenta} />
 
               {/* La unidad va acá: en una verdulería o una fiambrería, que
                   el producto se venda por kilo es lo primero que hay que

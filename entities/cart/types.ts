@@ -27,6 +27,8 @@ export interface CartItemStore {
   /** Precio por UNIDAD DE MEDIDA: por kilo si `unidadMedida` es KG, por pieza
    * si es UNIDAD. El subtotal de la línea es siempre `precio * cantidad`.
    * Con una lista de precios activa, este ya es el precio DE LA LISTA. */
+  preciosPorCantidad?: import("@/shared/lib/precio-por-cantidad").TramoCantidad[] | null;
+  tramoCantidadDesde?: number | null;
   precio: number;
   /**
    * El precio de siempre, sin ninguna lista aplicada.

@@ -134,6 +134,65 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
 - Reversión manual en `supabase/reversals/`. Smoke pendiente tras el deploy:
   aplicar/deshacer por marca en un comercio de prueba.
 
+### Precio unitario por tramo de cantidad (8/10/2026)
+
+Estado: migración `20261009010453_precios_por_cantidad` aplicada en producción;
+código local para revisión, sin commit/deploy ni smoke de venta en producción.
+
+- Configuración en alta/edición del producto → **Precios por cantidad**. Vive en
+  `productos.precios_por_cantidad`: hasta 20 pares `{desde, precio}`, mínimos enteros
+  positivos, crecientes y únicos; importes absolutos positivos con hasta dos
+  decimales. `[]` conserva el precio habitual. Quitar todos los tramos desactiva
+  la regla; un formulario que no manda el campo conserva lo guardado.
+- Debajo del primer mínimo se cobra `variante.precio ?? producto.precio`, con la
+  lista elegida. El tramo elegible reemplaza ese precio de lista y se aplica a
+  TODAS las unidades: 12 fotocopias con tramo desde 10 a $220 = $2.640. Después
+  se calculan las promociones según las condiciones existentes, incluido
+  `lista.admite_promociones`. No es un descuento por porcentaje ni marginal.
+- Los importes son del producto y se usan en todas sus variantes; las cantidades
+  se suman por variante real, incluso con renglones duplicados o un nombre viejo.
+  No se mezclan otros productos/variantes. Servicios con escalas distintas se
+  cargan como productos distintos. Packs/baldes mantienen su precio por
+  presentación y no participan de la cantidad de la unidad base.
+- POS y catálogo público comparten `precio-por-cantidad.ts`; el carrito calcula
+  al agregar, quitar, cambiar cantidades/listas/formas y restaurar tickets. En
+  las líneas con tramos se puede tocar la cantidad y escribir 100 directamente;
+  el diálogo muestra el total antes de aplicar y respeta el tope de stock.
+  También permite unidades fraccionables, con mínimos de tramo enteros.
+  No admite fijar importe: se vende indicando la cantidad, para evitar el ciclo
+  importe → cantidad → otro precio. Una configuración nueva limpia un importe
+  fijado previamente. Venta libre conserva su comportamiento.
+- `create-sale.ts` agrupa cantidades validadas por la variante resuelta en la base
+  y calcula desde la configuración vigente ANTES de cobrar/mover stock. Offline
+  conserva el precio ya cobrado y registra el desfasaje, como antes. El unitario
+  vendido queda congelado en `ventas_items.precio_unitario`/`precio_final`: cambiar
+  tramos no reescribe ventas, devoluciones ni margen históricos.
+- El catálogo del celular recibe el campo en el select compartido y la sync por
+  delta (el trigger vivo de productos actualiza `updated_at`). Se resincronizan
+  las reglas de los tickets abiertos al recibir el catálogo. Los pedidos internos
+  por cobrar conservan el snapshot y se revalidan al vender. Presupuestos siguen
+  cotizando a precio base, igual que las listas y promociones pendientes allí.
+- SQL valida la forma con CHECK, espejo del validador TS. La columna hereda el
+  aislamiento RESTRICTIVE de productos y tiene GRANT SELECT a `anon`, sin costo.
+  Un trigger INVOKER exige `stock.editar_producto` si authenticated cambia los
+  tramos: las policies vivas de UPDATE de productos todavía no piden ese permiso.
+  No se reescribió ninguna RPC de ventas/stock.
+- Medición y prueba en seco en producción el 8/10: migración completa en
+  transacción revertida, guardar como ADMIN, bloqueo tras retirar el permiso
+  del rol del Kiosco Demo SOLO en la transacción revertida, UPDATE ajeno = 0,
+  SELECT anónimo con costo denegado. Repetidas tras aplicar; 4.149 productos,
+  ninguno configurado automáticamente. SQL repetible en
+  `scripts/verificar-tramos-produccion.sql`, siempre con BEGIN/ROLLBACK.
+  Advisors: ningún hallazgo sobre los objetos nuevos. Reversión manual en
+  `supabase/reversals/20261009010453_precios_por_cantidad.sql`.
+- Validación local: suite completa 196 archivos / 2.094 tests; casos adicionales
+  de suma fraccionada y limpieza de importe fijado en la suite enfocada. TypeScript
+  y lint de los archivos nuevos/modificados sin errores nuevos (create-sale ya
+  tenía `JSON.parse(cartData) as any[]`, señalado por ESLint). Componentes reales
+  con datos ficticios en navegador a 360/390 px: 12 × $220, bajar a 9 × $250,
+  tipear 100 × $180 en el editor, duplicados rechazados y sin desborde horizontal.
+  No sustituye la prueba en celular físico ni el smoke posterior al deploy.
+
 ## Ingreso de mercadería: UN camino
 
 - **"Ingresar mercadería" (`ingresar-mercaderia-modal.tsx`) igual para todos los

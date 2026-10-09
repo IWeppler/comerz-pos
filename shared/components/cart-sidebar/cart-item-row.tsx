@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CartItemStore } from "@/entities/cart/types";
 import { Barcode, ChevronRight, ShoppingBag, X } from "lucide-react";
+import { CantidadTramosControl } from "./cantidad-tramos-control";
 import { CantidadControl } from "./cantidad-control";
 import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import {
@@ -199,21 +200,31 @@ export function CartItemRow({
         </div>
 
         <div className="flex items-end justify-between gap-3">
-          <CantidadControl
+          {!!item.preciosPorCantidad?.length && !item.presentacionId ? (
+            <CantidadTramosControl cantidad={item.cantidad} stockMaximo={item.stockMaximo}
+              unidadMedida={item.unidadMedida} productoNombre={item.nombre}
+              precioHabitual={item.precioBaseEfectivo ?? item.precioBase ?? item.precio}
+              tramos={item.preciosPorCantidad} onChange={onUpdateQuantity} />
+          ) : <CantidadControl
             cantidad={item.cantidad}
             precio={item.precio}
             unidadMedida={item.unidadMedida}
             stockMaximo={item.stockMaximo}
             onChange={onUpdateQuantity}
-            onImporte={onFijarImporte}
+            onImporte={item.preciosPorCantidad?.length ? undefined : onFijarImporte}
             presentacion={presentacion ? { factor: presentacion.factor } : null}
             productoNombre={item.nombre}
-          />
+          />}
 
           <div className="text-right">
             {/* El precio por unidad de medida solo se muestra cuando se vende
                 fraccionado: en una remera "x u." es ruido, en un fiambre es el
                 dato que explica de dónde sale el subtotal. */}
+            {item.tramoCantidadDesde != null && !item.presentacionId && (
+              <p className="text-[11px] text-muted-foreground">
+                Desde {item.tramoCantidadDesde}: ${item.precio.toLocaleString("es-AR")} por unidad
+              </p>
+            )}
             {presentacion ? (
               <p className="font-mono text-[10px] text-muted-foreground">
                 {item.cantidad} × ${item.precio.toLocaleString("es-AR")}
