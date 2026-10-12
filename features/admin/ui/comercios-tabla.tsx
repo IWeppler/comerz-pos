@@ -337,6 +337,7 @@ export function ComerciosTabla({
                   planVencimiento={c.plan_vencimiento}
                   planes={planes}
                   moduloPresupuestos={c.moduloPresupuestos}
+                  pagosOnline={c.pagosOnline}
                   cuentaEnMrr={c.cuentaEnMrr}
                 />
               </div>
@@ -504,6 +505,7 @@ export function ComerciosTabla({
                         planVencimiento={c.plan_vencimiento}
                         planes={planes}
                         moduloPresupuestos={c.moduloPresupuestos}
+                        pagosOnline={c.pagosOnline}
                         cuentaEnMrr={c.cuentaEnMrr}
                       />
                     </div>

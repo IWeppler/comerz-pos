@@ -24,6 +24,7 @@ import {
   UserCog,
   Calculator,
   FileText,
+  ShoppingBag,
 } from "lucide-react";
 import {
   Select,
@@ -47,7 +48,11 @@ import type { InvitacionPendiente } from "./invitaciones-panel";
 import type { UsoDelPlan } from "@/features/planes/actions/uso-del-plan";
 import { TicketPanel } from "@/features/ticket/TicketPanel";
 import { ConfigPresupuestosPanel } from "@/features/presupuestos/ui/config-presupuestos-panel";
-import { useModuloPresupuestos } from "@/shared/components/negocio-activo-provider";
+import {
+  useModuloPresupuestos,
+  usePagosOnline,
+} from "@/shared/components/negocio-activo-provider";
+import { CobrosOnlinePanel } from "@/features/cobros-online/ui/cobros-online-panel";
 
 const SECTIONS = [
   {
@@ -98,6 +103,13 @@ const SECTIONS = [
     icon: CreditCard,
     description: "Efectivo, transferencias, recargos",
   },
+  // Solo ADMIN y con `negocios.pagos_online_habilitado` (ver `visibleSections`).
+  {
+    id: "cobrosOnline",
+    label: "Cobros online",
+    icon: ShoppingBag,
+    description: "Mercado Pago y transferencia en el catálogo",
+  },
   // Solo con el módulo prendido (ver `visibleSections`).
   {
     id: "presupuestos",
@@ -136,7 +148,7 @@ const SECTIONS = [
 // que no figura acá no se pierde: cae en "Otros".
 const GRUPOS: { titulo: string; ids: string[] }[] = [
   { titulo: "Negocio", ids: ["comercio", "catalogo", "preferencias"] },
-  { titulo: "Ventas", ids: ["caja", "pagos", "ticketConfig", "presupuestos"] },
+  { titulo: "Ventas", ids: ["caja", "pagos", "cobrosOnline", "ticketConfig", "presupuestos"] },
   { titulo: "Productos", ids: ["categoria", "listasPrecios", "promociones"] },
   { titulo: "Personas", ids: ["clientes", "empleados"] },
 ];
@@ -202,17 +214,19 @@ export function SettingsManager({
   // Mismo criterio para Listas de Precios que para Empleados: la RLS exige
   // ADMIN para escribirlas, así que mostrarle la sección a un ENCARGADO sería
   // ofrecerle botones que no funcionan. Además la página ni las consulta.
-  const soloAdmin = new Set(["empleados", "listasPrecios", "presupuestos"]);
+  const soloAdmin = new Set(["empleados", "listasPrecios", "presupuestos", "cobrosOnline"]);
   const moduloPresupuestos = useModuloPresupuestos();
+  const pagosOnline = usePagosOnline();
   const visibleSections = useMemo(
     () =>
       SECTIONS.filter(
         (s) =>
           (!soloAdmin.has(s.id) || isAdmin) &&
-          (s.id !== "presupuestos" || moduloPresupuestos),
+          (s.id !== "presupuestos" || moduloPresupuestos) &&
+          (s.id !== "cobrosOnline" || pagosOnline),
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isAdmin, moduloPresupuestos],
+    [isAdmin, moduloPresupuestos, pagosOnline],
   );
 
   // Qué secciones necesitan un plan que este comercio no tiene. El candado va
@@ -258,6 +272,10 @@ export function SettingsManager({
         return <PromotionsPanel promociones={promociones} />;
       case "pagos":
         return <PaymentsPanel pagos={pagos} />;
+      case "cobrosOnline":
+        return isAdmin && pagosOnline ? (
+          <CobrosOnlinePanel config={config} onIrASeccion={setActiveSection} />
+        ) : null;
       case "presupuestos":
         return isAdmin && moduloPresupuestos ? (
           <ConfigPresupuestosPanel config={config} />

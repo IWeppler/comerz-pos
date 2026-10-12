@@ -106,6 +106,22 @@ muestre no es control de acceso.
   `negocio_publico()`, solo escribe un evento `PEDIDO_CATALOGO` en `eventos_uso` sin
   datos personales, tope de 20 por minuto por negocio. `anon` sigue sin acceso a la
   tabla. Ver [tienda-online.md](tienda-online.md).
+- Pagos del catálogo (`20261012133049`): `ordenes_tienda`, `ordenes_tienda_items`,
+  `eventos_pago` cerradas a `anon` (la tienda va a entrar por RPC DEFINER); el panel
+  solo las LEE con `tienda.ver_ordenes`. `mercadopago_conexiones`,
+  `mercadopago_oauth_estados` y `ordenes_tienda_numeradores`: RLS sin policies ni
+  GRANT, solo service_role (patrón `arca_credenciales`; tokens cifrados en la app).
+  `negocios.pagos_online_habilitado` no está concedida a `anon`. Test:
+  `supabase/tests/pagos_rls.sql`.
+  Órdenes (`20261012162746`): `crear_orden_tienda` y `liberar_ordenes_tienda_vencidas`
+  son SOLO de service_role (las llama la server action después de recalcular precios;
+  con anon cualquiera mandaría su total por curl). `anon` solo ejecuta
+  `opciones_cobro_online()`, que devuelve dos booleanos.
+  Cobro (`20261012162839`): `_registrar_venta_orden_tienda` y `metodo_pago_tienda` solo
+  service_role (los usan la conciliación y el webhook); `confirmar_transferencia_orden`
+  y `cancelar_orden_tienda` para `authenticated` con `ventas.cobrar` y el negocio de la
+  sesión; `orden_tienda_publica(token)` para anon (token de 48 hex, alias solo mientras
+  espera pago). Los métodos `uso_tienda` nacen inactivos por CHECK.
 - Todas menos `negocios` llevan la RESTRICTIVE `aislamiento_negocio_publico`
   (`negocio_id = security.negocio_publico()`, fail-closed: sin header no hay tienda).
 - **Pedir una columna no concedida devuelve 403 y la tienda se cae ENTERA.**

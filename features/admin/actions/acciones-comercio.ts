@@ -337,6 +337,39 @@ export async function cambiarModuloPresupuestosAction(
   return { error: null, success: true };
 }
 
+/**
+ * Prende o apaga los cobros online del catálogo (órdenes, transferencia a
+ * Mercado Pago, checkout de MP). Mismo criterio que presupuestos: decisión de
+ * Comerz, columna en `negocios` que solo actualiza el super admin.
+ *
+ * Apagarlo esconde la sección Cobros y el catálogo deja de ofrecer los medios;
+ * no borra la conexión ni las órdenes.
+ */
+export async function cambiarPagosOnlineAction(
+  negocioId: string,
+  activo: boolean,
+): Promise<ResultadoAccion> {
+  const { supabase, autorizado } = await comoSuperAdmin();
+  if (!autorizado) return { error: "No autorizado.", success: false };
+
+  const { data, error } = await supabase
+    .from("negocios")
+    .update({ pagos_online_habilitado: activo })
+    .eq("id", negocioId)
+    .select("id");
+
+  if (error) {
+    console.error("[PAGOS ONLINE]", error);
+    return { error: "No se pudo cambiar el módulo.", success: false };
+  }
+  if (!data?.length) {
+    return { error: "No se encontró el comercio.", success: false };
+  }
+
+  refrescarPanel();
+  return { error: null, success: true };
+}
+
 export interface PagoDelNegocio {
   id: string;
   monto: number;

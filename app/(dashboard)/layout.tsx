@@ -131,11 +131,12 @@ export default async function DashboardLayout({
     slug: string;
     nombre: string;
     moduloPresupuestos: boolean;
+    pagosOnline: boolean;
   } | null = null;
   if (impersonadoId && !membresiaActiva) {
     const { data } = await supabase
       .from("negocios")
-      .select("id, slug, nombre, modulo_presupuestos")
+      .select("id, slug, nombre, modulo_presupuestos, pagos_online_habilitado")
       .eq("id", impersonadoId)
       .maybeSingle();
     negocioImpersonado = data
@@ -144,6 +145,7 @@ export default async function DashboardLayout({
           slug: data.slug,
           nombre: data.nombre,
           moduloPresupuestos: data.modulo_presupuestos === true,
+          pagosOnline: data.pagos_online_habilitado === true,
         }
       : null;
   }
@@ -154,6 +156,7 @@ export default async function DashboardLayout({
         slug: membresiaActiva.slug,
         nombre: membresiaActiva.nombre,
         moduloPresupuestos: membresiaActiva.modulo_presupuestos,
+        pagosOnline: membresiaActiva.pagos_online_habilitado,
       }
     : negocioImpersonado;
 

@@ -57,6 +57,11 @@ export interface OpcionPagoPublica {
   etiqueta: string;
   /** El MÁS ALTO de los métodos de ese tipo. Ver el encabezado. */
   recargoPorcentaje: number;
+  /**
+   * Presente solo en los medios de PAGO ONLINE (orden en Comerz, no pedido por
+   * WhatsApp). Ver `features/store/lib/orden-tienda.ts`.
+   */
+  online?: "TRANSFERENCIA" | "MP_CHECKOUT" | "MP_CREDITO";
 }
 
 /** Lo mínimo que el catálogo público puede leer de un método: `comision` NO

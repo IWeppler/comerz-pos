@@ -15,6 +15,7 @@ import { DescuentosPagoProvider } from "@/features/store/components/descuentos-p
 import { COLUMNAS_PROMOCION_PUBLICA } from "@/shared/lib/columnas-publicas";
 import type { PromocionDB } from "@/shared/components/cart-sidebar/types";
 import type { MetodoPublico } from "@/shared/lib/opciones-pago-publicas";
+import type { OpcionesCobroOnline } from "@/features/store/lib/orden-tienda";
 import type { Metadata } from "next";
 
 // El título sale del negocio que se está mirando: no hay tienda por defecto
@@ -61,7 +62,7 @@ export default async function PublicLayout({
   // Promociones y métodos se leen ACÁ, una sola vez, y bajan por contexto: los
   // necesitan todas las tarjetas de la grilla, la ficha y el carrito. Ver
   // `DescuentosPagoProvider` para por qué no los pide cada uno por su cuenta.
-  const [config, { data: categorias }, { data: promociones }, { data: metodos }] =
+  const [config, { data: categorias }, { data: promociones }, { data: metodos }, { data: opcionesOnline }] =
     await Promise.all([
       leerConfigPublica(),
       supabase
@@ -80,6 +81,10 @@ export default async function PublicLayout({
         .from("metodos_pago")
         .select("tipo, recargo_porcentaje, activo")
         .eq("activo", true),
+      // Medios de pago online (orden en Comerz). Solo booleanos; con el
+      // módulo apagado o sin Mercado Pago conectado, los dos en false y el
+      // carrito sigue igual que siempre.
+      supabase.rpc("opciones_cobro_online"),
     ]);
 
   return (
@@ -87,6 +92,7 @@ export default async function PublicLayout({
       <DescuentosPagoProvider
         promociones={(promociones ?? []) as unknown as PromocionDB[]}
         metodos={(metodos ?? []) as MetodoPublico[]}
+        opcionesOnline={(opcionesOnline ?? undefined) as OpcionesCobroOnline | undefined}
       >
       <CatalogoPublicoProvider key={negocio}>
       <div className="min-h-screen bg-background flex flex-col">

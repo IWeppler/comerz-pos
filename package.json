@@ -14,7 +14,8 @@
     "cleanup:genero": "node --experimental-strip-types scripts/cleanup-genero-fuera-de-bebe.ts",
     "diagnostico:atributo-2": "node --experimental-strip-types scripts/diagnostico-atributo-2.ts",
     "limpiar:huerfanos": "node --experimental-strip-types scripts/limpiar-huerfanos-storage.ts",
-    "reubicar:derivadas": "node --experimental-strip-types scripts/reubicar-derivadas-raiz.ts"
+    "reubicar:derivadas": "node --experimental-strip-types scripts/reubicar-derivadas-raiz.ts",
+    "spike:mp-transferencias": "node --experimental-strip-types scripts/spike-mp-transferencias.ts"
   },
   "dependencies": {
     "@blobatar/react": "^2.7.0",

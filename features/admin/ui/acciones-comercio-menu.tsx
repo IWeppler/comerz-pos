@@ -12,6 +12,7 @@ import {
   Play,
   Presentation,
   Receipt,
+  ShoppingBag,
   Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +28,7 @@ import {
   cambiarCuentaEnMrrAction,
   cambiarEstadoNegocioAction,
   cambiarModuloPresupuestosAction,
+  cambiarPagosOnlineAction,
   cambiarPlanAction,
   cambiarSlugAction,
 } from "@/features/admin/actions/acciones-comercio";
@@ -63,6 +65,7 @@ export function AccionesComercioMenu({
   planVencimiento,
   planes,
   moduloPresupuestos,
+  pagosOnline,
   cuentaEnMrr,
 }: Readonly<{
   negocioId: string;
@@ -74,6 +77,8 @@ export function AccionesComercioMenu({
   planVencimiento: string | null;
   planes: PlanOpcion[];
   moduloPresupuestos: boolean;
+  /** `negocios.pagos_online_habilitado`. */
+  pagosOnline: boolean;
   /** Suma al MRR (si además está activo). Ver `sumaAlMrr`. */
   cuentaEnMrr: boolean;
 }>) {
@@ -111,6 +116,20 @@ export function AccionesComercioMenu({
       return;
     }
     correr(() => cambiarModuloPresupuestosAction(negocioId, !moduloPresupuestos));
+  };
+
+  const alternarPagosOnline = () => {
+    // Mismo criterio: prender pide confirmación (el catálogo pasa a tomar
+    // órdenes que descuentan stock), apagar solo esconde.
+    if (
+      !pagosOnline &&
+      !window.confirm(
+        `¿Prender cobros online para ${nombre}?\n\nVa a ver la sección Cobros para conectar Mercado Pago. El catálogo no cobra nada hasta que el comercio prenda un medio.`,
+      )
+    ) {
+      return;
+    }
+    correr(() => cambiarPagosOnlineAction(negocioId, !pagosOnline));
   };
 
   return (
@@ -188,6 +207,14 @@ export function AccionesComercioMenu({
             {moduloPresupuestos
               ? "Presupuestos y cuotas: prendido (apagar)"
               : "Prender presupuestos y cuotas"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={alternarPagosOnline}>
+            <ShoppingBag
+              className={`mr-2 size-4 ${pagosOnline ? "text-success" : "text-muted-foreground"}`}
+            />
+            {pagosOnline
+              ? "Cobros online: prendido (apagar)"
+              : "Prender cobros online"}
           </DropdownMenuItem>
 
           <DropdownMenuSeparator />

@@ -3,7 +3,8 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 /**
  * Cliente con service_role. SALTEA RLS: usar solo para lo que la API de Auth
  * no deja hacer de otra forma (invitar usuarios por email) y para
- * `arca_credenciales`, que no tiene policies a propósito.
+ * `arca_credenciales` y las tablas de Mercado Pago (`mercadopago_conexiones`,
+ * `mercadopago_oauth_estados`), que no tienen policies a propósito.
  *
  * Nunca lleva prefijo NEXT_PUBLIC_ y solo se importa desde server actions.
  * Cualquier lectura o escritura de datos del negocio va por el cliente normal,

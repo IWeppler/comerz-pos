@@ -41,6 +41,19 @@ import {
   type ErroresPedido,
 } from "./cart-paso-datos";
 import { CartDesglosePublico } from "./cart-desglose-publico";
+import { claveOpcionPago } from "./cart-paso-datos";
+import { OrdenCreadaPublica } from "./orden-creada-publica";
+import {
+  MENSAJE_SIN_PAGO_ONLINE,
+  motivoSinPagoOnline,
+  normalizarCelular,
+  opcionesConPagoOnline,
+} from "../lib/orden-tienda";
+import { CHECKOUT_MP_DISPONIBLE } from "../lib/checkout-mp-disponible";
+import {
+  crearOrdenTiendaAction,
+  type OrdenCreada,
+} from "../actions/crear-orden-tienda";
 
 const subscribeToClientMount = () => () => {};
 const getClientSnapshot = () => true;
@@ -108,8 +121,19 @@ export function CartPanelPublico({
   const [nota, setNota] = useState("");
   const [opcionPago, setOpcionPago] = useState<OpcionPagoPublica | null>(null);
   const [errores, setErrores] = useState<ErroresPedido>({});
+  // Pago online (orden en Comerz). Ver `features/store/lib/orden-tienda.ts`.
+  const [celular, setCelular] = useState("");
+  const [sitio, setSitio] = useState(""); // campo trampa: una persona no lo ve
+  const [creandoOrden, setCreandoOrden] = useState(false);
+  const [errorOrden, setErrorOrden] = useState<string | null>(null);
+  const [ordenCreada, setOrdenCreada] = useState<OrdenCreada | null>(null);
+  // Un id por intento de orden: si la respuesta se pierde y se vuelve a tocar
+  // "Confirmar", el server devuelve la misma orden en vez de apartar el stock
+  // dos veces. Se renueva recién cuando la orden se creó.
+  const [idOrden, setIdOrden] = useState(() => crypto.randomUUID());
 
   const refNombre = useRef<HTMLInputElement>(null);
+  const refCelular = useRef<HTMLInputElement>(null);
   const refLocalidad = useRef<HTMLInputElement>(null);
   const refDireccion = useRef<HTMLInputElement>(null);
   const refPago = useRef<HTMLDivElement>(null);
@@ -146,7 +170,7 @@ export function CartPanelPublico({
   // ficha. Dos lecturas distintas de las mismas tablas son dos momentos
   // distintos, y el síntoma sería una tarjeta prometiendo un descuento que el
   // desglose no da. Ver `descuentos-pago-provider.tsx`.
-  const { promociones: promocionesDB, opcionesPago } = useDescuentosPago();
+  const { promociones: promocionesDB, opcionesPago: opcionesPagoBase, opcionesOnline } = useDescuentosPago();
   const cupon = cuponGuardado?.slug === slugNegocio ? cuponGuardado : null;
   const promocionesPedido = useMemo(() => cupon ? [...promocionesDB, cupon.promocion] : promocionesDB, [cupon, promocionesDB]);
   const codigoGuardado = cuponGuardado?.codigo;
@@ -189,6 +213,29 @@ export function CartPanelPublico({
 
   const costoEnvio = envioInfo?.tipo === "LOCAL" ? envioInfo.costo || 0 : 0;
 
+  // ─── Pago online ───
+  // Los botones de pago con los medios online del comercio, si ESTE pedido se
+  // puede pagar online (sin presentaciones, sin importe fijado, sin envío "a
+  // convenir"). Si no, quedan los de siempre y se dice por qué.
+  const motivoSinOnline = motivoSinPagoOnline({ items, destinoEnvio: envioInfo?.tipo });
+  const hayPagoOnline =
+    opcionesOnline.transferencia || (opcionesOnline.mercadopago && CHECKOUT_MP_DISPONIBLE);
+  const opcionesPago = useMemo(
+    () =>
+      opcionesConPagoOnline(opcionesPagoBase, opcionesOnline, {
+        disponible: motivoSinOnline === null,
+        incluirMercadoPago: CHECKOUT_MP_DISPONIBLE,
+      }),
+    [opcionesPagoBase, opcionesOnline, motivoSinOnline],
+  );
+  // Si la opción elegida dejó de existir (cambió la entrega o el carrito), no
+  // hay opción elegida: un total con un medio que ya no se ofrece mentiría.
+  const opcionElegida =
+    opcionPago && opcionesPago.some((o) => claveOpcionPago(o) === claveOpcionPago(opcionPago))
+      ? opcionPago
+      : null;
+  const esPagoOnline = !!opcionElegida?.online;
+
   // UNA sola cuenta para la pantalla y para el mensaje. Ver
   // `shared/lib/totales-pedido-publico.ts`.
   const totales = useMemo(
@@ -196,12 +243,12 @@ export function CartPanelPublico({
       calcularTotalesPedido({
         items,
         promociones: promocionesPedido,
-        opcionPago,
+        opcionPago: opcionElegida,
         costoEnvio,
         configEnvio: branding,
         destinoEnvio: envioInfo?.tipo,
       }),
-    [items, promocionesPedido, opcionPago, costoEnvio, branding, envioInfo],
+    [items, promocionesPedido, opcionElegida, costoEnvio, branding, envioInfo],
   );
 
   if (!mounted) return null;
@@ -236,12 +283,13 @@ export function CartPanelPublico({
    * clienta scrolleando para atrás. */
   const primerCampoFaltante = (): CampoPedido | null => {
     if (nombre.trim() === "") return "nombre";
+    if (esPagoOnline && !normalizarCelular(celular)) return "celular";
     if (modalidad === "ENVIO" && localidad.trim() === "") return "localidad";
     if (modalidad === "ENVIO" && direccion.trim() === "") return "direccion";
     // El método solo es obligatorio si el negocio configuró alguno: sin
     // opciones no hay nada que elegir y bloquear el pedido sería castigar a la
     // clienta por la configuración del comercio.
-    if (opcionesPago.length > 0 && !opcionPago) return "pago";
+    if (opcionesPago.length > 0 && !opcionElegida) return "pago";
     return null;
   };
 
@@ -251,6 +299,10 @@ export function CartPanelPublico({
     if (faltante) {
       setErrores({
         nombre: nombre.trim() === "" ? "Completá tu nombre." : undefined,
+        celular:
+          esPagoOnline && !normalizarCelular(celular)
+            ? "Poné tu celular con código de área, sin 0 ni 15."
+            : undefined,
         localidad:
           modalidad === "ENVIO" && localidad.trim() === ""
             ? "Completá tu localidad."
@@ -260,13 +312,14 @@ export function CartPanelPublico({
             ? "Completá la dirección de envío."
             : undefined,
         pago:
-          opcionesPago.length > 0 && !opcionPago
+          opcionesPago.length > 0 && !opcionElegida
             ? "Elegí cómo vas a pagar."
             : undefined,
       });
 
       const destino = {
         nombre: refNombre,
+        celular: refCelular,
         localidad: refLocalidad,
         direccion: refDireccion,
         pago: refPago,
@@ -282,12 +335,17 @@ export function CartPanelPublico({
       return;
     }
 
+    if (esPagoOnline) {
+      void confirmarOrden();
+      return;
+    }
+
     const href = generarLinkWhatsAppPublico({
       numeroWhatsApp,
       nombreComercio: branding?.posName,
       items,
       totales,
-      etiquetaPago: opcionPago?.etiqueta ?? "A coordinar",
+      etiquetaPago: opcionElegida?.etiqueta ?? "A coordinar",
       nombreCliente: nombre,
       modalidad,
       direccion,
@@ -309,7 +367,7 @@ export function CartPanelPublico({
         p_renglones: items.length,
         p_unidades: items.reduce((suma, item) => suma + item.cantidad, 0),
         p_modalidad: modalidad,
-        p_pago: opcionPago?.etiqueta ?? "A coordinar",
+        p_pago: opcionElegida?.etiqueta ?? "A coordinar",
         p_envio_a_coordinar: envioInfo?.tipo === "LEJOS" && totales.envio?.etiqueta !== "Envío gratis",
         p_cupon: cuponAplicado ? cupon?.codigo : null,
         p_envio_gratis: totales.envio?.etiqueta === "Envío gratis",
@@ -321,16 +379,85 @@ export function CartPanelPublico({
     // un popup y el navegador lo bloquea.
     window.open(href, "_blank", "noopener,noreferrer");
 
+    limpiarPedido();
+    cerrarPanel();
+  };
+
+  const limpiarPedido = () => {
     setNombre("");
+    setCelular("");
     setModalidad("RETIRO");
     setLocalidad("");
     setDireccion("");
     setNota("");
     setOpcionPago(null);
     setErrores({});
+    setErrorOrden(null);
     setPaso("PRODUCTOS");
     clearCart();
-    cerrarPanel();
+  };
+
+  /**
+   * Pago online: la orden se crea en Comerz y el stock queda apartado. El
+   * server recalcula todo desde la base; si el total cambió, no crea nada y
+   * avisa con el número nuevo (la clienta vuelve a confirmar viéndolo).
+   */
+  const confirmarOrden = async () => {
+    const medio = opcionElegida?.online;
+    if (creandoOrden || !medio) return;
+    setCreandoOrden(true);
+    setErrorOrden(null);
+    try {
+      const resultado = await crearOrdenTiendaAction({
+        idOrden,
+        items,
+        medio,
+        nombre,
+        celular,
+        modalidad,
+        localidad,
+        direccion,
+        nota,
+        cupon: cupon?.codigo ?? null,
+        totalVisto: totales.total,
+        sitio,
+      });
+      if (!resultado.ok) {
+        setErrorOrden(resultado.error);
+        return;
+      }
+      // Misma medición que el pedido por WhatsApp (Fase 0), sin datos de la
+      // clienta, para comparar los dos caminos.
+      void Promise.resolve(
+        supabase.rpc("registrar_pedido_catalogo", {
+          p_total: resultado.orden.total,
+          p_renglones: items.length,
+          p_unidades: items.reduce((suma, item) => suma + item.cantidad, 0),
+          p_modalidad: modalidad,
+          p_pago: `${opcionElegida?.etiqueta ?? "Online"} (online)`,
+          p_envio_a_coordinar: false,
+          p_cupon: cuponAplicado ? cupon?.codigo : null,
+          p_envio_gratis: totales.envio?.etiqueta === "Envío gratis",
+          p_items_sugeridos: items.filter((i) => i.sugeridoCatalogo).length,
+        }),
+      ).catch(() => {});
+      setIdOrden(crypto.randomUUID());
+      limpiarPedido();
+      if (resultado.orden.medio !== "TRANSFERENCIA") {
+        // Checkout de MP: navegación de la MISMA pestaña (no es un popup, el
+        // navegador no la bloquea después del await). Si no se pudo abrir MP,
+        // la orden existe igual y su página tiene "Pagar con Mercado Pago".
+        cerrarPanel();
+        if (resultado.orden.initPoint) window.location.assign(resultado.orden.initPoint);
+        else router.push(linkCatalogo(`orden/${resultado.orden.token}`));
+        return;
+      }
+      setOrdenCreada(resultado.orden);
+    } catch {
+      setErrorOrden("No pudimos confirmar tu orden. Revisá tu conexión y tocá «Confirmar pedido» de nuevo.");
+    } finally {
+      setCreandoOrden(false);
+    }
   };
 
   return (
@@ -350,7 +477,17 @@ export function CartPanelPublico({
           onBack={pasoEfectivo === "DATOS" ? volverAProductos : undefined}
         />
 
-        {items.length === 0 ? (
+        {ordenCreada ? (
+          <OrdenCreadaPublica
+            orden={ordenCreada}
+            numeroWhatsApp={numeroWhatsApp}
+            nombreComercio={branding?.posName}
+            onSeguir={() => {
+              setOrdenCreada(null);
+              cerrarPanel();
+            }}
+          />
+        ) : items.length === 0 ? (
           <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 py-6 text-center text-muted-foreground">
             {/* `alt=""` a propósito: la ilustración no agrega nada que el texto
                 de abajo no diga. El PNG son 1230×1278 pero en pantalla nunca
@@ -380,7 +517,7 @@ export function CartPanelPublico({
             onSeguirComprando={cerrarPanel}
             onContinuar={() => setPaso("DATOS")}
             pie={campoCupon}
-          >{progreso}{isOpen && <SugerenciasCarrito ids={items.map(i => i.productoId)} onVerFicha={cerrarPanel} contextoEnvio={{ promociones: promocionesPedido, opcionPago, config: branding, destino: envioInfo?.tipo }} />}</CartPasoProductos>
+          >{progreso}{isOpen && <SugerenciasCarrito ids={items.map(i => i.productoId)} onVerFicha={cerrarPanel} contextoEnvio={{ promociones: promocionesPedido, opcionPago: opcionElegida, config: branding, destino: envioInfo?.tipo }} />}</CartPasoProductos>
         ) : (
           <>
             <CartPasoDatos
@@ -395,13 +532,24 @@ export function CartPanelPublico({
               onDireccionChange={setDireccion}
               envioInfo={totales.envio?.etiqueta === "Envío gratis" ? null : envioInfo}
               opcionesPago={opcionesPago}
-              opcionPago={opcionPago}
+              opcionPago={opcionElegida}
               onOpcionPagoChange={(opcion) => {
                 setOpcionPago(opcion);
+                setErrorOrden(null);
                 setErrores((previos) => ({ ...previos, pago: undefined }));
               }}
               nota={nota}
               onNotaChange={setNota}
+              pedirCelular={esPagoOnline}
+              celular={celular}
+              onCelularChange={(valor) => {
+                setCelular(valor);
+                setErrores((previos) => ({ ...previos, celular: undefined }));
+              }}
+              refCelular={refCelular}
+              avisoPagoOnline={
+                hayPagoOnline && motivoSinOnline ? MENSAJE_SIN_PAGO_ONLINE[motivoSinOnline] : undefined
+              }
               errores={errores}
               refNombre={refNombre}
               refLocalidad={refLocalidad}
@@ -409,7 +557,26 @@ export function CartPanelPublico({
               refPago={refPago}
             />
 
-            <CartDesglosePublico totales={totales} onEnviarPedido={enviarPedido} />
+            {/* Campo trampa: fuera de la vista y del teclado. Una persona no lo
+                completa; un bot que llena todo, sí, y la orden no se crea. */}
+            <input
+              type="text"
+              name="sitio"
+              value={sitio}
+              onChange={(e) => setSitio(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              className="absolute left-[-9999px] h-0 w-0 opacity-0"
+            />
+
+            <CartDesglosePublico
+              totales={totales}
+              onEnviarPedido={enviarPedido}
+              pagoOnline={esPagoOnline}
+              isPending={creandoOrden}
+              error={errorOrden}
+            />
           </>
         )}
       </Dialog.Content>

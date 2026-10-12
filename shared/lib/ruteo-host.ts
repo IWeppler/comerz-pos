@@ -31,6 +31,7 @@ export const PATHS_DE_PLATAFORMA = [
   "configuracion",
   "onboarding",
   "invitacion",
+  "ordenes",
   "perfil",
   "pos",
   "privacidad",

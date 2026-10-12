@@ -8,6 +8,7 @@ import { borrarCacheOffline } from "@/shared/lib/cache-offline";
 import {
   LayoutDashboard,
   Package,
+  ShoppingBag,
   ShoppingCart,
   LogOut,
   Menu,
@@ -52,7 +53,7 @@ import {
 } from "@/shared/ui/tooltip";
 import { InstallAppWidget } from "./install-widget";
 import { useContextoPlan } from "@/features/planes/ui/plan-provider";
-import { useModuloPresupuestos } from "./negocio-activo-provider";
+import { useModuloPresupuestos, usePagosOnline } from "./negocio-activo-provider";
 
 type NavItem = {
   name: string;
@@ -62,6 +63,8 @@ type NavItem = {
   feature?: string;
   /** Solo con `negocios.modulo_presupuestos` prendido. */
   moduloPresupuestos?: boolean;
+  /** Solo con `negocios.pagos_online_habilitado` prendido. */
+  pagosOnline?: boolean;
 };
 
 // 1. Grupos con estructura compacta
@@ -90,6 +93,15 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
         icon: FileText,
         adminOnly: false,
         moduloPresupuestos: true,
+      },
+      // Las órdenes del catálogo con pago online. Mismo criterio que
+      // Presupuestos: sin el módulo prendido no aparece.
+      {
+        name: "Órdenes",
+        href: "/ordenes",
+        icon: ShoppingBag,
+        adminOnly: false,
+        pagosOnline: true,
       },
     ],
   },
@@ -151,6 +163,7 @@ export function Sidebar({
   const pathname = usePathname();
   const contextoPlan = useContextoPlan();
   const moduloPresupuestos = useModuloPresupuestos();
+  const pagosOnline = usePagosOnline();
   const { isCollapsed, isOpenMobile, setIsOpenMobile } = useSidebarStore();
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const fetchCajaStatusStore = useCajaStatusStore(
@@ -166,10 +179,11 @@ export function Sidebar({
         if (item.href === "/caja" && !puedeOperarCaja && userRole !== "ADMIN")
           return false;
         if (item.moduloPresupuestos && !moduloPresupuestos) return false;
+        if (item.pagosOnline && !pagosOnline) return false;
         return true;
       }),
     })).filter((group) => group.items.length > 0);
-  }, [userRole, puedeOperarCaja, moduloPresupuestos]);
+  }, [userRole, puedeOperarCaja, moduloPresupuestos, pagosOnline]);
 
   // En móvil el menú tapa la pantalla: al entrar a un módulo tiene que cerrarse
   // solo. Se hace por cambio de ruta y no con un onClick por link para que

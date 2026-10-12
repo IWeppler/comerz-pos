@@ -11,15 +11,21 @@ import {
   mejorDescuentoPorMetodo,
   type DescuentoPorMetodo,
 } from "@/shared/lib/totales-pedido-publico";
+import type { OpcionesCobroOnline } from "../lib/orden-tienda";
 
 interface DescuentosPago {
   promociones: PromocionDB[];
   opcionesPago: OpcionPagoPublica[];
+  /** Medios de pago ONLINE del comercio (`opciones_cobro_online()`). */
+  opcionesOnline: OpcionesCobroOnline;
 }
+
+const SIN_PAGO_ONLINE: OpcionesCobroOnline = { transferencia: false, mercadopago: false };
 
 const DescuentosPagoContext = createContext<DescuentosPago>({
   promociones: [],
   opcionesPago: [],
+  opcionesOnline: SIN_PAGO_ONLINE,
 });
 
 /**
@@ -41,15 +47,17 @@ const DescuentosPagoContext = createContext<DescuentosPago>({
 export function DescuentosPagoProvider({
   promociones,
   metodos,
+  opcionesOnline = SIN_PAGO_ONLINE,
   children,
 }: Readonly<{
   promociones: PromocionDB[];
   metodos: MetodoPublico[];
+  opcionesOnline?: OpcionesCobroOnline;
   children: React.ReactNode;
 }>) {
   const valor = useMemo(
-    () => ({ promociones, opcionesPago: opcionesDePagoPublicas(metodos) }),
-    [promociones, metodos],
+    () => ({ promociones, opcionesPago: opcionesDePagoPublicas(metodos), opcionesOnline }),
+    [promociones, metodos, opcionesOnline],
   );
 
   return (

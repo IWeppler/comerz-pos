@@ -8,6 +8,8 @@ export interface NegocioActivo {
   nombre: string;
   /** Llave del módulo de presupuestos (solo la prende el super admin). */
   moduloPresupuestos: boolean;
+  /** Llave de los cobros online del catálogo (solo la prende el super admin). */
+  pagosOnline: boolean;
 }
 
 const NegocioActivoContext = createContext<NegocioActivo | null>(null);
@@ -43,4 +45,11 @@ export function useSlugNegocioActivo(): string | null {
  * (`modulo_presupuestos_habilitado()` en la RPC). */
 export function useModuloPresupuestos(): boolean {
   return useContext(NegocioActivoContext)?.moduloPresupuestos === true;
+}
+
+/** ¿Se muestra Configuración › Cobros online? Fail-closed. Solo esconde: las
+ * actions y las rutas de OAuth lo vuelven a exigir contra la base
+ * (`contextoCobros()`). */
+export function usePagosOnline(): boolean {
+  return useContext(NegocioActivoContext)?.pagosOnline === true;
 }

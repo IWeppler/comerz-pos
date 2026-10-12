@@ -14,7 +14,10 @@ export interface EnvioInfo {
   mensaje?: string;
 }
 
-export type CampoPedido = "nombre" | "localidad" | "direccion" | "pago";
+export type CampoPedido = "nombre" | "celular" | "localidad" | "direccion" | "pago";
+
+/** Dos botones de pago son el mismo si coinciden tipo y canal (online o no). */
+export const claveOpcionPago = (opcion: OpcionPagoPublica) => opcion.online ?? opcion.tipo;
 
 export type ErroresPedido = Partial<Record<CampoPedido, string>>;
 
@@ -34,6 +37,13 @@ interface CartPasoDatosProps {
   onOpcionPagoChange: (opcion: OpcionPagoPublica) => void;
   nota: string;
   onNotaChange: (value: string) => void;
+  /** Solo con pago online: la orden queda en Comerz y hace falta un contacto. */
+  pedirCelular?: boolean;
+  celular?: string;
+  onCelularChange?: (value: string) => void;
+  refCelular?: RefObject<HTMLInputElement | null>;
+  /** Por qué este pedido no se puede pagar online (sigue por WhatsApp). */
+  avisoPagoOnline?: string;
   errores: ErroresPedido;
   /**
    * Los refs llegan UNO POR UNO y no en un objeto `refs`, aunque el objeto
@@ -87,6 +97,11 @@ export function CartPasoDatos({
   refDireccion,
   refPago,
   beneficio,
+  pedirCelular = false,
+  celular = "",
+  onCelularChange,
+  refCelular,
+  avisoPagoOnline,
 }: Readonly<CartPasoDatosProps>) {
   // Arranca abierta si ya hay algo escrito: volver al paso 1 y regresar no
   // puede esconder una nota que la clienta ya cargó.
@@ -113,6 +128,23 @@ export function CartPasoDatos({
             className="h-11 rounded-md"
           />
         </Campo>
+
+        {pedirCelular && (
+          <Campo id="celular_cliente_publico" etiqueta="Celular" obligatorio error={errores.celular}>
+            <Input
+              id="celular_cliente_publico"
+              ref={refCelular}
+              value={celular}
+              onChange={(e) => onCelularChange?.(e.target.value)}
+              placeholder="Ej: 11 5470 2118"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel-national"
+              aria-invalid={!!errores.celular}
+              className="h-11 rounded-md"
+            />
+          </Campo>
+        )}
 
         {/* Segmentado y no dos botones sueltos: son dos valores de UN campo, y
             un control único con el elegido pintado adentro lo dice sin
@@ -193,8 +225,8 @@ export function CartPasoDatos({
             >
               {opcionesPago.map((opcion) => (
                 <Opcion
-                  key={opcion.tipo}
-                  activo={opcionPago?.tipo === opcion.tipo}
+                  key={claveOpcionPago(opcion)}
+                  activo={!!opcionPago && claveOpcionPago(opcionPago) === claveOpcionPago(opcion)}
                   onClick={() => onOpcionPagoChange(opcion)}
                   texto={opcion.etiqueta}
                   detalle={
@@ -208,6 +240,20 @@ export function CartPasoDatos({
             {errores.pago && (
               <p className="text-xs font-medium text-danger">{errores.pago}</p>
             )}
+            {opcionPago?.online === "TRANSFERENCIA" && (
+              <p className="text-xs text-muted-foreground">
+                Al confirmar te mostramos el alias para transferir. Tus productos quedan reservados
+                mientras tanto.
+              </p>
+            )}
+            {(opcionPago?.online === "MP_CHECKOUT" || opcionPago?.online === "MP_CREDITO") && (
+              <p className="text-xs text-muted-foreground">
+                {opcionPago.online === "MP_CREDITO"
+                  ? "Al confirmar vas a Mercado Pago: iniciás sesión y elegís en cuántas cuotas pagar, sin tarjeta (sujeto a tu cupo de Mercado Crédito)."
+                  : "Al confirmar vas a Mercado Pago a pagar con tarjeta o con tu saldo, y volvés acá."}
+              </p>
+            )}
+            {avisoPagoOnline && <p className="text-xs text-muted-foreground">{avisoPagoOnline}</p>}
           </div>
         )}
 

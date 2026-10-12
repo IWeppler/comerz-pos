@@ -141,6 +141,16 @@ export interface ConfiguracionPOS {
   /** Alias o CBU/CVU que se muestra en el resumen público para copiar. */
   alias_transferencia?: string | null;
 
+  // Cobros online del catálogo (20261012133049). Ver docs/pagos-auditoria.md.
+  /** Alias o CVU de la cuenta de Mercado Pago CONECTADA: único destino de la
+   * transferencia del catálogo. No es `alias_transferencia` (resumen de CC). */
+  alias_mercadopago_tienda?: string | null;
+  transferencia_titular?: string | null;
+  cobro_online_transferencia?: boolean;
+  cobro_online_mp?: boolean;
+  minutos_vence_transferencia?: number;
+  minutos_vence_mp?: number;
+
   // Configuración de Caja
   modo_caja?: "UNICA" | "POR_USUARIO" | "POR_PUNTO_VENTA";
   requiere_caja_abierta?: boolean;

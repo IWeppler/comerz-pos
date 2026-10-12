@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { BOTON_CATALOGO } from "../lib/estilos-catalogo";
 import type { TotalesPedido } from "@/shared/lib/totales-pedido-publico";
@@ -35,6 +36,8 @@ export function CartDesglosePublico({
   totales,
   onEnviarPedido,
   isPending = false,
+  pagoOnline = false,
+  error = null,
 }: Readonly<{
   totales: TotalesPedido;
   /**
@@ -45,6 +48,10 @@ export function CartDesglosePublico({
    */
   onEnviarPedido: () => void;
   isPending?: boolean;
+  /** Pago online: el botón crea la orden en Comerz en vez de abrir WhatsApp. */
+  pagoOnline?: boolean;
+  /** Por qué no se pudo crear la orden (precio que cambió, stock, etc.). */
+  error?: string | null;
 }>) {
   return (
     <div className="shrink-0 border-t border-border bg-card px-4 py-4">
@@ -78,14 +85,26 @@ export function CartDesglosePublico({
         </span>
       </div>
 
+      {error && (
+        <p role="alert" className="mt-3 text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
+
       <Button
         type="button"
         onClick={onEnviarPedido}
         disabled={isPending}
         className={`mt-4 flex h-12 w-full cursor-pointer items-center justify-center gap-3 text-sm font-bold uppercase tracking-widest shadow-none disabled:cursor-not-allowed ${BOTON_CATALOGO}`}
       >
-        <Image src="/whatsappp.png" alt="" width={20} height={20} />
-        Enviar pedido
+        {pagoOnline ? (
+          <>{isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : null}Confirmar pedido</>
+        ) : (
+          <>
+            <Image src="/whatsappp.png" alt="" width={20} height={20} />
+            Enviar pedido
+          </>
+        )}
       </Button>
     </div>
   );

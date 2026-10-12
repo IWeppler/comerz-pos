@@ -35,7 +35,7 @@ ventas, caja o stock es plata real.**
 | [docs/presupuestos.md](docs/presupuestos.md) | `features/presupuestos/`, cotizaciones, planes en cuotas, un `tipo_movimiento` nuevo en `venta_pagos` |
 | [docs/catalogo-marketing.md](docs/catalogo-marketing.md) | Plan de herramientas de venta del catálogo: carrito, envío gratis, cupones, sugeridos (épicas M1–M6, no empezadas) |
 | [docs/activacion-autonoma.md](docs/activacion-autonoma.md) | La guía de inicio (`features/onboarding/`), la barra de prueba, el wizard de primeros pasos, el festejo de la primera venta, `hitos_activacion`, el embudo de activación (plan V1 por tareas) |
-| [docs/tienda-online.md](docs/tienda-online.md) | El carrito público (`features/store/`), pedidos u órdenes del catálogo, `registrar_pedido_catalogo`, notificación de venta, push, Mercado Pago |
+| [docs/tienda-online.md](docs/tienda-online.md) | El carrito público (`features/store/`), pedidos u órdenes del catálogo, `registrar_pedido_catalogo`, notificación de venta, push, Mercado Pago. Pagos del checkout (`ordenes_tienda`, `eventos_pago`, `mercadopago_conexiones`): además [docs/pagos-auditoria.md](docs/pagos-auditoria.md) y [docs/pagos-stopgaps.md](docs/pagos-stopgaps.md) |
 
 **Mapa rápido de carpetas**: `features/<módulo>/{actions,lib,ui}` (la lógica pura con
 tests vive en `lib/`), `entities/` (tipos y lógica de dominio compartida),

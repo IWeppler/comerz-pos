@@ -87,6 +87,12 @@ una app nativa con esto.
 - Quién recibe: permiso nuevo (fila en `permisos` + `rol_permisos`, ver
   [seguridad.md](seguridad.md)).
 
+> **12/10/2026: Fases 1 y 3 arrancaron juntas como la épica "Pagos en el checkout".**
+> Auditoría, decisiones y modelo de datos en [pagos-auditoria.md](pagos-auditoria.md);
+> atajos pendientes en [pagos-stopgaps.md](pagos-stopgaps.md). Donde lo de abajo
+> choca con esos documentos, mandan ellos (p. ej. el stock se DESCUENTA al crear la
+> orden; no se usa `reservas`).
+
 ### Fase 3: Mercado Pago (toca plata: auditoría propia ANTES de escribir código)
 
 - OAuth por comercio; tokens guardados cifrados y fuera del alcance de `anon` y de los
