@@ -221,6 +221,19 @@ código local para revisión, sin commit/deploy ni smoke de venta en producción
 
 ## IMEI / números de serie (`unidades_serie`, `productos.lleva_serie`)
 
+- Corrección local del POS (10/10/2026, sin commit/deploy): el selector también
+  se ofrece desde el ticket si el producto lleva serie aunque no tenga IMEI
+  cargados. Antes de pasar al pago pide cargar los números o un motivo; al
+  confirmar vuelve a validar. Una consulta pendiente o fallida bloquea el
+  avance online y permite reintentar, en vez de tratar un error de
+  `variantes_llevan_serie` como ausencia de la marca. Offline conserva su
+  excepción de sincronización. En edición el contador dice «IMEI disponibles»
+  para distinguirlo del stock. Verificado en producción sin cobrar: Samsung A26
+  8/256gb / Blanco, stock 1 y ningún IMEI; el ticket no ofrecía el selector.
+  No se confirmó una venta real para comprobar si omitía el modal final.
+  Smoke pendiente tras deploy: cargar IMEI desde el ticket, vender con motivo
+  y completar desde historial en un comercio de prueba.
+
 - Una unidad nace por remito/planilla con columna IMEI, a mano desde la edición
   del producto (`features/stock/actions/unidades-serie.ts`) o tipeada en el POS al
   vender. Nace `disponible` y NO mueve stock: el aparato ya está contado en la

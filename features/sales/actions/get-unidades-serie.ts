@@ -56,10 +56,10 @@ export async function getDisponibilidadUnidadesAction(
       supabase.rpc("variantes_llevan_serie", { p_variante_ids: lote }),
     ]);
 
-    if (unidades.error) {
+    if (unidades.error || marcadas.error) {
       console.error(
         "[UNIDADES SERIE] Error consultando disponibilidad:",
-        unidades.error,
+        unidades.error ?? marcadas.error,
       );
       return {
         error: "No se pudo verificar las unidades con número de serie.",
@@ -73,14 +73,8 @@ export async function getDisponibilidadUnidadesAction(
       disponibilidad[varianteId] = (disponibilidad[varianteId] ?? 0) + 1;
     }
 
-    // Si falla se sigue sin la marca: el server (create-sale) igual exige el
-    // IMEI o el motivo, así que acá solo se pierde el modal anticipado.
-    if (marcadas.error) {
-      console.error("[UNIDADES SERIE] Error consultando lleva_serie:", marcadas.error);
-    } else {
-      for (const row of (marcadas.data ?? []) as { variante_id: string }[]) {
-        llevaSerie.push(row.variante_id);
-      }
+    for (const row of (marcadas.data ?? []) as { variante_id: string }[]) {
+      llevaSerie.push(row.variante_id);
     }
   }
 

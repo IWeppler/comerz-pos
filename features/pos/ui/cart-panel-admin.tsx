@@ -198,7 +198,7 @@ export function CartPanelAdmin({
   // se elige y se vuelve al carrito; desde "Confirmar venta" se elige y se
   // retoma el cobro donde había quedado. Por eso es modo y no un booleano.
   const [modalUnidades, setModalUnidades] = useState<
-    "SOLO_ELEGIR" | "CONFIRMAR" | null
+    "SOLO_ELEGIR" | "PAGO" | "CONFIRMAR" | null
   >(null);
   /** El anticipo tipeado en el modal de CC se guarda mientras el vendedor
    * elige los aparatos, para retomar la confirmación con el mismo monto. */
@@ -224,6 +224,12 @@ export function CartPanelAdmin({
   // motivo, para no preguntarle dos veces (p. ej. al reintentar tras "ARCA no
   // responde").
   const [motivosSinImei, setMotivosSinImei] = useState<MotivoSinImeiLinea[]>([]);
+  const [verificacionSerie, setVerificacionSerie] = useState<{
+    clave: string;
+    error: string | null;
+  } | null>(null);
+  const [reintentoSerie, setReintentoSerie] = useState(0);
+  const claveVerificacionSerie = `${negocioId ?? ""}:${varianteIdsCarrito}:${reintentoSerie}`;
 
   useEffect(() => {
     const ids = varianteIdsCarrito ? varianteIdsCarrito.split(",") : [];
@@ -234,14 +240,21 @@ export function CartPanelAdmin({
       // Guard de carrera: si el carrito cambió mientras volvía la consulta,
       // esta respuesta ya no corresponde y se descarta.
       if (cancelado) return;
+      setVerificacionSerie({ clave: claveVerificacionSerie, error: res.error });
       setDisponibilidadUnidades(res.disponibilidad);
       setVariantesLlevaSerie(res.llevaSerie);
+    }).catch(() => {
+      if (cancelado) return;
+      setVerificacionSerie({
+        clave: claveVerificacionSerie,
+        error: "No se pudo verificar las unidades con número de serie.",
+      });
     });
 
     return () => {
       cancelado = true;
     };
-  }, [varianteIdsCarrito]);
+  }, [varianteIdsCarrito, claveVerificacionSerie]);
 
   const variantesSerializadas = useMemo(() => {
     const enCarrito = new Set(
@@ -325,6 +338,10 @@ export function CartPanelAdmin({
   const setLlevanSerie = useMemo(
     () => new Set(variantesLlevaSerie),
     [variantesLlevaSerie],
+  );
+  const variantesConSelectorImei = useMemo(
+    () => new Set([...variantesSerializadas, ...variantesLlevaSerie]),
+    [variantesSerializadas, variantesLlevaSerie],
   );
 
   /** Líneas con IMEI cargados pero menos que los aparatos que se venden: los
@@ -1374,7 +1391,41 @@ export function CartPanelAdmin({
     });
   };
 
+  const verificarSerieAntesDeCobrar = () => {
+    // Offline conserva la venta en la cola; el servidor la revalida al sincronizar.
+    if (!varianteIdsCarrito || navigator.onLine === false) return true;
+    if (verificacionSerie?.clave !== claveVerificacionSerie) {
+      toast.error("Estamos verificando los IMEI del ticket. Esperá un momento.");
+      return false;
+    }
+    if (verificacionSerie.error) {
+      toast.error(verificacionSerie.error, {
+        description: "Volvemos a consultarlos. Reintentá cuando termine la verificación.",
+      });
+      setReintentoSerie((prev) => prev + 1);
+      return false;
+    }
+    return true;
+  };
+
   const handleContinueToPayment = () => {
+    if (!verificarSerieAntesDeCobrar()) return;
+    const conMotivo = new Set(motivosSinImei.map((m) => m.varianteId));
+    if (
+      lineasSerializadas.some((l) =>
+        unidadesElegidas.filter((u) => u.varianteId === l.varianteId).length <
+        (aparatosPorVariante[l.varianteId] ?? 0),
+      ) ||
+      lineasParcialesSinImei.some((l) => !conMotivo.has(l.varianteId)) ||
+      lineasSinImei.some((l) => !imeiPorVariante[l.varianteId] && !conMotivo.has(l.varianteId))
+    ) {
+      setModalUnidades("PAGO");
+      return;
+    }
+    continuarAlPago();
+  };
+
+  const continuarAlPago = () => {
     if (pagos.length === 0 && metodosPagoDB.length > 0) {
       setPagos([
         {
@@ -1544,6 +1595,7 @@ export function CartPanelAdmin({
       motivosSinImei?: MotivoSinImeiLinea[];
     },
   ) => {
+    if (!verificarSerieAntesDeCobrar()) return;
     const montoRealAsignado =
       montoAnticipoModal !== undefined ? montoAnticipoModal : sumaPagos;
 
@@ -2239,9 +2291,11 @@ export function CartPanelAdmin({
               onCambiarForma={cambiarForma}
               totalCarrito={totalCarrito}
               onContinueToPayment={handleContinueToPayment}
-              variantesSerializadas={variantesSerializadas}
+              variantesSerializadas={variantesConSelectorImei}
               imeiPorVariante={imeiPorVariante}
-              onElegirUnidad={() => setModalUnidades("SOLO_ELEGIR")}
+              onElegirUnidad={() => {
+                if (verificarSerieAntesDeCobrar()) setModalUnidades("SOLO_ELEGIR");
+              }}
               // Mismo criterio que la grilla: en kiosco y almacén el ticket va sin
               // miniaturas para que entren más renglones en pantalla.
               mostrarImagenes={!rubro || !posSinImagenes(rubro)}
@@ -2521,6 +2575,10 @@ export function CartPanelAdmin({
             setUnidadesElegidasRaw(seleccion);
             setMotivosSinImei(sinImei);
             setModalUnidades(null);
+            if (modo === "PAGO") {
+              continuarAlPago();
+              return;
+            }
             // Abierto desde el carrito: se guarda el aparato y listo, nadie
             // pidió cobrar todavía.
             if (modo !== "CONFIRMAR") return;

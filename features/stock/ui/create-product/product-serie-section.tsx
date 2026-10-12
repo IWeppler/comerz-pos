@@ -249,7 +249,7 @@ function SerieEdicion({
                     <p className="text-xs font-semibold text-foreground">
                       {v.nombre_display}
                       <span className="ml-2 font-normal text-muted-foreground">
-                        {disponibles.length} disponible
+                        {disponibles.length} IMEI disponible
                         {disponibles.length === 1 ? "" : "s"}
                       </span>
                     </p>
