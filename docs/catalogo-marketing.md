@@ -259,10 +259,14 @@ Es la épica más delicada: toca promociones, que también usa el POS.
   Requiere la RPC original `20261007210000` instalada. Modifica el cuerpo VIVO
   con guard de coincidencia exacta; si la versión instalada es distinta, aborta.
   La reversión restaura ese cuerpo y quita únicamente la nueva configuración.
-- **No aplicada ni deployada**: falta conexión SQL para medir el costo real en
-  Librería Colores, aplicar y verificar en la base. No se eligió cache ni precálculo
-  sin esa medición. Harness temporal cubre permisos, jerarquía, simetría, ventas
-  anuladas/devueltas y reversión; tests de TS cubren mínimo, variantes y descuentos.
+- **Aplicada el 13/10/2026** (el código se había deployado el 7/10 sin la migración:
+  el panel logueaba `Could not find the function analisis_complementos_catalogo` y
+  escondía la tarjeta). Medido en prod ese día, en la base: `sugerencias_carrito`
+  24 ms en Librería Colores (3.237 ventas en 180 días, 1.814 publicados), 17 ms en
+  Evens, 11 ms en El Nono Cacho; el análisis de pares 18 ms en Colores (199 pares).
+  Sin cache ni precálculo: no hacen falta con esos números. Harness temporal cubre
+  permisos, jerarquía, simetría, ventas anuladas/devueltas y reversión; tests de TS
+  cubren mínimo, variantes y descuentos.
 
 **M4-T1. De dónde salen (medir antes de decidir)**
 - Fuente automática: **lo que se compra junto en el POS**. Productos que aparecen en

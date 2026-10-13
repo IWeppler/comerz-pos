@@ -139,7 +139,7 @@ muestre no es control de acceso.
   [catalogo-marketing.md](catalogo-marketing.md).
 - El schema `archivo` guarda backups sin USAGE para nadie.
 
-Ampliación local de asociaciones del catálogo (`20261007220000`, sin aplicar):
+Asociaciones del catálogo (`20261007220000`, aplicada el 13/10/2026):
 `productos_complementarios_catalogo` nace cerrada a anon y sin escritura directa
 de authenticated. Lectura con aislamiento RESTRICTIVE y `caja.ver_gerencial`;
 `configurar_complemento_catalogo` valida ADMIN, negocio de sesión y ambos productos.
