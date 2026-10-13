@@ -99,12 +99,17 @@ export function opcionDeMedioOnline(medio: MedioOnline): OpcionPagoPublica {
 }
 
 /**
- * Los botones del paso 2 con los medios online del comercio.
+ * Los medios de pago del checkout.
  *
- * Con la transferencia online prendida, el botón "Transferencia" de siempre
- * (pedido por WhatsApp) se REEMPLAZA por el online: dos botones iguales con
- * comportamientos distintos confunden. Mercado Pago se suma como dos opciones
- * (checkout y cuotas sin tarjeta), que por detrás son la misma preference.
+ * Si el comercio cobra online y ESTE pedido se puede pagar online, se ofrecen
+ * SOLO los medios online (decisión de Nacho, 12/10/2026): mezclar "pagás
+ * ahora" con "coordinás por WhatsApp" en la misma lista confundía, y el
+ * checkout es para cerrar la compra. Mercado Pago son dos opciones (checkout y
+ * cuotas sin tarjeta), que por detrás son la misma preference.
+ *
+ * Si el pedido no se puede pagar online (presentaciones, importe fijado, envío
+ * a convenir) o el comercio no cobra online, quedan los medios de siempre, que
+ * cierran el pedido por WhatsApp.
  *
  * `incluirMercadoPago` existe porque el checkout de MP (T6) todavía no está:
  * hasta entonces se ofrece solo la transferencia.
@@ -115,17 +120,12 @@ export function opcionesConPagoOnline(
   { disponible, incluirMercadoPago }: { disponible: boolean; incluirMercadoPago: boolean },
 ): OpcionPagoPublica[] {
   if (!disponible) return opciones;
-  let resultado = opciones;
-  if (online.transferencia) {
-    const transferencia = opcionDeMedioOnline("TRANSFERENCIA");
-    resultado = resultado.some((o) => o.tipo === "TRANSFERENCIA")
-      ? resultado.map((o) => (o.tipo === "TRANSFERENCIA" ? transferencia : o))
-      : [transferencia, ...resultado];
-  }
+  const enLinea: OpcionPagoPublica[] = [];
   if (online.mercadopago && incluirMercadoPago) {
-    resultado = [opcionDeMedioOnline("MP_CHECKOUT"), opcionDeMedioOnline("MP_CREDITO"), ...resultado];
+    enLinea.push(opcionDeMedioOnline("MP_CHECKOUT"), opcionDeMedioOnline("MP_CREDITO"));
   }
-  return resultado;
+  if (online.transferencia) enLinea.push(opcionDeMedioOnline("TRANSFERENCIA"));
+  return enLinea.length ? enLinea : opciones;
 }
 
 // ─── Recálculo en el server ─────────────────────────────────────────────

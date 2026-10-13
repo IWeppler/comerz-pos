@@ -226,8 +226,15 @@ export function VentasTable({
     { value: "mayor_cantidad", label: "Más unidades vendidas" },
   ];
 
-  const getClienteNombre = (venta: Venta) =>
-    getSupabaseRelation(venta.clientes)?.nombre || "Consumidor final";
+  // Una venta de la tienda online no tiene cliente cargado: se muestra el
+  // nombre que dejó en la orden y de dónde vino.
+  const getClienteNombre = (venta: Venta) => {
+    const cliente = getSupabaseRelation(venta.clientes)?.nombre;
+    if (cliente) return cliente;
+    const orden = venta.ordenes_tienda?.[0];
+    if (orden) return `${orden.cliente_nombre} · Tienda online #${String(orden.numero).padStart(5, "0")}`;
+    return "Consumidor final";
+  };
 
   const getEstadoPago = (venta: Venta) => {
     if (
@@ -628,7 +635,9 @@ export function VentasTable({
       // CAE, QR y letra. Sale de la fila congelada, no de la config de hoy.
       fiscal: fiscalDesdeComprobante(venta.comprobantes, clase),
       fecha: formatearFechaHora(venta.fecha_venta),
-      vendedor: getSupabaseRelation(venta.perfiles)?.nombre || "Administrador",
+      vendedor:
+        getSupabaseRelation(venta.perfiles)?.nombre ||
+        (venta.ordenes_tienda?.length ? "Tienda online" : "Administrador"),
       descuentoMonto: descuento
         ? Number(descuento.monto_descontado)
         : undefined,

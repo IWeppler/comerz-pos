@@ -70,14 +70,20 @@ describe("qué se puede pagar online", () => {
     expect(motivoSinPagoOnline({ items: [item()], destinoEnvio: "LOCAL" })).toBeNull();
   });
 
-  it("la transferencia online reemplaza al botón de transferencia por WhatsApp", () => {
+  it("con cobro online, solo los medios online: los de WhatsApp se esconden", () => {
     const base: OpcionPagoPublica[] = [
       { tipo: "EFECTIVO", etiqueta: "Efectivo", recargoPorcentaje: 0 },
       { tipo: "TRANSFERENCIA", etiqueta: "Transferencia", recargoPorcentaje: 5 },
     ];
     const r = opcionesConPagoOnline(base, { transferencia: true, mercadopago: false }, { disponible: true, incluirMercadoPago: true });
-    expect(r).toHaveLength(2);
-    expect(r[1]).toEqual({ tipo: "TRANSFERENCIA", etiqueta: "Transferencia", recargoPorcentaje: 0, online: "TRANSFERENCIA" });
+    expect(r).toEqual([{ tipo: "TRANSFERENCIA", etiqueta: "Transferencia", recargoPorcentaje: 0, online: "TRANSFERENCIA" }]);
+    const todos = opcionesConPagoOnline(base, { transferencia: true, mercadopago: true }, { disponible: true, incluirMercadoPago: true });
+    expect(todos.map((o) => o.online)).toEqual(["MP_CHECKOUT", "MP_CREDITO", "TRANSFERENCIA"]);
+  });
+
+  it("sin ningún medio online prendido, quedan los de siempre", () => {
+    const base: OpcionPagoPublica[] = [{ tipo: "EFECTIVO", etiqueta: "Efectivo", recargoPorcentaje: 0 }];
+    expect(opcionesConPagoOnline(base, { transferencia: false, mercadopago: false }, { disponible: true, incluirMercadoPago: true })).toBe(base);
   });
 
   it("Mercado Pago suma dos opciones solo cuando el checkout está listo", () => {

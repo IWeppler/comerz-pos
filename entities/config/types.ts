@@ -146,6 +146,10 @@ export interface ConfiguracionPOS {
    * transferencia del catálogo. No es `alias_transferencia` (resumen de CC). */
   alias_mercadopago_tienda?: string | null;
   transferencia_titular?: string | null;
+  /** CVU de la cuenta de MP conectada (22 dígitos), para la página de la orden. */
+  transferencia_cvu?: string | null;
+  /** CUIT del titular de esa cuenta. No es el CUIT fiscal: puede ser otra persona. */
+  transferencia_cuit?: string | null;
   cobro_online_transferencia?: boolean;
   cobro_online_mp?: boolean;
   minutos_vence_transferencia?: number;

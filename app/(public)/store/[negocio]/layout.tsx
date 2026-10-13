@@ -97,7 +97,7 @@ export default async function PublicLayout({
       <CatalogoPublicoProvider key={negocio}>
       <div className="min-h-screen bg-background flex flex-col">
         <Navbar branding={config} categorias={categorias ?? []} />
-        <CartPanelPublico numeroWhatsApp={config?.whatsapp} />
+        <CartPanelPublico />
         {children}
 
         <footer className="bg-neutral-900 mt-auto">

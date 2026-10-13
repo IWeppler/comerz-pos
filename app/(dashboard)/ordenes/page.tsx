@@ -40,7 +40,7 @@ export default async function OrdenesPage() {
     supabase
       .from("ordenes_tienda")
       .select(
-        "id, numero, estado, medio, cliente_nombre, cliente_telefono, modalidad_entrega, localidad, direccion, nota, total, vence_en, creado_en, pagada_en, venta_id, ordenes_tienda_items ( nombre, variante, cantidad, subtotal )",
+        "id, numero, estado, medio, cliente_nombre, cliente_telefono, modalidad_entrega, localidad, direccion, nota, total, vence_en, creado_en, pagada_en, entregada_en, venta_id, ordenes_tienda_items ( nombre, variante, cantidad, subtotal )",
       )
       .order("creado_en", { ascending: false })
       .limit(100),
@@ -52,7 +52,7 @@ export default async function OrdenesPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-4 md:py-6">
+    <div className="mx-auto w-full max-w-6xl px-4 py-4 md:py-6">
       <OrdenesPanel ordenes={(ordenes ?? []) as OrdenPanel[]} puedeCobrar={puedeCobrar} sinPermiso={!!error} />
     </div>
   );

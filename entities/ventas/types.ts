@@ -143,6 +143,9 @@ export interface Venta {
   perfiles?: {
     nombre: string;
   } | null;
+  /** La orden de la tienda online que generó esta venta (vendedor null). Vacío
+   * para las del mostrador, o si quien mira no tiene `tienda.ver_ordenes`. */
+  ordenes_tienda?: { numero: number; cliente_nombre: string }[] | null;
   ventas_items?: VentaItem[];
   ventas_descuentos?: VentaDescuento[];
   venta_pagos?: VentaPago[];

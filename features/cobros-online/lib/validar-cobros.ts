@@ -1,4 +1,5 @@
 import { validarAliasTransferencia } from "@/features/clients/lib/alias-transferencia";
+import { esCuitValido, normalizarCuit } from "@/shared/lib/cuit";
 
 /**
  * Validación de la pantalla Cobros (configuración de la tienda online).
@@ -23,6 +24,10 @@ export interface EntradaCobros {
   cobroMercadoPago: boolean;
   aliasMercadoPago: string;
   titular: string;
+  /** CVU de 22 dígitos; vacío = no se muestra. */
+  cvu: string;
+  /** CUIT del titular; vacío = no se muestra. */
+  cuitTitular: string;
   minutosVenceTransferencia: number;
   minutosVenceMp: number;
 }
@@ -32,6 +37,8 @@ export interface CobrosValidados {
   cobro_online_mp: boolean;
   alias_mercadopago_tienda: string | null;
   transferencia_titular: string | null;
+  transferencia_cvu: string | null;
+  transferencia_cuit: string | null;
   minutos_vence_transferencia: number;
   minutos_vence_mp: number;
 }
@@ -50,6 +57,15 @@ export function validarCobros(
   const titular = (entrada.titular ?? "").trim().replace(/\s+/g, " ");
   if (titular !== "" && (titular.length < 2 || titular.length > 80)) {
     return { ok: false, error: "El titular tiene que tener entre 2 y 80 caracteres." };
+  }
+
+  const cvu = (entrada.cvu ?? "").replace(/\D/g, "");
+  if (cvu !== "" && cvu.length !== 22) {
+    return { ok: false, error: "El CVU tiene 22 números. Copialo de tu Mercado Pago (Tu dinero › Datos de la cuenta)." };
+  }
+  const cuit = normalizarCuit(entrada.cuitTitular);
+  if (cuit !== "" && !esCuitValido(cuit)) {
+    return { ok: false, error: "El CUIT del titular no es válido: revisá los 11 números." };
   }
 
   const venceTransf = Number(entrada.minutosVenceTransferencia);
@@ -82,6 +98,8 @@ export function validarCobros(
       cobro_online_mp: entrada.cobroMercadoPago,
       alias_mercadopago_tienda: alias.valor,
       transferencia_titular: titular === "" ? null : titular,
+      transferencia_cvu: cvu === "" ? null : cvu,
+      transferencia_cuit: cuit === "" ? null : cuit,
       minutos_vence_transferencia: venceTransf,
       minutos_vence_mp: venceMp,
     },

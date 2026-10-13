@@ -276,6 +276,12 @@ código local para revisión, sin commit/deploy ni smoke de venta en producción
   `completar_imei_venta_item` (SECURITY DEFINER, `ventas.cobrar` + venta propia o
   `ventas.ver_todas`) crea la unidad ya VENDIDA atada a la venta, sin mover stock,
   idempotente con el mismo número. Un renglón de 2+ aparatos sin IMEI no se parte.
+  OJO: rechaza un IMEI que ya está en stock (`IMEI_YA_CARGADO … disponible`); solo
+  sirve para aparatos que nunca se cargaron.
+- **Venta de la tienda online** (`20261012194147`): un renglón por aparato, y el IMEI
+  se pide al "Marcar entregada" en /ordenes (`marcar_orden_entregada` con
+  `p_unidades`). A diferencia de "Agregar IMEI", acepta una unidad DISPONIBLE de ese
+  modelo y la pasa a vendida. Detalle en [pagos-auditoria.md](pagos-auditoria.md) §18.
 - **Conciliación**: los renglones que llevan IMEI y vinieron sin número muestran un
   input por aparato (`imeis-remito-panel.tsx`; Enter del escáner salta al
   siguiente), guardados en el borrador. `aprobar_orden_compra` recibe `imeis` (array)

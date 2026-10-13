@@ -758,3 +758,54 @@ en reclamo". /ordenes › Pendientes incluye PAGADA_SIN_STOCK, CONTRACARGO y EN_
    llegue firmado (riesgo #9: que los pagos creados con el token del VENDEDOR lleguen con la
    firma de la app de Comerz). Si llegan sin firma, igual se registran por la conciliación.
 3. Ver con una transferencia real si el CVU dispara el aviso (STOPGAP #2).
+
+---
+
+## 17. Checkout en página propia (12/10/2026, sin commit)
+
+El checkout dejó de ser el paso 2 del panel lateral: ahora es `<tienda>/checkout`
+(`features/store/components/checkout/`), con el formato de Tiendanube y Shopify.
+- Contacto → Entrega → Pago → UN botón ("Pagar $X" con Mercado Pago, "Confirmar
+  pedido" con transferencia, "Enviar pedido por WhatsApp" sin cobro online).
+- Resumen del pedido (productos, cupón, desglose, total) a la derecha en compu y
+  desplegable arriba en el celular; se monta una sola vez.
+- Entrega y medios de pago como lista con radio; cada medio dice qué es y, si cambia
+  el precio, lo dice con el número ("Pagás $X", "+10%").
+- **Con cobro online, solo se ofrecen los medios online** (decisión de Nacho): efectivo,
+  tarjeta y billetera por WhatsApp quedan solo si el comercio no cobra online o si el
+  pedido no se puede pagar online (`opcionesConPagoOnline`).
+- Al confirmar una transferencia se va a la página de la orden (alias y estado); la
+  pantalla "orden creada" del panel se borró.
+- El panel lateral quedó como carrito: productos, cupón y "Finalizar compra".
+- **La página de la orden es el comprobante** ("¡Pedido realizado!", número, fecha, cliente,
+  entrega, medio, productos y total, con "Guardar o imprimir"). En una transferencia que
+  espera pago muestra arriba los **datos para transferir**: monto, alias y CVU para copiar,
+  titular, CUIT, banco y comercio. CVU y CUIT del titular son columnas nuevas
+  (`transferencia_cvu`, `transferencia_cuit`, migración `20261012184748`, aplicada) que el
+  comercio carga en Cobros; no se copian del CUIT fiscal porque el titular de la cuenta de MP
+  puede ser otra persona. `orden_tienda_publica` los devuelve con la misma regla que el alias.
+- Arreglado: al confirmar una transferencia se vaciaba el carrito antes de navegar y quedaba
+  "Tu carrito está vacío" mientras cargaba la orden. Ahora se muestra "Preparando tu
+  comprobante…" y el carrito se vacía después de navegar.
+
+## 18. /ordenes rediseñada y "Marcar entregada" (12/10/2026, sin commit)
+
+- Lista compacta + detalle (compu: lado a lado; celular: drawer). Pestañas con contador:
+  Todas, Para entregar (PAGADA), Esperando pago, Revisar (solo si hay; arranca ahí).
+- **Marcar entregada** (`marcar_orden_entregada`, migración `20261012190806`, aplicada; test
+  `supabase/tests/tienda_marcar_entregada.sql`): PAGADA ↔ ENTREGADA, sesión + `ventas.cobrar`,
+  guarda `entregada_en`/`entregada_por`. No toca venta, plata ni stock: por eso no pide
+  confirmación y se deshace desde el aviso.
+- **La venta ya está en /ventas desde que se paga** (no al entregar): la registra
+  `_registrar_venta_orden_tienda`. En el historial ahora se ve "<nombre> · Tienda online
+  #00012" en vez de "Consumidor final", y el ticket dice vendedor "Tienda online" en vez de
+  "Administrador" (`get-sales.ts` embebe `ordenes_tienda`). Una vendedora sin
+  `tienda.ver_ordenes` no ve la orden embebida (sigue viendo "Consumidor final").
+- **IMEI al entregar** (migración `20261012194147`, aplicada; test
+  `supabase/tests/tienda_imei_al_entregar.sql`): la venta online graba un renglón por aparato
+  en lo que lleva IMEI (`variantes_llevan_serie`), y "Marcar entregada" pide el IMEI de cada
+  uno (escáner o un toque sobre los que están en stock). `marcar_orden_entregada(orden, true,
+  unidades)` ata todo y entrega en UNA transacción: una unidad DISPONIBLE de ese modelo pasa a
+  vendida (como el POS); un IMEI que no estaba cargado nace vendido (como "Agregar IMEI").
+  Frena con `IMEI_FALTANTES`, `IMEI_NO_DISPONIBLE` (vendido u otro modelo), `IMEI_REPETIDO` o
+  `IMEI_DE_MAS`. "Deshacer" la entrega no desata los IMEI (el aparato ya salió).

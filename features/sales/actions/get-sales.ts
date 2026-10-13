@@ -75,6 +75,7 @@ export async function getVentasAction(opts?: {
         cliente_id,
         clientes(nombre),
         perfiles(nombre),
+        ordenes_tienda(numero, cliente_nombre),
         ventas_items (
           id,
           cantidad,

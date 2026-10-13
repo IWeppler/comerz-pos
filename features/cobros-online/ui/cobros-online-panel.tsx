@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -90,6 +90,8 @@ export function CobrosOnlinePanel({ config, onIrASeccion }: Readonly<Props>) {
     cobroTransferencia: config.cobro_online_transferencia ?? false,
     aliasMercadoPago: config.alias_mercadopago_tienda ?? "",
     titular: config.transferencia_titular ?? "",
+    cvu: config.transferencia_cvu ?? "",
+    cuitTitular: config.transferencia_cuit ?? "",
     minutosVenceTransferencia: config.minutos_vence_transferencia ?? 120,
     minutosVenceMp: config.minutos_vence_mp ?? 60,
   });
@@ -344,7 +346,40 @@ export function CobrosOnlinePanel({ config, onIrASeccion }: Readonly<Props>) {
                 className="h-11"
               />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cvu-mp" className="text-xs text-muted-foreground">
+                CVU (22 números)
+              </Label>
+              <Input
+                id="cvu-mp"
+                value={form.cvu}
+                onChange={(e) => cambiar("cvu", e.target.value)}
+                placeholder="0000003100000000000000"
+                inputMode="numeric"
+                autoComplete="off"
+                className="h-11"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cuit-titular" className="text-xs text-muted-foreground">
+                CUIT o CUIL del titular
+              </Label>
+              <Input
+                id="cuit-titular"
+                value={form.cuitTitular}
+                onChange={(e) => cambiar("cuitTitular", e.target.value)}
+                placeholder={config.cuit ? `Ej: ${config.cuit}` : "20-12345678-9"}
+                inputMode="numeric"
+                autoComplete="off"
+                className="h-11"
+              />
+            </div>
           </div>
+          <p className="text-xs text-muted-foreground">
+            La clienta ve alias, CVU, titular y CUIT al confirmar: con eso transfiere desde
+            cualquier banco y chequea que el destino sea el tuyo. Los encontrás en Mercado Pago ›
+            Tu dinero › Datos de la cuenta.
+          </p>
           <p className="text-xs text-muted-foreground">
             Usá el alias de la MISMA cuenta que conectaste. Si es de otra cuenta, no vamos a poder
             confirmar las transferencias por vos.
