@@ -339,6 +339,7 @@ export function ComerciosTabla({
                   moduloPresupuestos={c.moduloPresupuestos}
                   pagosOnline={c.pagosOnline}
                   cuentaEnMrr={c.cuentaEnMrr}
+                  precioAcordado={c.precioAcordado}
                 />
               </div>
             </div>
@@ -361,6 +362,9 @@ export function ComerciosTabla({
                   >
                     {formatearMoneda(c.plan_precio)}
                   </span>
+                )}
+                {c.precioAcordado !== null && (
+                  <span className="ml-1.5 text-sky-300/80">acordado</span>
                 )}
                 {!c.cuentaEnMrr && (
                   <span className="ml-1.5 text-amber-400/80">fuera del MRR</span>
@@ -456,6 +460,9 @@ export function ComerciosTabla({
                         {formatearMoneda(c.plan_precio)}
                       </p>
                     )}
+                    {c.precioAcordado !== null && (
+                      <p className="text-[11px] text-sky-300/80">precio acordado</p>
+                    )}
                     {!c.cuentaEnMrr && (
                       <p className="text-[11px] text-amber-400/80">fuera del MRR</p>
                     )}
@@ -507,6 +514,7 @@ export function ComerciosTabla({
                         moduloPresupuestos={c.moduloPresupuestos}
                         pagosOnline={c.pagosOnline}
                         cuentaEnMrr={c.cuentaEnMrr}
+                        precioAcordado={c.precioAcordado}
                       />
                     </div>
                   </td>

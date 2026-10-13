@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
+import { precioEfectivo } from "@/features/admin/lib/precio-efectivo";
 import {
   esNegocioDemo,
   negocioHabilitado,
@@ -59,7 +60,7 @@ export async function getPanelComerzAction(): Promise<{
     supabase
       .from("negocios")
       .select(
-        "id, nombre, slug, estado, cuenta_en_mrr, created_at, estado_cambiado_en, plan_id, plan_vencimiento, planes(nombre, precio_mensual)",
+        "id, nombre, slug, estado, cuenta_en_mrr, precio_acordado, created_at, estado_cambiado_en, plan_id, plan_vencimiento, planes(nombre, precio_mensual)",
       )
       .order("created_at", { ascending: true }),
     supabase
@@ -90,7 +91,11 @@ export async function getPanelComerzAction(): Promise<{
       estado_cambiado_en: n.estado_cambiado_en as string,
       plan_id: (n.plan_id as string | null) ?? null,
       plan_nombre: (plan?.nombre as string | undefined) ?? null,
-      plan_precio: Number(plan?.precio_mensual ?? 0),
+      // Lo que paga de verdad: el MRR suma esto, no el precio de lista.
+      plan_precio: precioEfectivo(
+        n.precio_acordado === null || n.precio_acordado === undefined ? null : Number(n.precio_acordado),
+        Number(plan?.precio_mensual ?? 0),
+      ),
       plan_vencimiento: (n.plan_vencimiento as string | null) ?? null,
       cuenta_en_mrr: n.cuenta_en_mrr !== false,
       vencido: n.plan_vencimiento

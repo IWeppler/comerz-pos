@@ -43,6 +43,9 @@ export interface PlanDelNegocio {
   plan: string | null;
   descripcion: string | null;
   precioLista: number;
+  /** Lo que paga este comercio si tiene un precio acordado; null = el de lista. */
+  precioAcordado: number | null;
+  planId: string | null;
   modalidad: Modalidad;
   vencimiento: string | null;
   estado: string;
@@ -67,7 +70,7 @@ export async function getPlanDelNegocioAction(): Promise<PlanDelNegocio | null> 
       supabase
         .from("negocios")
         .select(
-          "nombre, estado, modalidad, plan_vencimiento, planes(nombre, descripcion, precio_mensual)",
+          "nombre, estado, modalidad, plan_id, precio_acordado, plan_vencimiento, planes(nombre, descripcion, precio_mensual)",
         )
         .eq("id", negocioId)
         .single(),
@@ -91,6 +94,8 @@ export async function getPlanDelNegocioAction(): Promise<PlanDelNegocio | null> 
     plan: (plan?.nombre as string | undefined) ?? null,
     descripcion: (plan?.descripcion as string | undefined) ?? null,
     precioLista: Number(plan?.precio_mensual ?? 0),
+    precioAcordado: negocio.precio_acordado === null ? null : Number(negocio.precio_acordado),
+    planId: (negocio.plan_id as string | null) ?? null,
     modalidad: (negocio.modalidad as Modalidad) ?? "mensual",
     vencimiento: (negocio.plan_vencimiento as string | null) ?? null,
     estado: negocio.estado as string,

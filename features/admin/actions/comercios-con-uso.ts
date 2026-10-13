@@ -19,7 +19,10 @@ export interface ComercioConUso {
   duenio: string | null;
   plan_id: string | null;
   plan_nombre: string | null;
+  /** Lo que paga por mes: el acordado o, si no tiene, el de lista. */
   plan_precio: number;
+  /** Precio acordado con este comercio. Null = paga el de lista. */
+  precioAcordado: number | null;
   plan_vencimiento: string | null;
   vencido: boolean;
   usuarios: number;
@@ -80,7 +83,7 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
     supabase.rpc("comercios_con_uso"),
     supabase
       .from("negocios")
-      .select("id, modulo_presupuestos, pagos_online_habilitado, cuenta_en_mrr"),
+      .select("id, modulo_presupuestos, pagos_online_habilitado, cuenta_en_mrr, precio_acordado"),
   ]);
 
   if (error) {
@@ -107,6 +110,12 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
       .map((m) => m.id as string),
   );
 
+  const acordados = new Map(
+    (modulos ?? [])
+      .filter((m) => m.precio_acordado !== null && m.precio_acordado !== undefined)
+      .map((m) => [m.id as string, Number(m.precio_acordado)]),
+  );
+
   const ahora = Date.now();
 
   return (data ?? []).map((fila: Record<string, unknown>): ComercioConUso => {
@@ -120,6 +129,7 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
       plan_id: (fila.plan_id as string | null) ?? null,
       plan_nombre: (fila.plan_nombre as string | null) ?? null,
       plan_precio: Number(fila.plan_precio ?? 0),
+      precioAcordado: acordados.get(fila.id as string) ?? null,
       plan_vencimiento: vencimiento,
       vencido: vencimiento ? new Date(vencimiento).getTime() < ahora : false,
       usuarios: Number(fila.usuarios ?? 0),

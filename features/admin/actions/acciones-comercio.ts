@@ -406,3 +406,34 @@ export async function getPagosDelNegocioAction(
     nota: (p.nota as string | null) ?? null,
   }));
 }
+
+/**
+ * Lo que paga este comercio por mes (null = el precio de lista de su plan),
+ * con el motivo. La RPC escribe el negocio y el historial juntos; el motivo
+ * queda solo para el super admin (el comercio no lo ve).
+ */
+export async function fijarPrecioAcordadoAction(
+  negocioId: string,
+  precio: number | null,
+  motivo: string | null,
+): Promise<ResultadoAccion> {
+  const { supabase, autorizado } = await comoSuperAdmin();
+  if (!autorizado) return { error: "No autorizado.", success: false };
+  if (precio !== null && (!Number.isFinite(precio) || precio < 0)) {
+    return { error: "El precio tiene que ser un número mayor o igual a 0.", success: false };
+  }
+
+  const { data, error } = await supabase.rpc("fijar_precio_acordado", {
+    p_negocio: negocioId,
+    p_precio: precio,
+    p_motivo: motivo,
+  });
+  if (error) {
+    console.error("[PRECIO ACORDADO]", error);
+    return { error: "No se pudo guardar el precio.", success: false };
+  }
+  if (!data) return { error: "No se encontró el comercio.", success: false };
+
+  refrescarPanel();
+  return { error: null, success: true };
+}

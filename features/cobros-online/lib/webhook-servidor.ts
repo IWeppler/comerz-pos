@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/shared/config/supabase/admin";
 import { tokenDelComercio } from "./checkout-mp-servidor";
 import { aplicarPagoMp, conciliarPagosNegocio } from "./conciliar-servidor";
+import { procesarAvisoSuscripcion, TIPOS_SUSCRIPCION } from "@/features/suscripciones/lib/webhook-suscripciones";
 import { destinoDelPago, esAvisoDePago, type AvisoMp, type PagoMpCompleto, type VeredictoFirma } from "./webhook-mp";
 
 /**
@@ -47,6 +48,8 @@ async function registrarAjeno(admin: Admin, negocioId: string, pagoId: string) {
 }
 
 export async function procesarAvisoMp(aviso: AvisoMp, firma: VeredictoFirma): Promise<number> {
+  // Las suscripciones de Comerz a sus comercios: otra cuenta, otro camino.
+  if (aviso.tipo && TIPOS_SUSCRIPCION.has(aviso.tipo)) return procesarAvisoSuscripcion(aviso, firma);
   if (!esAvisoDePago(aviso)) return 200;
 
   const admin = createAdminClient();

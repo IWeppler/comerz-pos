@@ -5,6 +5,7 @@ import {
   MoreHorizontal,
   Ban,
   CircleDollarSign,
+  CreditCard,
   CircleOff,
   FileText,
   Link2,
@@ -13,9 +14,10 @@ import {
   Presentation,
   Receipt,
   ShoppingBag,
+  Tag,
   Wallet,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
@@ -31,7 +33,11 @@ import {
   cambiarPagosOnlineAction,
   cambiarPlanAction,
   cambiarSlugAction,
+  fijarPrecioAcordadoAction,
 } from "@/features/admin/actions/acciones-comercio";
+import { leerPrecioTipeado, precioEfectivo } from "@/features/admin/lib/precio-efectivo";
+import { activarDebitoAutomaticoAction } from "@/features/suscripciones/actions/debito-automatico";
+import { formatearMoneda } from "@/shared/utils/formatters";
 import { RegistrarPagoModal } from "./registrar-pago-modal";
 import { HistorialPagosModal } from "./historial-pagos-modal";
 import { iniciarImpersonationAction } from "@/features/admin/actions/impersonate";
@@ -67,6 +73,7 @@ export function AccionesComercioMenu({
   moduloPresupuestos,
   pagosOnline,
   cuentaEnMrr,
+  precioAcordado,
 }: Readonly<{
   negocioId: string;
   nombre: string;
@@ -81,7 +88,10 @@ export function AccionesComercioMenu({
   pagosOnline: boolean;
   /** Suma al MRR (si además está activo). Ver `sumaAlMrr`. */
   cuentaEnMrr: boolean;
+  /** `negocios.precio_acordado`: null = paga el precio de lista. */
+  precioAcordado: number | null;
 }>) {
+  const precioLista = planes.find((p) => p.id === planId)?.precio_mensual ?? 0;
   const [pendiente, startTransition] = useTransition();
   const [pagoAbierto, setPagoAbierto] = useState(false);
   const [historialAbierto, setHistorialAbierto] = useState(false);
@@ -103,6 +113,55 @@ export function AccionesComercioMenu({
     if (!nuevo || nuevo === slug) return;
     correr(() => cambiarSlugAction(negocioId, nuevo));
   };
+
+  const pedirPrecioAcordado = () => {
+    // `prompt`, igual que el link: acción rara, de una sola persona.
+    const texto = window.prompt(
+      `¿Cuánto paga ${nombre} por mes?
+
+Precio de lista: ${formatearMoneda(precioLista)}. Dejalo vacío para volver al de lista.`,
+      precioAcordado === null ? "" : String(precioAcordado),
+    );
+    if (texto === null) return;
+    const precio = leerPrecioTipeado(texto);
+    if (precio === undefined) {
+      toast.error("Eso no es un precio. Escribí un número, por ejemplo 30000.");
+      return;
+    }
+    if (precio === precioAcordado) return;
+    const motivo =
+      precio === null
+        ? "Vuelve al precio de lista"
+        : window.prompt("¿Por qué? (solo lo ves vos)", "") ?? null;
+    correr(() => fijarPrecioAcordadoAction(negocioId, precio, motivo));
+  };
+
+  const pedirLinkDebito = () =>
+    startTransition(async () => {
+      const r = await activarDebitoAutomaticoAction(negocioId);
+      if (!r.ok) {
+        toast.error(r.error);
+        return;
+      }
+      if (r.estado === "authorized") {
+        toast.success(`${nombre} ya tiene el débito automático activo (${formatearMoneda(r.monto)}/mes).`);
+        return;
+      }
+      if (!r.initPoint) {
+        toast.error("Mercado Pago no devolvió el link. Probá de nuevo.");
+        return;
+      }
+      const primero = r.inicio
+        ? `primer débito el ${new Date(r.inicio).toLocaleDateString("es-AR", { day: "numeric", month: "long" })}`
+        : "primer débito al activarlo";
+      // `prompt` para copiarlo y mandarlo por WhatsApp, como el link de la tienda.
+      window.prompt(
+        `Link para que ${nombre} active el débito automático: ${formatearMoneda(r.monto)}/mes, ${primero}.
+
+Copialo y mandáselo:`,
+        r.initPoint,
+      );
+    });
 
   const alternarPresupuestos = () => {
     // Prender pide confirmación y apagar no: prender le habilita a un comercio
@@ -219,6 +278,20 @@ export function AccionesComercioMenu({
 
           <DropdownMenuSeparator />
 
+          {precioAcordado !== 0 && !esNegocioDemo(estado) && (
+            <DropdownMenuItem onClick={pedirLinkDebito} disabled={pendiente}>
+              <CreditCard className="mr-2 size-4 text-muted-foreground" />
+              Link de débito automático
+            </DropdownMenuItem>
+          )}
+
+          <DropdownMenuItem onClick={pedirPrecioAcordado}>
+            <Tag className="mr-2 size-4 text-muted-foreground" />
+            {precioAcordado === null
+              ? "Precio acordado…"
+              : `Precio acordado: ${formatearMoneda(precioAcordado)}`}
+          </DropdownMenuItem>
+
           <DropdownMenuItem onClick={pedirSlug}>
             <Link2 className="mr-2 size-4 text-muted-foreground" />
             Cambiar link de la tienda
@@ -326,7 +399,7 @@ export function AccionesComercioMenu({
         onOpenChange={setPagoAbierto}
         negocioId={negocioId}
         nombre={nombre}
-        precioSugerido={planes.find((p) => p.id === planId)?.precio_mensual ?? 0}
+        precioSugerido={precioEfectivo(precioAcordado, precioLista)}
         vencimientoActual={planVencimiento}
       />
 

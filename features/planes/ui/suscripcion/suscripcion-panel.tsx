@@ -17,6 +17,7 @@ import { CambiarPlanModal } from "./cambiar-plan-modal";
 import { MailCopiable } from "./mail-copiable";
 import type { SolicitudPlan } from "@/features/planes/actions/solicitud-plan";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { precioEfectivo } from "@/features/admin/lib/precio-efectivo";
 import { EstadoBadge } from "./estado-badge";
 import { AlertaSuscripcion } from "./alerta-suscripcion";
 import { UsoDelPlanSeccion } from "./uso-del-plan-seccion";
@@ -40,12 +41,15 @@ export function SuscripcionPanel({
   planes,
   uso,
   solicitudPendiente = null,
+  debito = null,
 }: {
   plan: PlanDelNegocio | null;
   planes: PlanCompleto[];
   uso: UsoDelPlan | null;
   /** Pedido de cambio de plan ya enviado y sin resolver. */
   solicitudPendiente?: SolicitudPlan | null;
+  /** La sección de débito automático (la arma la página, que sabe el rol). */
+  debito?: React.ReactNode;
 }) {
   const estado = derivarEstadoSuscripcion({
     estado: plan?.estado,
@@ -87,7 +91,7 @@ export function SuscripcionPanel({
               {tienePlan && plan && (
                 <p className="mt-1 text-lg font-semibold tabular-nums text-foreground">
                   {formatearMoneda(
-                    precioMensualEfectivo(plan.precioLista, modalidad),
+                    precioMensualEfectivo(precioEfectivo(plan.precioAcordado, plan.precioLista), modalidad),
                   )}
                   <span className="ml-1 text-sm font-normal text-muted-foreground">
                     / mes
@@ -123,7 +127,7 @@ export function SuscripcionPanel({
                 </dt>
                 <dd className="mt-1 text-sm font-semibold tabular-nums text-foreground">
                   {formatearMoneda(
-                    precioPorCiclo(plan.precioLista, modalidad),
+                    precioPorCiclo(precioEfectivo(plan.precioAcordado, plan.precioLista), modalidad),
                   )}
                 </dd>
               </div>
@@ -184,6 +188,8 @@ export function SuscripcionPanel({
           )}
         </div>
       </div>
+
+      {debito}
 
       {/* ============ OTROS PLANES ============ */}
       <OtrosPlanesSeccion
