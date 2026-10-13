@@ -2,21 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { Button } from "@/shared/ui/button";
-import {
-  Moon,
-  Sun,
-  Download,
-  MonitorSmartphone,
-  CheckCircle2,
-} from "lucide-react";
+import { Download, CheckCircle2 } from "lucide-react";
 import { toast } from "@/shared/ui/toast";
-import { useTheme } from "next-themes";
 import { useInstalacionPwa } from "@/shared/lib/use-instalacion-pwa";
 import { InstruccionesInstalacion } from "@/shared/components/instrucciones-instalacion";
+import { SelectorTema } from "./selector-tema";
 
 export function PreferencesPanel() {
   const [mounted, setMounted] = useState(false);
-  const { theme, setTheme } = useTheme();
   const { metodo, instalar } = useInstalacionPwa();
   const [instruccionesAbiertas, setInstruccionesAbiertas] = useState(false);
 
@@ -69,60 +62,17 @@ export function PreferencesPanel() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* TEMA VISUAL */}
-        <div className="bg-card p-6 rounded-xl border border-border flex flex-col justify-between">
-          <div>
-            <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center mb-4">
-              {theme === "dark" ? (
-                <Moon className="w-5 h-5" />
-              ) : (
-                <Sun className="w-5 h-5" />
-              )}
-            </div>
-            <h3 className="text-lg font-bold text-foreground mb-2">
-              Tema Visual
-            </h3>
-            <p className="text-sm text-muted-foreground mb-6">
-              Elige entre el modo claro para el día o el modo oscuro para
-              ambientes con poca luz.
-            </p>
-          </div>
-
-          <div className="flex bg-muted/50 p-1 rounded-xl border border-border/50">
-            <button
-              onClick={() => setTheme("light")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${
-                theme === "light"
-                  ? "bg-background text-foreground ring-1 ring-black/5 dark:ring-white/10"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Sun className="w-4 h-4" /> Claro
-            </button>
-            <button
-              onClick={() => setTheme("dark")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${
-                theme === "dark"
-                  ? "bg-background text-foreground ring-1 ring-black/5 dark:ring-white/10"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Moon className="w-4 h-4" /> Oscuro
-            </button>
-            <button
-              onClick={() => setTheme("system")}
-              className={`flex-1 items-center justify-center gap-2 py-2.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all hidden sm:flex ${
-                theme === "system"
-                  ? "bg-background text-foreground ring-1 ring-black/5 dark:ring-white/10"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <MonitorSmartphone className="w-4 h-4" /> Auto
-            </button>
-          </div>
+      {/* TEMA — dos tarjetas con la miniatura de cada modo; al elegir, la
+          página se repinta con el círculo difuminado. Ver selector-tema.tsx. */}
+      <section className="rounded-xl border border-border bg-card p-5 sm:p-6">
+        <h3 className="text-lg font-bold text-foreground">Tema</h3>
+        <p className="mb-5 mt-1 text-sm text-muted-foreground">Elegí cómo se ve Comerz en este dispositivo.</p>
+        <div className="max-w-2xl">
+          <SelectorTema />
         </div>
+      </section>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* INSTALACIÓN PWA */}
         <div className="bg-card p-6 rounded-lg border border-border flex flex-col justify-between">
           <div>
