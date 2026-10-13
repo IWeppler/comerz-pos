@@ -3,7 +3,7 @@
 import { FormEvent, useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Edit2, Loader2, Building2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { CuitInput } from "@/shared/components/cuit-input";
 import {
   Dialog,

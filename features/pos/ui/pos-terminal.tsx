@@ -8,7 +8,7 @@ import type { Rubro } from "@/entities/config/types";
 import { PackagePlus, Receipt, ShoppingBag } from "lucide-react";
 import { useCartStore } from "@/shared/store/cart-store";
 import { queryKeys } from "@/shared/lib/query-keys";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useCatalogFilters } from "@/features/store/hooks/use-catalog-filters";
 import { QuickAddModal } from "@/features/pos/ui/quick-add-modal";
 import { PosProductList } from "@/features/pos/ui/pos-product-list";

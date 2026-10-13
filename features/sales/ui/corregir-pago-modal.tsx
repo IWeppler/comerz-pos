@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Loader2 } from "lucide-react";
 import {
   Dialog,

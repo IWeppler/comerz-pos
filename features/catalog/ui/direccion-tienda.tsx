@@ -6,7 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { Check, Copy, ExternalLink, Link2, Loader2, Save } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { partesDeUrlDeCatalogo } from "@/shared/lib/dominios";
 import { SLUG_MAX, validarSlugNegocio } from "@/shared/lib/slug-negocio";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";

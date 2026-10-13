@@ -20,7 +20,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   Eye,
   EyeOff,

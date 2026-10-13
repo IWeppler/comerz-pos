@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { ArrowLeft, Ban, Loader2, Printer, ThumbsDown } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import {

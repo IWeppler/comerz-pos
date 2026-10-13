@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useAtajosTeclado } from "@/shared/hooks/use-atajos-teclado";
 
 type AtajosCarritoProps = {

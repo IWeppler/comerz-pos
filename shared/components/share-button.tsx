@@ -2,7 +2,7 @@
 
 import { useState, type MouseEvent } from "react";
 import { Copy, MessageCircle, Share2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import {

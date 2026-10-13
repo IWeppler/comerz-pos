@@ -4,7 +4,7 @@ import { startTransition, useActionState, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { createClient } from "@/shared/config/supabase/client";
 import {
   ImagenError,

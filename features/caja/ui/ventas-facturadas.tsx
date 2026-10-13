@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FileCheck2, FileX2, FlaskConical } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import {
   PeriodoSelector,

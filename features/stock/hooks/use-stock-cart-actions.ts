@@ -1,6 +1,6 @@
 "use client";
 
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import type { Producto } from "@/entities/productos/types";
 import { useCartStore } from "@/shared/store/cart-store";
 import {

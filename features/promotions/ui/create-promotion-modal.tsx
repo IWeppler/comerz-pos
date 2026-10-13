@@ -23,7 +23,7 @@ import { Loader2, Plus, Tag } from "lucide-react";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Switch } from "@/shared/ui/switch";
 import { createPromotionAction } from "../actions/create-promotion";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useActiveCategories } from "@/features/stock/hooks/use-active-categories";
 
 type PromotionActionState = {

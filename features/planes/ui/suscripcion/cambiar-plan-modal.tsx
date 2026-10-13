@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { CheckCircle2, CreditCard, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Producto } from "@/entities/productos/types";
 import type { Rubro } from "@/entities/config/types";
 import {

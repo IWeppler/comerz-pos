@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { togglePublicadoAction } from "../actions/toggle-shared";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { queryKeys } from "@/shared/lib/query-keys";
 
 export function TogglePublicado({

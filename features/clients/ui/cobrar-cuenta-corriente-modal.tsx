@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { ArrowLeft, Loader2, Search, Wallet } from "lucide-react";
 import {
   Dialog,

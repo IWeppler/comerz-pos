@@ -27,7 +27,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { createPaymentAction } from "../actions/manage-payment";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { TipoMetodo } from "@/entities/payments/types";
 import { SelectorCuentaDestino } from "./selector-cuenta-destino";
 import {

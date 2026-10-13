@@ -9,7 +9,7 @@ import {
   MonitorSmartphone,
   CheckCircle2,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useTheme } from "next-themes";
 import { useInstalacionPwa } from "@/shared/lib/use-instalacion-pwa";
 import { InstruccionesInstalacion } from "@/shared/components/instrucciones-instalacion";

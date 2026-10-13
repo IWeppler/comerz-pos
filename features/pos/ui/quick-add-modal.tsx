@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { useCartStore } from "@/shared/store/cart-store";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Layers } from "lucide-react";
 import { parseRawVariantString } from "@/entities/productos/lib/parse-variant-attributes";
 import { resolverAtributosVariante } from "@/entities/productos/lib/build-propiedades-filtro";

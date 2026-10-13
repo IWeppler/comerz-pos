@@ -23,7 +23,7 @@ import { ScrollArea } from "@/shared/ui/scroll-area";
 import { Switch } from "@/shared/ui/switch";
 import { editPromotionAction } from "../actions/manage-promotions";
 import { Promotion } from "./promotions-panel";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useActiveCategories } from "@/features/stock/hooks/use-active-categories";
 
 // --- CONSTANTES PARA LOS SELECTS ---

@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Loader2, DollarSign, Wallet } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { registrarPagoDeudaAction } from "../actions/manage-clients";
 import { queryKeys } from "@/shared/lib/query-keys";
 import { Cliente } from "@/entities/clientes/type";

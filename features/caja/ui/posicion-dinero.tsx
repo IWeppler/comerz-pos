@@ -16,7 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/ui/tooltip";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import {
   PeriodoSelector,

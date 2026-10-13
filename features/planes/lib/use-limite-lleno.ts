@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useContextoPlan } from "@/features/planes/ui/plan-provider";
 import { planQueSubeElLimite } from "./beneficios-al-subir";
 import type { ReglasPlan } from "@/shared/lib/planes";

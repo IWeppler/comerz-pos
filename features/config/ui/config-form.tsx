@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { updateConfiguracionAction } from "../actions/config-actions";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { CATALOG_QUERY_KEYS } from "@/shared/lib/query-keys";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";

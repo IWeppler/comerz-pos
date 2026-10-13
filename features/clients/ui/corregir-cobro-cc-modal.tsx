@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { AlertTriangle, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { MetodoPago } from "@/entities/payments/types";
 import { Button } from "@/shared/ui/button";
 import {

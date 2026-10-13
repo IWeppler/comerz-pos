@@ -6,7 +6,7 @@ import {
   getRestaurabilidadVentaAction,
   type RestaurabilidadVenta,
 } from "../actions/restaurabilidad-venta";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 
 import {
   Dialog,

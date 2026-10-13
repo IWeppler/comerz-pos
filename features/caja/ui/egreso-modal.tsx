@@ -6,7 +6,7 @@ import {
   getOrdenesParaEgresoAction,
   type OrdenParaEgreso,
 } from "@/features/purchases/actions/get-ordenes-para-egreso";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   Dialog,
   DialogContent,

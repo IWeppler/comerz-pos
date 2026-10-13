@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { useVentasPendientesStore } from "@/shared/store/ventas-pendientes-store";
 

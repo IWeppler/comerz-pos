@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { MetodoPago } from "@/entities/payments/types";
 import { deletePaymentAction } from "../actions/manage-payment";
 import { Loader2 } from "lucide-react";

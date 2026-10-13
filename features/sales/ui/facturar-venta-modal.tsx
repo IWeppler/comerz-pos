@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { FileCheck2, Loader2 } from "lucide-react";
 import {
   Dialog,

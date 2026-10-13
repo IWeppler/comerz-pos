@@ -3,7 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   Dialog,
   DialogContent,

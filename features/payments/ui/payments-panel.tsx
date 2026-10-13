@@ -23,7 +23,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { togglePaymentAction } from "../actions/manage-payment";
 import { CreatePaymentModal } from "./create-payment-modal";
 import { EditPaymentModal } from "./edit-payment-modal";

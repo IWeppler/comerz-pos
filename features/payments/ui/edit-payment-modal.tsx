@@ -19,7 +19,7 @@ import {
 } from "@/shared/ui/select";
 import { CreditCard, Percent, Clock, Loader2, TrendingUp } from "lucide-react";
 import { editPaymentAction } from "../actions/manage-payment";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { MetodoPago, TipoMetodo } from "@/entities/payments/types";
 import { SelectorCuentaDestino } from "./selector-cuenta-destino";
 import {

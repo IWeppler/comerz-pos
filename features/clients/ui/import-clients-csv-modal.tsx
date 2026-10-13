@@ -9,7 +9,7 @@ import {
   Loader2,
   Download,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   Dialog,
   DialogContent,

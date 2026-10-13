@@ -75,7 +75,7 @@ import {
   UserCog,
   AlertTriangle,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { createClient } from "@/shared/config/supabase/client";
 import { validarAliasTransferencia } from "../lib/alias-transferencia";
 

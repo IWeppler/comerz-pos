@@ -21,7 +21,7 @@ import { DeletePromotionModal } from "./delete-promotion-modal";
 import { togglePromotionAction } from "../actions/manage-promotions";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   DropdownMenu,
   DropdownMenuContent,

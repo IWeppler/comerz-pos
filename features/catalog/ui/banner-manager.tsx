@@ -15,7 +15,7 @@ import {
   Crop,
   Link as LinkIcon,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { createClient } from "@/shared/config/supabase/client";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { FORMATOS_IMAGEN_ACEPTADOS } from "@/shared/lib/formatos-imagen";

@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/shared/ui/alert-dialog";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Promotion } from "./promotions-panel";
 import { deletePromotionAction } from "../actions/manage-promotions";
 import { Loader2 } from "lucide-react";

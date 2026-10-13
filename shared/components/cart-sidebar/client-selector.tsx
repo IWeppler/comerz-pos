@@ -6,7 +6,7 @@ import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/ui/popover";
 import { CreateClientDialog } from "@/features/clients/ui/create-client-dialog";
 import { Check, ChevronDown, Loader2, Search, UserPlus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Input } from "@/shared/ui/input";
 import {
   crearClienteAction,

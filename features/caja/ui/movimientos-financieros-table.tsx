@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Ban, Download, Loader2, Search, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";

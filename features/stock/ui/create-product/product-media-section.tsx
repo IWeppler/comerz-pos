@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, ImagePlus, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import {

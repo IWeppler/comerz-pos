@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";

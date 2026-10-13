@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { Calculator, Loader2, Lock, Users, Store } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { createClient } from "@/shared/config/supabase/client";
 import { PaywallGate } from "@/features/planes/ui/paywall-gate";
 import { CobroCentralizado } from "@/features/pedidos/ui/cobro-centralizado";

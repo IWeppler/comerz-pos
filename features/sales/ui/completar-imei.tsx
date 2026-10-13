@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Barcode, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { normalizarImei } from "@/entities/ventas/imei";

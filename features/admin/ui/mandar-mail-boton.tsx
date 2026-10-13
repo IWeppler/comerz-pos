@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Mail, MailCheck, MailX, Eye } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   esAccionDeVersionVieja,
   MENSAJE_VERSION_VIEJA,

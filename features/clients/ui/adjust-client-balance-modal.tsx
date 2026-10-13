@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Plus, PlusCircle, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   Dialog,
   DialogContent,

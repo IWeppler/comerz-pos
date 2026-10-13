@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import type { TicketData } from "@/entities/ventas/types";
 import type { ConfiguracionPOS } from "@/entities/config/types";
 import { buildWhatsappMessage } from "../utils/whatsapp-helper";

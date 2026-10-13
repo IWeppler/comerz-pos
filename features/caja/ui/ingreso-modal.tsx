@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useActionState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import {
   Dialog,
   DialogContent,

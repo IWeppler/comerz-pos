@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { FlaskConical } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { marcarUsuarioPruebaAction } from "@/features/admin/actions/usuarios-prueba";
 
 /**

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import {
   ImagenError,

@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/shared/ui/select";
 import { MinusCircle, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 
 interface BajaModalProps {
   producto: ProductoIndice;

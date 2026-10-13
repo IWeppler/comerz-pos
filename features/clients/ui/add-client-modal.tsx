@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/shared/ui/button";
 import { CreateClientDialog } from "@/features/clients/ui/create-client-dialog";
 import { UserPlus } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { crearClienteAction } from "../actions/manage-clients";
 import { queryKeys } from "@/shared/lib/query-keys";
 

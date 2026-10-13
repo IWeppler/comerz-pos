@@ -28,7 +28,7 @@ import { subirImagenesProductoDesdeCliente } from "@/features/stock/lib/subir-im
 import { actualizarFotosProductoAction } from "@/features/stock/actions/actualizar-fotos-producto";
 import { useNegocioActivo } from "@/shared/components/negocio-activo-provider";
 import { queryKeys } from "@/shared/lib/query-keys";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Badge } from "@/shared/ui/badge";

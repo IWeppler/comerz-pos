@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { Loader2, Store } from "lucide-react";
 import { Label } from "@/shared/ui/label";
 import { Switch } from "@/shared/ui/switch";

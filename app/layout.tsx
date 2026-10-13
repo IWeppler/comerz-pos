@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ThemeProvider } from "next-themes";
-import { Toaster } from "@/shared/ui/sonner";
+import { Toaster } from "@/shared/ui/toast";
 import { leerConfigPos } from "@/entities/config/lib/leer-config-pos";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";

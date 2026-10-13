@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { FileText, Loader2 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import {

@@ -18,7 +18,7 @@ import { useSlugNegocioActivo } from "@/shared/components/negocio-activo-provide
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import type { Producto, ProductoIndice } from "@/entities/productos/types";
 import type { Rubro } from "@/entities/config/types";
 import { Button } from "@/shared/ui/button";

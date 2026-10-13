@@ -22,6 +22,7 @@
   "menuColor": "default",
   "menuAccent": "bold",
   "registries": {
-    "@bklit": "https://bklit.com/r/{name}.json"
+    "@bklit": "https://bklit.com/r/{name}.json",
+    "@beui": "https://beui.dev/r/{name}.json"
   }
 }

@@ -14,7 +14,7 @@ import {
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/shared/lib/query-keys";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { registrarVentaAction } from "@/features/sales/actions/create-sale";
 import {
   crearPedidoAction,

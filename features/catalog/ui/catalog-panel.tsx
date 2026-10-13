@@ -17,7 +17,7 @@ import {
   Type,
   Truck,
 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/shared/ui/toast";
 import { createClient } from "@/shared/config/supabase/client";
 import { BannerManager } from "./banner-manager";
 import { DireccionTienda } from "./direccion-tienda";
