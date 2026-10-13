@@ -427,8 +427,9 @@ link de WhatsApp, para escribirles a mano. Automatizar cuando haya volumen.
 ## 7. Estado de implementación — 8/10/2026
 
 Las siete tareas tienen implementación local para revisión, sin commit ni deploy.
-Las migraciones `20261008134656_hitos_activacion` y
-`20261008134700_embudo_activacion_autonoma` están pendientes de aplicar en producción.
+Las migraciones de hitos y del embudo quedaron sin aplicar hasta el 12/10/2026, aunque el
+código ya estaba en producción (los hitos fallaban en silencio). Aplicadas ese día como
+`20261012221358_hitos_activacion` y `20261012221427_embudo_activacion_autonoma`.
 El conector Supabase se agregó y autenticó, pero sus herramientas SQL no están
 disponibles en la sesión que preparó estos cambios. No se leyó ni se modificó una
 RPC de producción: la migración usa `pg_get_functiondef` **al aplicar**, reemplaza
@@ -458,3 +459,35 @@ acceso ADMIN/super admin/anon, conservación de claves, cohortes y reversiones.
 Preview a 360px con componentes reales, acciones ficticias y sin mover dinero:
 guía, elección de camino, caja → venta libre → cobrar dentro del drawer → festejo.
 Esto no reemplaza el smoke de §6 ni la prueba en un celular físico.
+
+---
+
+## 8. "Primeros pasos" reemplaza al panel mientras no se activa (12/10/2026, sin commit)
+
+Pedido de Nacho: que un comercio nuevo no vea el panel lleno de números con la guía
+encima, sino una pantalla propia con objetos grandes que llevan a cada tarea y vuelven
+tildados.
+
+- `app/(dashboard)/page.tsx`: si `estado_activacion` existe (ADMIN) y
+  `calcularProgresoActivacion(...).activado` es false, devuelve `<PrimerosPasos>` en vez
+  del panel. Al activarse (vende o completa lo obligatorio) vuelve el panel solo; ahí sigue
+  la guía chica de opcionales ("Seguí preparando tu negocio").
+- `features/onboarding/lib/primeros-pasos.ts` (con tests): proyección de
+  `calcularProgresoActivacion`, sin criterio propio. Título según lo que sigue ("Empezá por
+  tus productos" → "Ahora empezá a vender"). Dos tarjetas grandes: productos (abre "¿Cómo
+  querés empezar?") y **"Empezá a vender"** (va al POS; caja y primera venta en una sola
+  tarea, porque el POS abre la caja al cobrar; bloqueada hasta tener productos). Tres chicas
+  opcionales: tienda online, datos del negocio y equipo. (Pedido de Nacho: "Empezá a
+  vender" en vez de "Abrí tu caja".)
+- `ui/primeros-pasos.tsx` con ilustraciones 3D generadas aparte (`public/asset-stock.png`,
+  `public/asset-sales.png`, 1536×1024, fondo transparente, objetos a la derecha), servidas con
+  `next/image` (WebP). Botón sólido solo en lo que sigue; lo hecho queda verde
+  con tilde y un botón secundario para seguir (p. ej. "Agregar otro producto"). El tilde
+  aparece con un gesto chico (pantalla que se ve pocas veces); respeta
+  `prefers-reduced-motion`.
+- Como super admin no se ve (`/` manda a /admincomerz): probar con el dueño de un comercio
+  en prueba.
+- **"Saltear tutorial"** (arriba a la derecha de Primeros pasos): registra el hito
+  `PRIMEROS_PASOS_SALTEADOS` (migración `20261012221503`, aplicada) y vuelve el panel de
+  siempre, sin la guía encima. Es por NEGOCIO (no por navegador). El panel lo consulta solo
+  para los no activados. La barra de prueba sigue nombrando el próximo paso.
