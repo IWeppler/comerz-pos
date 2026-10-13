@@ -1,4 +1,3 @@
-import { etiquetaFraccionado } from "@/features/dashboard/lib/unidades-vendidas";
 import { Suspense } from "react";
 import { ComplementosCatalogoSeccion } from "@/features/reports/ui/complementos-catalogo-seccion";
 import {
@@ -23,15 +22,11 @@ import {
   crecimientoDeTotal,
   crecimientoDeMedia,
   resolverRangoRolling,
-  DIAS_CHART,
   ETIQUETA_PERIODO,
   ETIQUETA_PERIODO_ANTERIOR,
   type PeriodoPanel,
 } from "@/shared/lib/periodo-ranges";
-import {
-  construirSerie,
-  agregarMediaMovil,
-} from "@/features/dashboard/lib/build-chart-series";
+import { construirSerieComparada } from "@/features/dashboard/lib/build-chart-series";
 import { contarDiasConVentas } from "@/features/dashboard/lib/contar-dias-con-ventas";
 import {
   compararConDiaTipico,
@@ -51,10 +46,12 @@ import {
   PeriodoSelector,
   OPCIONES_PANEL,
 } from "@/shared/components/periodo-selector";
-import { IngresosAreaChart } from "@/features/dashboard/ui/ingresos-area-chart";
-import { KpiMiniCard } from "@/features/dashboard/ui/kpi-mini-card";
+import { VentasPeriodoChart } from "@/features/dashboard/ui/ventas-periodo-chart";
+import { KpiFranja, KpiMiniCard } from "@/features/dashboard/ui/kpi-mini-card";
 import { GrowthBadge } from "@/features/dashboard/ui/growth-badge";
 import { AdvisorMiniList } from "@/features/dashboard/ui/advisor-mini-list";
+import { VentasPorCategoria } from "@/features/dashboard/ui/ventas-por-categoria";
+import { getUsuarioActual } from "@/shared/config/supabase/usuario-actual";
 import { AtencionRequeridaCard } from "@/features/dashboard/ui/atencion-requerida-card";
 import { RendimientoCard } from "@/features/dashboard/ui/rendimiento-card";
 import { getAdvisorInsights } from "@/features/reports/actions/get-advisor-insights";
@@ -74,17 +71,17 @@ import { formatearMoneda } from "@/shared/utils/formatters";
 import { EgresoModal } from "@/features/caja/ui/egreso-modal";
 import { getEstadoActivacionAction } from "@/features/onboarding/actions/get-estado-activacion";
 import { ChecklistActivacion } from "@/features/onboarding/ui/checklist-activacion";
+import { PrimerosPasos } from "@/features/onboarding/ui/primeros-pasos";
+import { calcularProgresoActivacion } from "@/features/onboarding/lib/pasos-activacion";
 import { Button } from "@/shared/ui/button";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { DollarSign, Package, Plus, Receipt, TrendingUp } from "lucide-react";
 import { bloquearVendedor } from "@/shared/config/supabase/guard-rol";
 import {
   aRelojComercial,
   conFechasComerciales,
   desfaseRelojComercial,
 } from "@/features/dashboard/lib/reloj-comercial";
-import { getPosicionDineroAction } from "@/features/caja/actions/get-posicion-dinero";
-import { PlataHoy } from "@/features/dashboard/ui/plata-hoy";
 
 export const dynamic = "force-dynamic";
 
@@ -133,14 +130,13 @@ const INSIGHTS_EN_PANEL = 5;
 // ventanas que el panel mira: es lo que decide desde qué fecha se piden las
 // ventas.
 
-// El título dice lo que muestran los números: con "semana" decía "Operación de
-// hoy" arriba de siete días de datos.
-const TITULO_PERIODO: Record<PeriodoPanel, string> = {
-  hoy: "Hoy",
-  semana: "Últimos 7 días",
-  mes: "Últimos 28 días",
-  trimestre: "Últimos 3 meses",
-  anio: "Último año",
+// Cómo se parte el gráfico de ventas en cada período (GRANULARIDAD_POR_PERIODO).
+const ETIQUETA_TRAMO: Record<PeriodoPanel, string> = {
+  hoy: "Por hora",
+  semana: "Por día",
+  mes: "Por día",
+  trimestre: "Por semana",
+  anio: "Por mes",
 };
 
 type ReservaActivaRow = {
@@ -197,7 +193,7 @@ export default async function DashboardPage({
     estadoActivacion,
     senales,
     configResponse,
-    posicionDinero,
+    perfilResponse,
   ] = await Promise.all([
     getVentasAction({ desde: desdeIso }),
     // Sin variantes ni fotos: el panel no las lee. Ver `ProductoPanel`.
@@ -231,10 +227,36 @@ export default async function DashboardPage({
     // React devuelve la fila sin viajar de nuevo. Antes era una consulta
     // propia, o sea la segunda lectura de la misma fila en la misma request.
     leerConfigPos(),
-    // La plata de ahora, de la MISMA fuente que /caja (`posicion_dinero`).
-    // Sin permiso devuelve error y la franja no se dibuja.
-    getPosicionDineroAction("hoy"),
+    // La franja de plata (efectivo / por acreditar / deuda) se sacó del panel
+    // el 12/10/2026 a pedido de Nacho: esos números viven en /caja.
+    // El nombre para el saludo. El usuario ya lo resolvió el layout (cache de
+    // React): esto es un viaje, en paralelo con el resto.
+    getUsuarioActual().then(({ user }) =>
+      user
+        ? supabase.from("perfiles").select("nombre").eq("id", user.id).maybeSingle()
+        : null,
+    ),
   ]);
+
+  // Comercio nuevo sin activar: en vez de un panel lleno de ceros, "Primeros
+  // pasos" (una tarea por vez, con objetos grandes). Vuelve el panel solo
+  // cuando vende o completa lo obligatorio. Solo ADMIN: para el resto la RPC
+  // devuelve null. Ver docs/activacion-autonoma.md.
+  // "Saltear tutorial" se guarda como hito del negocio: se consulta SOLO acá,
+  // para los no activados (los demás no pagan el viaje extra).
+  const sinActivar = !!estadoActivacion && !calcularProgresoActivacion(estadoActivacion).activado;
+  const tutorialSalteado = sinActivar
+    ? !!(
+        await supabase
+          .from("hitos_activacion")
+          .select("hito")
+          .eq("hito", "PRIMEROS_PASOS_SALTEADOS")
+          .maybeSingle()
+      ).data
+    : false;
+  if (estadoActivacion && sinActivar && !tutorialSalteado) {
+    return <PrimerosPasos estado={estadoActivacion} />;
+  }
 
   const ventasOriginales = (ventasResponse.data || []) as unknown as Venta[];
   const ventas = conFechasComerciales(ventasOriginales, ["fecha_venta"], desfase);
@@ -283,6 +305,9 @@ export default async function DashboardPage({
     formatearFechaISO(rangoActual.inicio),
     formatearFechaISO(rangoActual.fin),
     pagosCuentaCorriente,
+    // Para que el donut separe subcategorías homónimas (Hombre › Remeras y
+    // Mujer › Remeras).
+    categoriasResponse.data || [],
   );
   const metricasAnteriores = getDashboardMetrics(
     ventasOperativas,
@@ -383,18 +408,13 @@ export default async function DashboardPage({
         },
       );
 
-  // El chart NO sigue al selector de período: grafica siempre los últimos 30
-  // días contra los 30 previos. Con "esta semana" un martes la tendencia son
-  // dos puntos, y con "este mes" un día 3 son tres — en los dos casos el
-  // gráfico no muestra ninguna tendencia justo cuando se lo mira. La ventana
-  // móvil tiene la misma cantidad de puntos todos los días y se compara
-  // siempre contra un tramo del mismo largo. El selector sigue gobernando los
-  // KPIs, que sí tienen sentido "a la fecha".
-  const rangoChart = resolverRangoRolling(DIAS_CHART, hoy);
-  const serieChart = agregarMediaMovil(
-    construirSerie(ventasOperativas, rangoChart, "dia", hoy),
-  );
-  const etiquetaChart = `últimos ${DIAS_CHART} días`;
+  // El gráfico SIGUE al selector desde el 13/10/2026 (pedido de Nacho): los
+  // mismos dos rangos que las tarjetas, partidos en tramos (hora, día o
+  // semana según el período). Antes era una ventana fija de 28 días porque
+  // el selector usaba períodos de calendario ("esta semana" un martes = dos
+  // puntos); hoy son ventanas móviles y cada período tiene siempre la misma
+  // cantidad de barras. Ver `construirSerieComparada`.
+  const serieChart = construirSerieComparada(ventasOperativas, periodo, hoy);
   // Con "hoy" la referencia es el día de la semana que sea hoy: "vs. martes
   // promedio". El nombre sale de la fecha, no de una tabla de strings.
   const nombreDelDia = new Intl.DateTimeFormat("es-AR", {
@@ -523,60 +543,45 @@ export default async function DashboardPage({
     };
   });
 
+  const primerNombre =
+    (perfilResponse?.data?.nombre as string | undefined)?.trim().split(/\s+/)[0] ?? null;
+
   return (
     // Acá había un <style> inyectado que pintaba la barra de scroll de gris
     // fijo con !important. Eso vivía en una página pero se aplicaba a toda la
     // app, y al ser un color fijo ignoraba el tema: en modo oscuro quedaba la
     // misma franja gris clara. Ahora sale de tokens en globals.css.
-    <div className="flex flex-col gap-3 px-2 py-2">
-      {/* HEADER — título + selector de período, nada más. Las acciones se
-            fueron a donde vive cada una: vender y crear producto ya están en
-            el menú y en la toolbar de /stock, y el gasto pasó al modal de
-            caja del navbar (es plata que sale del cajón). */}
-      <div className="flex items-center justify-between gap-3 pb-3 border-b border-border">
+    <div className="flex flex-col gap-3 px-2 py-3 sm:px-3">
+      {/* HEADER — saludo + fecha, y a la derecha el período. Vender, en
+            compu, ya está siempre a la vista en el sidebar; en celular va en
+            los botones de abajo. */}
+      <div className="flex flex-wrap items-end justify-between gap-3 pb-1">
         <div className="min-w-0">
-          <h1 className="text-sm font-medium text-foreground">
-            {TITULO_PERIODO[periodo]}
+          <h1 className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+            {primerNombre ? `Hola, ${primerNombre}` : "Hola"}
           </h1>
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">
+          <p className="mt-0.5 truncate text-sm text-muted-foreground first-letter:uppercase">
             {new Intl.DateTimeFormat("es-AR", {
               weekday: "long",
               day: "numeric",
               month: "long",
-              year: "numeric",
             }).format(hoy)}
           </p>
         </div>
-        <PeriodoSelector
-          periodo={periodo}
-          opciones={OPCIONES_PANEL}
-          ariaLabel="Período del panel"
-        />
+        <div className="flex items-center gap-2">
+          <PeriodoSelector
+            periodo={periodo}
+            opciones={OPCIONES_PANEL}
+            ariaLabel="Período del panel"
+          />
+        </div>
       </div>
 
       {/* GUÍA DE INICIO — arriba de todo mientras falte algo para vender, y
             se va sola cuando está completa (el estado es derivado, no un flag).
             Solo ADMIN: la RPC devuelve null para el resto. */}
-      {estadoActivacion && <ChecklistActivacion estado={estadoActivacion} />}
-
-      {/* PLATA — la primera pregunta del día. Fija, no sigue al período: es
-            la plata de AHORA. Sin permiso para verla no se dibuja. */}
-      {posicionDinero.data && (
-        <PlataHoy
-          efectivo={Number(posicionDinero.data.efectivo.total) || 0}
-          cajasAbiertas={posicionDinero.data.efectivo.cajas.length}
-          porAcreditar={
-            Number(
-              posicionDinero.data.por_acreditar_real?.saldo ??
-                posicionDinero.data.por_acreditar.reduce(
-                  (total, c) => total + Number(c.neto),
-                  0,
-                ),
-            ) || 0
-          }
-          deudaVencida={deudaVencida}
-        />
-      )}
+      {/* Salteado: el panel de siempre, sin la guía encima. */}
+      {estadoActivacion && !tutorialSalteado && <ChecklistActivacion estado={estadoActivacion} />}
 
       {/* ACCIONES — solo mobile: en desktop el POS está siempre a la vista en
             el sidebar, acá el menú está detrás de la hamburguesa y vender
@@ -597,24 +602,19 @@ export default async function DashboardPage({
         <ComplementosCatalogoSeccion compacto />
       </Suspense>
 
-      {/* BENTO — dos columnas que se estiran a la misma altura:
-            izquierda 40% (KPIs + Insights), derecha 60% (tendencia arriba,
-            operación abajo). En mobile cae todo a una sola columna en este
-            mismo orden. */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 items-stretch">
-        {/* COLUMNA IZQUIERDA — el "qué pasó" en números y el "qué hacer" */}
-        {/* 40% KPIs / 60% Insights, en filas fr y no en flex-1: el reparto
-              tiene que ser una PROPORCIÓN, no el resto de lo que ocupe el
-              contenido del otro. Atado al contenido, agregar un insight o
-              acortar una KPI mueve el equilibrio solo. En mobile las filas
-              vuelven a ser auto y cada card mide lo suyo. */}
-        <div className="lg:col-span-2 grid grid-rows-[auto_auto] lg:grid-rows-[2fr_3fr] gap-3">
-          <div className="grid grid-cols-2 gap-2 min-h-0">
+      {/* DOS COLUMNAS — contenido (números, ventas por día, stock y lo que
+            rinde) y un aside con qué se vende (categorías) y qué atender
+            (Comerz Intelligence). En celular se apilan: primero el contenido. */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-3 lg:col-span-2">
+          {/* NÚMEROS — cuatro tarjetas: título, ícono de contorno, número
+              grande y la variación como texto. */}
+          <KpiFranja>
             <KpiMiniCard
-              label="Ingresos"
+              label="Vendiste"
+              icono={DollarSign}
               value={formatearMoneda(metricasActuales.ingresos)}
-              sublabel={`${ETIQUETA_PERIODO[periodo]} · ${tituloComparacion}`}
-              rightSlot={
+              pie={
                 <GrowthBadge
                   value={crecimientoIngresos}
                   titulo={tituloComparacion}
@@ -623,17 +623,13 @@ export default async function DashboardPage({
               }
             />
             <KpiMiniCard
-              label="Unidades"
-              value={String(metricasActuales.unidadesVendidas)}
-              sublabel={[
-                etiquetaFraccionado(metricasActuales.fraccionadoVendido),
-                `vendidas · ${tituloComparacion}`,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-              rightSlot={
+              label="Ganancia"
+              detalle={`${metricasActuales.margenPorcentaje.toFixed(0)}% de margen`}
+              icono={TrendingUp}
+              value={formatearMoneda(metricasActuales.gananciaBrutaVentas)}
+              pie={
                 <GrowthBadge
-                  value={crecimientoUnidades}
+                  value={crecimientoGanancia}
                   titulo={tituloComparacion}
                   motivoSinDato={motivoSinComparacion}
                 />
@@ -641,9 +637,10 @@ export default async function DashboardPage({
             />
             <KpiMiniCard
               label="Ticket promedio"
+              detalle={`${metricasActuales.ordenes} ventas`}
+              icono={Receipt}
               value={formatearMoneda(metricasActuales.ticketPromedio)}
-              sublabel={`${metricasActuales.ordenes} tickets`}
-              rightSlot={
+              pie={
                 <GrowthBadge
                   value={crecimientoTicket}
                   titulo={tituloComparacion}
@@ -653,47 +650,31 @@ export default async function DashboardPage({
               }
             />
             <KpiMiniCard
-              label="Ganancia bruta"
-              value={formatearMoneda(metricasActuales.gananciaBrutaVentas)}
-              sublabel={`Margen ${metricasActuales.margenPorcentaje.toFixed(1)}%`}
-              rightSlot={
+              label="Unidades vendidas"
+              icono={Package}
+              value={String(metricasActuales.unidadesVendidas)}
+              pie={
                 <GrowthBadge
-                  value={crecimientoGanancia}
+                  value={crecimientoUnidades}
                   titulo={tituloComparacion}
                   motivoSinDato={motivoSinComparacion}
                 />
               }
             />
-          </div>
+          </KpiFranja>
 
-          {/* min-h-0 para que la fila `3fr` pueda achicarse por debajo de su
-                contenido: sin eso el mínimo automático del grid la infla y la
-                proporción no se respeta. La lista scrollea adentro. */}
-          <div className="min-h-0">
-            <AdvisorMiniList insights={insights} />
-          </div>
-        </div>
+          <VentasPeriodoChart
+            serie={serieChart}
+            etiquetaTramo={ETIQUETA_TRAMO[periodo]}
+            // "Año" grafica 12 meses enteros, no los 364 días de las tarjetas
+            // (ver `resolverRangosChart`).
+            etiquetaPeriodo={periodo === "anio" ? "últimos 12 meses" : ETIQUETA_PERIODO[periodo]}
+            etiquetaAnterior={periodo === "hoy" ? `${nombreDelDia} pasado` : ETIQUETA_PERIODO_ANTERIOR[periodo]}
+          />
 
-        {/* COLUMNA DERECHA — tendencia arriba, operación del día abajo */}
-        <div className="lg:col-span-3 flex flex-col gap-3">
-          {/* El chart absorbe el sobrante de la columna y el gráfico crece
-                con él (el área de dibujo es flex-1 adentro de la card). Sin
-                este wrapper la card llevaba `h-full` = 100% de la columna
-                ENTERA, así que pedía el alto del chart + el de la fila de
-                abajo: el navegador encogía a las dos y el chart quedaba con
-                un bloque en blanco debajo de las fechas. */}
-          <div className="flex-1 min-h-0">
-            <IngresosAreaChart
-              serie={serieChart}
-              etiquetaPeriodo={etiquetaChart}
-            />
-          </div>
-
-          {/* 40 / 60: lo que hay que mirar (stock, reservas) es una lista
-                corta de nombres; lo que rinde son dos rankings en paralelo y
-                necesita el doble de ancho. */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 shrink-0 lg:h-[300px]">
-            <div className="lg:col-span-2 min-w-0 min-h-[280px] lg:min-h-0">
+          {/* Stock que pide algo y lo que más rinde / últimas ventas. */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:h-[300px]">
+            <div className="min-h-[280px] min-w-0 md:min-h-0">
               <AtencionRequeridaCard
                 quiebres={quiebres}
                 ventanaQuiebreDias={VENTANA_ROTACION_DIAS}
@@ -705,8 +686,7 @@ export default async function DashboardPage({
                 )}
               />
             </div>
-
-            <div className="lg:col-span-3 min-w-0 min-h-[280px] lg:min-h-0">
+            <div className="min-h-[280px] min-w-0 md:min-h-0">
               <RendimientoCard
                 topProductos={metricasRanking.topProductos}
                 topProductosRentables={metricasRanking.topProductosRentables}
@@ -717,6 +697,16 @@ export default async function DashboardPage({
             </div>
           </div>
         </div>
+
+        <aside className="flex min-w-0 flex-col gap-3">
+          <VentasPorCategoria
+            categorias={metricasActuales.ventasPorCategoria}
+            etiquetaPeriodo={ETIQUETA_PERIODO[periodo]}
+          />
+          <div className="min-w-0 flex-1">
+            <AdvisorMiniList insights={insights} />
+          </div>
+        </aside>
       </div>
     </div>
   );

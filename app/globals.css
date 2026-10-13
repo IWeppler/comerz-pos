@@ -167,6 +167,14 @@
   --chart-3: #c781cb; /* Rosa/Magenta: Reemplaza al violeta oscuro, no compite con tu botón */
   --chart-4: #6cc581; /* Esmeralda/Menta: Mucho más limpio y legible que el verde musgo */
   --chart-5: #e6ac3d;
+  /* Paleta categórica del panel (donut por categoría). Validada con el
+     script del skill dataviz: separación para daltonismo y piso de visión
+     normal entre vecinos. Azul Comerz y naranja del logo primero. */
+  --viz-1: #3363d2;
+  --viz-2: #ff7a1f;
+  --viz-3: #1baf7a;
+  --viz-4: #eda100;
+  --viz-5: #e87ba4;
 
   /* Status (claro). Medidos el 6/10/2026 contra blanco: los anteriores eran
      colores de ÍCONO usados como texto (verde #4ac06c 2,33:1, amarillo
@@ -260,6 +268,14 @@
   --chart-3: #c781cb; /* Rosa/Magenta: Reemplaza al violeta oscuro, no compite con tu botón */
   --chart-4: #6cc581; /* Esmeralda/Menta: Mucho más limpio y legible que el verde musgo */
   --chart-5: #e6ac3d;
+  /* Paleta categórica del panel (donut por categoría). Validada con el
+     script del skill dataviz: separación para daltonismo y piso de visión
+     normal entre vecinos. Azul Comerz y naranja del logo primero. */
+  --viz-1: #4a78e8;
+  --viz-2: #e8661a;
+  --viz-3: #199e70;
+  --viz-4: #c98500;
+  --viz-5: #d55181;
 
   /* Status (oscuro): los colores claros de siempre, que sobre el fondo
      oscuro sí pasan (success 8,1:1, warning 10,5:1, danger 5,5:1, info

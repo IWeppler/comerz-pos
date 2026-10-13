@@ -271,8 +271,3 @@ export function crecimientoDeMedia(
 
   return calcularCrecimiento(actual.media, anterior.media);
 }
-
-/** Días que grafica el chart del panel. Es una ventana MÓVIL fija y no la del
- * selector: la tendencia se lee igual cualquier día, y con 28 (4 semanas
- * exactas) la ventana tiene la misma cantidad de cada día de la semana. */
-export const DIAS_CHART = 28;

@@ -35,7 +35,7 @@ export function RendimientoCard({
   cantidadVentasHoy = ultimasVentas.length,
 }: Readonly<RendimientoCardProps>) {
   return (
-    <div className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-full">
+    <div className="bg-card border border-border rounded-2xl flex flex-col overflow-hidden h-full">
       <Tabs defaultValue="top" className="flex flex-col h-full gap-0">
         <div className="px-3 pt-3 shrink-0">
           <TabsList className="w-full">
@@ -57,7 +57,7 @@ export function RendimientoCard({
           value="top"
           className="flex-1 overflow-y-auto p-3 pt-2 mt-0"
         >
-          <div className="grid grid-cols-2 gap-3 h-full">
+          <div className="grid grid-cols-1 gap-4">
             <div>
               <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1.5">
                 <Flame className="w-3 h-3" /> Más vendidos · {etiquetaRanking}

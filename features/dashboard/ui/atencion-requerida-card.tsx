@@ -126,7 +126,7 @@ export function AtencionRequeridaCard({
   // Sin la pestaña de reservas no hay pestañas: una sola no es un control.
   if (!mostrarReservas) {
     return (
-      <div className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-full">
+      <div className="bg-card border border-border rounded-2xl flex flex-col overflow-hidden h-full">
         <div className="flex items-center gap-1.5 px-4 pt-3.5 pb-1 shrink-0 text-sm font-semibold text-foreground">
           <Package className="w-3.5 h-3.5" /> Stock crítico
         </div>
@@ -136,7 +136,7 @@ export function AtencionRequeridaCard({
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-full">
+    <div className="bg-card border border-border rounded-2xl flex flex-col overflow-hidden h-full">
       <Tabs defaultValue="stock" className="flex flex-col h-full gap-0">
         <div className="px-3 pt-3 shrink-0">
           <TabsList className="w-full">

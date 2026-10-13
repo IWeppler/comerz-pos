@@ -5,6 +5,10 @@ import {
   nuevoAcumuladorUnidades,
 } from "./unidades-vendidas";
 import { formatearCantidad } from "@/shared/lib/unidad-venta";
+import {
+  resolverCategoriaDisplayLabel,
+  type CategoriaBase,
+} from "@/shared/utils/category-tree";
 import { EgresoCaja } from "@/entities/caja/types";
 import {
   Venta,
@@ -78,6 +82,13 @@ export function getDashboardMetrics(
    * pero no en el dashboard, y la ganancia neta quedaba sobreestimada.
    */
   pagosCuentaCorriente: VentaPago[] = [],
+  /**
+   * El árbol de categorías, para agrupar ventas y rentabilidad por categoría
+   * REAL y nombrarlas con su padre ("Mujer › Remeras"). Sin él se agrupa por
+   * el nombre suelto, y dos subcategorías que se llaman igual bajo padres
+   * distintos (Remeras de Hombre y de Mujer) se sumaban en una sola.
+   */
+  categorias: CategoriaBase[] = [],
 ) {
   const now = new Date();
   let startDate = new Date(0);
@@ -398,6 +409,10 @@ export function getDashboardMetrics(
       acumularUnidad(unidades, cantidadItem, unidadMedidaItem);
 
       const cat =
+        resolverCategoriaDisplayLabel(
+          categorias,
+          prodCat?.categoria_id ?? prodCat?.categoria?.id,
+        ) ||
         prodCat?.categoria?.nombre ||
         prodDataGuardado?.categoria?.nombre ||
         prodCat?.tipo ||

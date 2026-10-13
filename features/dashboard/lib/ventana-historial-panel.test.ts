@@ -5,11 +5,11 @@ import {
   resolverDesdeHistorialPanel,
 } from "./ventana-historial-panel";
 import {
-  DIAS_CHART,
   resolverRangoAnterior,
   resolverRangoRolling,
 } from "@/shared/lib/periodo-ranges";
 import { SEMANAS_DIA_TIPICO, compararConDiaTipico } from "./dia-tipico";
+import { resolverRangosChart } from "./build-chart-series";
 import { VENTANA_ROTACION_DIAS } from "./detectar-quiebres";
 import { DIAS_SIN_MOVIMIENTO } from "@/features/reports/actions/get-advisor-insights";
 import type { Venta } from "@/entities/ventas/types";
@@ -44,6 +44,20 @@ describe("resolverDesdeHistorialPanel", () => {
     }
   });
 
+  it("cubre el período anterior del gráfico, aunque con 'Año' caiga antes que el de las tarjetas", () => {
+    // Fin de mes: el día 1 de hace 23 meses (1/9/2024) es anterior a hoy − 727 (4/9/2024).
+    const finDeMes = new Date(2026, 7, 31, 12, 0, 0);
+    for (const ahora of [MIERCOLES, finDeMes]) {
+      for (const periodo of ["hoy", "semana", "mes", "trimestre", "anio"] as const) {
+        const desde = resolverDesdeHistorialPanel(periodo, ahora);
+        expect(desde.getTime()).toBeLessThanOrEqual(
+          resolverRangosChart(periodo, ahora).anterior.inicio.getTime(),
+        );
+      }
+    }
+    expect(resolverDesdeHistorialPanel("anio", finDeMes)).toEqual(new Date(2024, 8, 1));
+  });
+
   it("con 'Año' es el período anterior el que manda: dos años hacia atrás", () => {
     const desde = resolverDesdeHistorialPanel("anio", MIERCOLES);
     const anterior = resolverRangoAnterior("anio", MIERCOLES);
@@ -64,7 +78,6 @@ describe("resolverDesdeHistorialPanel", () => {
 
 describe("DIAS_MINIMOS_HISTORIAL_PANEL cubre a cada consumidor", () => {
   it("es el mayor de todas las ventanas que el panel mira", () => {
-    expect(DIAS_MINIMOS_HISTORIAL_PANEL).toBeGreaterThanOrEqual(DIAS_CHART);
     expect(DIAS_MINIMOS_HISTORIAL_PANEL).toBeGreaterThanOrEqual(DIAS_INSIGHTS);
     expect(DIAS_MINIMOS_HISTORIAL_PANEL).toBeGreaterThanOrEqual(
       VENTANA_ROTACION_DIAS,

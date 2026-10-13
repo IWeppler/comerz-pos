@@ -1,9 +1,18 @@
 import { Venta } from "@/entities/ventas/types";
-import type { RangoFechas } from "@/shared/lib/periodo-ranges";
+import {
+  resolverRangoActual,
+  resolverRangoAnterior,
+  type PeriodoPanel,
+  type RangoFechas,
+} from "@/shared/lib/periodo-ranges";
 
-export type Granularidad = "hora" | "dia" | "mes";
-
-export type MetricaSerie = "ingresos" | "unidades" | "ganancia";
+/**
+ * "semana" son bloques de 7 días contados desde el INICIO del rango, no
+ * semanas de calendario: los rangos del panel son ventanas móviles que
+ * arrancan cualquier día, y así cada barra tiene siete días enteros y cae en
+ * los mismos días de la semana que su par del período anterior.
+ */
+export type Granularidad = "hora" | "dia" | "semana" | "mes";
 
 export type PuntoSerie = {
   /** Etiqueta corta del eje X. */
@@ -13,223 +22,141 @@ export type PuntoSerie = {
   ingresos: number;
   unidades: number;
   ganancia: number;
+  /** Ventas (tickets) del tramo. */
+  tickets: number;
 };
 
-/** Punto del chart del panel: el día, más su media móvil y si es el día en
- * curso. Las medias son null donde no se pueden calcular honestamente (ver
- * `agregarMediaMovil`). */
-export type PuntoSerieChart = PuntoSerie & {
-  /** El último día de la ventana, que todavía no terminó. */
-  esHoy: boolean;
-  ingresosMedia: number | null;
-  unidadesMedia: number | null;
-  gananciaMedia: number | null;
+/** Punto del gráfico del panel: el tramo actual y su par del período anterior. */
+export type PuntoComparado = PuntoSerie & {
+  /** Facturación del mismo tramo en el período anterior. null = no hay
+   * período anterior con ventas para comparar (comercio nuevo). */
+  ingresosAnterior: number | null;
+  /** El último tramo, que todavía no terminó. */
+  enCurso: boolean;
 };
-
-/** Días de la media móvil. 7 y no otro número: alisa exactamente un ciclo
- * semanal completo, que es el que domina estos negocios (sábado 17,67 ventas
- * por día contra 3,75 el lunes, medido en Evens sobre 60 días). */
-export const VENTANA_MEDIA_MOVIL = 7;
 
 /**
- * Agrega la media móvil de `ventana` días a una serie diaria.
- *
- * Dos huecos deliberados, los dos por el mismo motivo — una media sobre una
- * ventana incompleta no es una media más baja, es un número que no
- * corresponde, y dibujado se lee como una caída del negocio:
- *
- * 1. Los primeros `ventana - 1` puntos no tienen 7 días atrás. La línea
- *    arranca en el día 7 y las barras ocupan la ventana entera; el hueco
- *    inicial es honesto y no se lee mal.
- * 2. El ÚLTIMO punto es el día en curso, que tiene horas de menos. Incluirlo
- *    haría caer la línea todas las mañanas. La media termina ayer, que es el
- *    último día completo, y hoy queda solo como barra (marcada aparte).
+ * Cómo se parte cada período del selector. La idea es que siempre haya entre
+ * 7 y 52 barras: menos no muestra forma, más no se lee en un celular.
+ *   Hoy ........ por hora
+ *   Semana ..... por día (7)
+ *   Mes ........ por día (28)
+ *   Trimestre .. por semana (13)
+ *   Año ........ por mes (12): ver `resolverRangosChart`.
  */
-export function agregarMediaMovil(
-  serie: PuntoSerie[],
-  ventana: number = VENTANA_MEDIA_MOVIL,
-): PuntoSerieChart[] {
-  const ultimo = serie.length - 1;
+export const GRANULARIDAD_POR_PERIODO: Record<PeriodoPanel, Granularidad> = {
+  hoy: "hora",
+  semana: "dia",
+  mes: "dia",
+  trimestre: "semana",
+  anio: "mes",
+};
 
-  return serie.map((punto, i) => {
-    const esHoy = i === ultimo;
-    const hayVentanaCompleta = i >= ventana - 1 && !esHoy;
+/** Meses que grafica "Año": el actual (en curso) y los 11 anteriores, enteros. */
+export const MESES_CHART_ANIO = 12;
 
-    if (!hayVentanaCompleta) {
-      return {
-        ...punto,
-        esHoy,
-        ingresosMedia: null,
-        unidadesMedia: null,
-        gananciaMedia: null,
-      };
-    }
-
-    const tramo = serie.slice(i - ventana + 1, i + 1);
-    const promedio = (clave: "ingresos" | "unidades" | "ganancia") =>
-      tramo.reduce((acc, p) => acc + p[clave], 0) / ventana;
-
-    return {
-      ...punto,
-      esHoy,
-      ingresosMedia: promedio("ingresos"),
-      unidadesMedia: promedio("unidades"),
-      gananciaMedia: promedio("ganancia"),
-    };
-  });
+/**
+ * Los dos rangos del gráfico. Son los de las tarjetas
+ * (`resolverRangoActual` / `resolverRangoAnterior`), salvo "Año": las
+ * tarjetas miran 364 días móviles, que empiezan a mitad de un mes, y partido
+ * en meses eso dejaba un primer mes cortado que se leía como un mes malo. El
+ * gráfico de "Año" son 12 meses de calendario enteros (del día 1 de hace 11
+ * meses a hoy) contra los mismos 12 meses del año anterior. Por eso con "Año"
+ * la suma de las barras puede diferir unos días de "Vendiste".
+ *
+ * `ventana-historial-panel.ts` cubre el anterior de este rango: si se cambia
+ * acá, el test de allá lo verifica.
+ */
+export function resolverRangosChart(
+  periodo: PeriodoPanel,
+  ahora: Date,
+): { actual: RangoFechas; anterior: RangoFechas } {
+  if (periodo !== "anio") {
+    return { actual: resolverRangoActual(periodo, ahora), anterior: resolverRangoAnterior(periodo, ahora) };
+  }
+  const [y, m] = [ahora.getFullYear(), ahora.getMonth()];
+  const fin = new Date(y, m, ahora.getDate(), 23, 59, 59, 999);
+  return {
+    actual: { inicio: new Date(y, m - (MESES_CHART_ANIO - 1), 1), fin },
+    anterior: {
+      inicio: new Date(y - 1, m - (MESES_CHART_ANIO - 1), 1),
+      // Hasta el último día del mismo mes del año pasado (el mes entero).
+      fin: new Date(y - 1, m + 1, 0, 23, 59, 59, 999),
+    },
+  };
 }
 
-type Acumulador = { ingresos: number; unidades: number; ganancia: number };
-
-function truncarABucket(fecha: Date, gran: Granularidad): Date {
-  if (gran === "hora") {
-    return new Date(
-      fecha.getFullYear(),
-      fecha.getMonth(),
-      fecha.getDate(),
-      fecha.getHours(),
-    );
-  }
-  if (gran === "mes") return new Date(fecha.getFullYear(), fecha.getMonth(), 1);
+function inicioDelDia(fecha: Date): Date {
   return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
 }
 
-function siguienteBucket(fecha: Date, gran: Granularidad): Date {
+function primerBucket(inicio: Date, gran: Granularidad): Date {
   if (gran === "hora") {
-    return new Date(
-      fecha.getFullYear(),
-      fecha.getMonth(),
-      fecha.getDate(),
-      fecha.getHours() + 1,
-    );
+    return new Date(inicio.getFullYear(), inicio.getMonth(), inicio.getDate(), inicio.getHours());
   }
-  if (gran === "mes") {
-    return new Date(fecha.getFullYear(), fecha.getMonth() + 1, 1);
-  }
-  // Construido por componentes (no sumando 24h) para no romperse con DST.
-  return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + 1);
+  if (gran === "mes") return new Date(inicio.getFullYear(), inicio.getMonth(), 1);
+  return inicioDelDia(inicio);
 }
 
-function claveBucket(fecha: Date, gran: Granularidad): string {
-  const y = fecha.getFullYear();
-  const m = (fecha.getMonth() + 1).toString().padStart(2, "0");
-  if (gran === "mes") return `${y}-${m}`;
-  const d = fecha.getDate().toString().padStart(2, "0");
-  if (gran === "dia") return `${y}-${m}-${d}`;
-  const h = fecha.getHours().toString().padStart(2, "0");
-  return `${y}-${m}-${d}T${h}`;
+// Construido por componentes (no sumando milisegundos) para no romperse con DST.
+function siguienteBucket(fecha: Date, gran: Granularidad): Date {
+  const [y, m, d, h] = [fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), fecha.getHours()];
+  if (gran === "hora") return new Date(y, m, d, h + 1);
+  if (gran === "semana") return new Date(y, m, d + 7);
+  if (gran === "mes") return new Date(y, m + 1, 1);
+  return new Date(y, m, d + 1);
 }
 
-const MESES_CORTOS = [
-  "ene",
-  "feb",
-  "mar",
-  "abr",
-  "may",
-  "jun",
-  "jul",
-  "ago",
-  "sep",
-  "oct",
-  "nov",
-  "dic",
-];
+const MESES_CORTOS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+const dosDigitos = (n: number) => n.toString().padStart(2, "0");
+const diaMes = (f: Date) => `${dosDigitos(f.getDate())}/${dosDigitos(f.getMonth() + 1)}`;
 
 function etiquetaCorta(fecha: Date, gran: Granularidad): string {
-  if (gran === "hora") return `${fecha.getHours().toString().padStart(2, "0")}h`;
+  if (gran === "hora") return `${dosDigitos(fecha.getHours())}h`;
   if (gran === "mes") return MESES_CORTOS[fecha.getMonth()];
-  return `${fecha.getDate().toString().padStart(2, "0")}/${(fecha.getMonth() + 1)
-    .toString()
-    .padStart(2, "0")}`;
+  return diaMes(fecha);
 }
 
 function etiquetaLarga(fecha: Date, gran: Granularidad): string {
-  const dm = `${fecha.getDate().toString().padStart(2, "0")}/${(
-    fecha.getMonth() + 1
-  )
-    .toString()
-    .padStart(2, "0")}`;
-  if (gran === "hora") {
-    return `${dm} ${fecha.getHours().toString().padStart(2, "0")}:00`;
+  if (gran === "hora") return `${diaMes(fecha)} ${dosDigitos(fecha.getHours())}:00`;
+  if (gran === "mes") return `${MESES_CORTOS[fecha.getMonth()]} ${fecha.getFullYear()}`;
+  if (gran === "semana") {
+    const ultimo = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + 6);
+    return `Semana del ${diaMes(fecha)} al ${diaMes(ultimo)}`;
   }
-  if (gran === "mes") {
-    return `${MESES_CORTOS[fecha.getMonth()]} ${fecha.getFullYear()}`;
-  }
-  return `${dm}/${fecha.getFullYear()}`;
+  return `${diaMes(fecha)}/${fecha.getFullYear()}`;
 }
 
-/**
- * Buckets que cubren el rango, alineados a la granularidad. El primero se
- * trunca hacia atrás (un rango que arranca el lunes 00:00 con granularidad
- * "mes" empieza en el día 1 del mes) y el último es el que contiene a `fin`.
- */
+/** Comienzos de los tramos que cubren el rango; el último es el que contiene a `fin`. */
 function generarBuckets(rango: RangoFechas, gran: Granularidad): Date[] {
   const buckets: Date[] = [];
-  let cursor = truncarABucket(rango.inicio, gran);
   const finMs = rango.fin.getTime();
-
-  while (cursor.getTime() <= finMs) {
+  for (let cursor = primerBucket(rango.inicio, gran); cursor.getTime() <= finMs; cursor = siguienteBucket(cursor, gran)) {
     buckets.push(cursor);
-    cursor = siguienteBucket(cursor, gran);
   }
   return buckets;
 }
 
-/**
- * Acumula ventas por bucket dentro de un rango. Las ventas fuera del rango se
- * descartan aunque caigan en un bucket que el rango toca parcialmente (un
- * rango que arranca a mitad de mes con granularidad "mes" no se lleva las
- * ventas de la primera quincena).
- */
-function acumularPorBucket(
-  ventasOperativas: Venta[],
-  rango: RangoFechas,
-  gran: Granularidad,
-): { buckets: Date[]; valores: Acumulador[] } {
-  const buckets = generarBuckets(rango, gran);
-  const indicePorClave = new Map<string, number>();
-  buckets.forEach((b, i) => indicePorClave.set(claveBucket(b, gran), i));
-
-  const valores: Acumulador[] = buckets.map(() => ({
-    ingresos: 0,
-    unidades: 0,
-    ganancia: 0,
-  }));
-
-  const inicioMs = rango.inicio.getTime();
-  const finMs = rango.fin.getTime();
-
-  for (const v of ventasOperativas) {
-    const f = new Date(v.fecha_venta);
-    const ms = f.getTime();
-    if (ms < inicioMs || ms > finMs) continue;
-
-    const i = indicePorClave.get(claveBucket(f, gran));
-    if (i === undefined) continue;
-
-    const total = Number(v.total || 0);
-    const costo = Number(v.precio_costo || 0);
-
-    valores[i].ingresos += total;
-    valores[i].ganancia += total - costo;
-    valores[i].unidades += Number(v.cantidad || 0);
+/** El último tramo que empieza en o antes de `ms` (búsqueda binaria). */
+function indiceDeBucket(inicios: number[], ms: number): number {
+  let lo = 0;
+  let hi = inicios.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (inicios[mid] <= ms) lo = mid;
+    else hi = mid - 1;
   }
-
-  return { buckets, valores };
+  return lo;
 }
 
 /**
- * Serie del chart del panel: un punto por bucket del rango que le pasen (hoy,
- * la ventana móvil de 4 semanas).
+ * Serie de un rango: un punto por tramo. Las ventas fuera del rango se
+ * descartan aunque caigan en un tramo que el rango toca parcialmente.
  *
- * El eje X va recortado en `ahora`: el rango llega hasta el fin del día, pero
- * graficar las horas que todavía no pasaron dibujaría una caída a cero que se
- * lee como si hubiera dejado de vender.
- *
- * Acá vivía también la serie del período anterior, que el chart dibujaba como
- * línea punteada. Se sacó junto con el dibujo: comparar día contra día con ~8
- * ventas diarias es ruido contra ruido, y el veredicto contra el período
- * anterior ya lo dan los badges de las KPIs con el número exacto.
+ * El eje X va recortado en `ahora`: graficar las horas o días que todavía no
+ * pasaron dibujaría una caída a cero que se lee como si hubiera dejado de
+ * vender.
  */
 export function construirSerie(
   ventasOperativas: Venta[],
@@ -237,21 +164,60 @@ export function construirSerie(
   gran: Granularidad,
   ahora: Date,
 ): PuntoSerie[] {
-  const rangoHastaAhora: RangoFechas = {
-    inicio: rango.inicio,
-    fin: new Date(Math.min(rango.fin.getTime(), ahora.getTime())),
-  };
-  const { buckets, valores } = acumularPorBucket(
-    ventasOperativas,
-    rangoHastaAhora,
-    gran,
-  );
+  const fin = new Date(Math.min(rango.fin.getTime(), ahora.getTime()));
+  const buckets = generarBuckets({ inicio: rango.inicio, fin }, gran);
+  const inicios = buckets.map((b) => b.getTime());
+  const puntos: PuntoSerie[] = buckets.map((b) => ({
+    etiqueta: etiquetaCorta(b, gran),
+    etiquetaCompleta: etiquetaLarga(b, gran),
+    ingresos: 0,
+    unidades: 0,
+    ganancia: 0,
+    tickets: 0,
+  }));
+  if (puntos.length === 0) return puntos;
 
-  return buckets.map((bucket, i) => ({
-    etiqueta: etiquetaCorta(bucket, gran),
-    etiquetaCompleta: etiquetaLarga(bucket, gran),
-    ingresos: valores[i].ingresos,
-    unidades: valores[i].unidades,
-    ganancia: valores[i].ganancia,
+  const inicioMs = rango.inicio.getTime();
+  const finMs = fin.getTime();
+  for (const v of ventasOperativas) {
+    const ms = new Date(v.fecha_venta).getTime();
+    if (ms < inicioMs || ms > finMs) continue;
+    const p = puntos[indiceDeBucket(inicios, ms)];
+    const total = Number(v.total || 0);
+    p.ingresos += total;
+    p.ganancia += total - Number(v.precio_costo || 0);
+    p.unidades += Number(v.cantidad || 0);
+    p.tickets += 1;
+  }
+  return puntos;
+}
+
+/**
+ * La serie del gráfico del panel: el período del selector partido en tramos
+ * (ver GRANULARIDAD_POR_PERIODO) y, por cada tramo, la facturación del mismo
+ * tramo en el período anterior. Los rangos salen de `resolverRangosChart`
+ * (los de las tarjetas, salvo "Año").
+ *
+ * Se aparean por posición: el anterior está corrido un múltiplo de 7 días (o
+ * un año, con "Año"), así que cada par cae en el mismo día de la semana o en
+ * el mismo mes.
+ */
+export function construirSerieComparada(
+  ventasOperativas: Venta[],
+  periodo: PeriodoPanel,
+  ahora: Date,
+): PuntoComparado[] {
+  const gran = GRANULARIDAD_POR_PERIODO[periodo];
+  const rangos = resolverRangosChart(periodo, ahora);
+  const actual = construirSerie(ventasOperativas, rangos.actual, gran, ahora);
+  // El anterior ya terminó: se arma entero (sin recorte en "ahora").
+  const rangoAnterior = rangos.anterior;
+  const anterior = construirSerie(ventasOperativas, rangoAnterior, gran, rangoAnterior.fin);
+  const hayAnterior = anterior.some((p) => p.tickets > 0);
+
+  return actual.map((p, i) => ({
+    ...p,
+    ingresosAnterior: hayAnterior ? (anterior[i]?.ingresos ?? null) : null,
+    enCurso: i === actual.length - 1,
   }));
 }

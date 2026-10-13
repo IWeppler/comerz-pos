@@ -1,55 +1,44 @@
-import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 
 interface GrowthBadgeProps {
   /** null = no hay variación mostrable (ver `etiquetaSinValor`). */
   value: number | null;
-  /** "vs. mes anterior" — se muestra como title, para que el % se entienda
-   * contra qué se mide sin agrandar la card. */
+  /** "vs. mes anterior": se muestra al lado, en gris. */
   titulo?: string;
   /** Por qué no hay comparación, cuando `value` es null. */
   motivoSinDato?: string;
-  /** Qué se muestra cuando no hay valor. "s/d" es "no hay período anterior";
-   * "≈" es "no hay cambio distinguible del ruido", que es información y no
-   * ausencia de dato — por eso se distinguen. */
+  /** "s/d" = no hay período anterior; "≈" = sin cambio distinguible del ruido. */
   etiquetaSinValor?: string;
 }
 
+/**
+ * La variación de un número, como TEXTO y no como pastilla: flecha + % en
+ * verde o rojo, y contra qué se compara en gris. El color es lo único que
+ * marca la dirección; sin fondo, no compite con el número de arriba.
+ */
 export function GrowthBadge({
   value,
   titulo,
   motivoSinDato = "Sin datos en el período anterior",
   etiquetaSinValor = "s/d",
 }: Readonly<GrowthBadgeProps>) {
-  // Sin período anterior no se inventa un +0% verde (se leería como "igual
-  // que antes" cuando en realidad no hay con qué comparar).
   if (value === null) {
     return (
-      <span
-        title={motivoSinDato}
-        className="inline-flex shrink-0 items-center text-xs font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
-      >
-        {etiquetaSinValor}
+      <span title={motivoSinDato} className="text-xs text-muted-foreground">
+        {etiquetaSinValor === "s/d" ? "Sin período anterior para comparar" : "Sin cambios"}
       </span>
     );
   }
 
-  const isPositive = value >= 0;
+  const sube = value >= 0;
+  const Flecha = sube ? ArrowUpRight : ArrowDownRight;
   return (
-    <span
-      title={titulo}
-      className={`inline-flex shrink-0 items-center gap-0.5 text-xs font-medium tabular-nums px-1.5 py-0.5 rounded-full ${
-        isPositive
-          ? "bg-success-subtle text-success"
-          : "bg-danger-subtle text-danger"
-      }`}
-    >
-      {isPositive ? (
-        <ArrowUpRight className="w-3 h-3" />
-      ) : (
-        <ArrowDownRight className="w-3 h-3" />
-      )}
-      {isPositive ? "+" : ""}
-      {value.toFixed(0)}%
+    <span className="inline-flex min-w-0 items-center gap-1.5 text-xs">
+      <span className={`inline-flex shrink-0 items-center gap-0.5 font-medium tabular-nums ${sube ? "text-success" : "text-danger"}`}>
+        <Flecha className="size-3.5" />
+        {Math.abs(value).toFixed(0)}%
+      </span>
+      {titulo && <span className="truncate text-muted-foreground">{titulo}</span>}
     </span>
   );
 }

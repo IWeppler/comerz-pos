@@ -1,38 +1,47 @@
 import type { ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 
 interface KpiMiniCardProps {
   label: string;
   value: string;
-  sublabel: string;
-  rightSlot?: ReactNode;
+  /** La línea de abajo: la variación (`GrowthBadge`) o un dato de contexto. */
+  pie: ReactNode;
+  icono: LucideIcon;
+  /** Un dato chico al lado del título ("32% de margen", "41 ventas"). */
+  detalle?: string;
 }
 
-/** Card compacta para la grilla 2x2 de KPIs — v2 del panel: nada de tamaño
- * "héroe" acá (eso quedó en v1 y generaba scroll), valores en un escalón
- * más chico para no cortar en la columna angosta (40% del ancho).
+/**
+ * Una tarjeta de número del panel (ver `KpiFranja`).
  *
- * En el bento pasó al revés de lo que decía este comentario: las KPIs se
- * quedan con el alto que Insights no necesita (`h-full` + `flex-1` en la
- * grilla), porque son cuatro números que se leen de lejos y compactarlas para
- * darle aire a una lista de texto era el reparto equivocado. */
-export function KpiMiniCard({
-  label,
-  value,
-  sublabel,
-  rightSlot,
-}: Readonly<KpiMiniCardProps>) {
+ * Tarjeta blanca propia (12/10/2026, referencias de Nacho): título arriba a la
+ * izquierda, ícono de contorno en un círculo arriba a la derecha, el número
+ * grande y la variación como texto abajo. Sin fondos de color: el número es
+ * lo que se lee.
+ */
+export function KpiMiniCard({ label, value, pie, icono: Icono, detalle }: Readonly<KpiMiniCardProps>) {
   return (
-    <div className="bg-card border border-border rounded-xl px-3.5 py-3 flex flex-col justify-between gap-1.5 min-w-0 h-full">
-      <div className="flex items-center justify-between gap-1">
-        <span className="text-xs font-medium text-muted-foreground truncate">
-          {label}
+    <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5">
+      <div className="flex min-h-10 items-start justify-between gap-2">
+        <p className="min-w-0 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{label}</span>
+          {detalle && <span className="mt-0.5 block truncate text-xs">{detalle}</span>}
+        </p>
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground">
+          <Icono className="size-4" strokeWidth={1.75} />
         </span>
-        {rightSlot}
       </div>
-      <p className="font-sans tabular-nums text-xl sm:text-2xl font-semibold text-foreground truncate">
-        {value}
-      </p>
-      <p className="text-xs text-muted-foreground truncate">{sublabel}</p>
+      <div className="min-w-0 space-y-1.5">
+        <p className="truncate text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-[28px]">
+          {value}
+        </p>
+        <div className="min-w-0 truncate">{pie}</div>
+      </div>
     </div>
   );
+}
+
+/** Las cuatro tarjetas: 2×2 en celular, 4 en fila desde lg. */
+export function KpiFranja({ children }: Readonly<{ children: ReactNode }>) {
+  return <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{children}</div>;
 }

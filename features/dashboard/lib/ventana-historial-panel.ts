@@ -1,9 +1,9 @@
 import {
-  DIAS_CHART,
   resolverRangoAnterior,
   type PeriodoPanel,
 } from "@/shared/lib/periodo-ranges";
 import { SEMANAS_DIA_TIPICO } from "./dia-tipico";
+import { resolverRangosChart } from "./build-chart-series";
 import { VENTANA_ROTACION_DIAS } from "./detectar-quiebres";
 import {
   DIAS_VENTANA_FIN_TEMPORADA,
@@ -31,7 +31,10 @@ import { DIAS_SIN_MOVIMIENTO } from "@/features/reports/actions/get-advisor-insi
  *                         período (728 días con "Año").
  *   Día típico ("Hoy") .. los últimos SEMANAS_DIA_TIPICO mismos días de
  *                         semana: hoy − 56 días, contando desde su 00:00.
- *   Gráfico ............. DIAS_CHART días.
+ *   Gráfico ............. `resolverRangosChart(periodo)`: los de las KPIs,
+ *                         salvo "Año" (12 meses enteros contra los mismos
+ *                         del año anterior: hasta el día 1 de hace 23 meses,
+ *                         que puede caer antes que los 728 días de las KPIs).
  *   Comerz Insights ..... DIAS_INSIGHTS días.
  *   Quiebres y riesgo ... VENTANA_ROTACION_DIAS.
  *   Temporada ........... DIAS_VENTANA_FIN_TEMPORADA / _PROXIMA_TEMPORADA.
@@ -57,7 +60,6 @@ export const DIAS_INSIGHTS = 28;
 export const DIAS_MINIMOS_HISTORIAL_PANEL = Math.max(
   SEMANAS_DIA_TIPICO * 7 + 1,
   DIAS_SIN_MOVIMIENTO + 1,
-  DIAS_CHART,
   DIAS_INSIGHTS,
   VENTANA_ROTACION_DIAS,
   DIAS_VENTANA_FIN_TEMPORADA,
@@ -84,6 +86,10 @@ export function resolverDesdeHistorialPanel(
       ahora.getDate() - (DIAS_MINIMOS_HISTORIAL_PANEL - 1),
     ),
   );
-  const anterior = resolverRangoAnterior(periodo, ahora).inicio;
-  return anterior < piso ? anterior : piso;
+  const candidatos = [
+    piso,
+    resolverRangoAnterior(periodo, ahora).inicio,
+    resolverRangosChart(periodo, ahora).anterior.inicio,
+  ];
+  return new Date(Math.min(...candidatos.map((f) => f.getTime())));
 }

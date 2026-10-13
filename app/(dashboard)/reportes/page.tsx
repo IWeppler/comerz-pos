@@ -104,6 +104,7 @@ export default async function ReportesPage({
     clientesResponse,
     configResponse,
     pagosCuentaCorrienteResponse,
+    categoriasResponse,
   ] = await Promise.all([
     getVentasAction(),
     getStockAction(),
@@ -120,6 +121,9 @@ export default async function ReportesPage({
       .select("cc_plazo_mora, crm_dias_inactivo, modo_facturacion")
       .single(),
     getPagosCuentaCorrienteAction(),
+    // Para agrupar por categoría real con su padre ("Mujer › Remeras"), no
+    // por el nombre suelto. Ver el parámetro `categorias` de getDashboardMetrics.
+    supabase.from("categorias").select("id, nombre, slug, parent_id"),
   ]);
 
   const ventas = (ventasResponse.data || []) as unknown as Venta[];
@@ -180,6 +184,7 @@ export default async function ReportesPage({
     desdeParam,
     hastaParam,
     pagosCuentaCorriente,
+    categoriasResponse.data || [],
   );
 
   const now = new Date();

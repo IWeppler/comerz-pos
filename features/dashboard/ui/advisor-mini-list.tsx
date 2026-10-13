@@ -2,26 +2,19 @@
 
 import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { Lightbulb, AlertTriangle, TrendingUp } from "lucide-react";
+import {
+  ChevronRight,
+  CircleAlert,
+  Lightbulb,
+  TrendingUp,
+  TriangleAlert,
+  type LucideIcon,
+} from "lucide-react";
 import type { Insight } from "@/features/reports/actions/get-advisor-insights";
 
 interface AdvisorMiniListProps {
   insights: Insight[];
 }
-
-const ICONO_POR_TIPO: Record<Insight["type"], typeof Lightbulb> = {
-  danger: AlertTriangle,
-  warning: AlertTriangle,
-  success: TrendingUp,
-  info: Lightbulb,
-};
-
-const COLOR_POR_TIPO: Record<Insight["type"], string> = {
-  danger: "text-danger",
-  warning: "text-warning",
-  success: "text-success",
-  info: "text-info",
-};
 
 /**
  * Presentación del Advisor para el dashboard — mismo dato que
@@ -85,7 +78,9 @@ export function AdvisorMiniList({ insights }: Readonly<AdvisorMiniListProps>) {
   // Sin historia previa NO se marca nada: si "no hay registro" se tratara como
   // "no vi ninguno", el primer render marcaría las cinco como nuevas, que es
   // exactamente el ruido que esta marca existe para evitar.
-  const nuevos = new Set(vistos ? ids.filter((id) => !vistos.includes(id)) : []);
+  const nuevos = new Set(
+    vistos ? ids.filter((id) => !vistos.includes(id)) : [],
+  );
 
   const idsActuales = ids.join("|");
   useEffect(() => {
@@ -101,72 +96,106 @@ export function AdvisorMiniList({ insights }: Readonly<AdvisorMiniListProps>) {
     }
   }, [idsActuales]);
 
+  // Ya vienen ordenados por urgencia (y plata en juego) desde el motor: el
+  // orden ES la prioridad. "Pendientes" cuenta lo que pide algo (no las
+  // buenas noticias).
+  const pendientes = insights.filter(
+    (i) => i.type === "danger" || i.type === "warning",
+  ).length;
+
   return (
-    <div className="bg-card border border-border rounded-xl flex flex-col overflow-hidden h-full">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
-        <Lightbulb className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Comerz Intelligence
-        </span>
+    <section
+      aria-label="Requiere tu atención"
+      className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 sm:p-5"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground">
+            Requiere tu atención
+          </h2>
+        </div>
+        {pendientes > 0 && (
+          <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium tabular-nums text-foreground">
+            {pendientes} pendiente{pendientes === 1 ? "" : "s"}
+          </span>
+        )}
       </div>
 
       {insights.length > 0 ? (
-        // Las filas se reparten el alto de la card por si el contenedor le da
-        // más del que necesita, pero la card ya NO se estira sola: en el panel
-        // va en un wrapper `shrink-0` y mide lo que miden sus 5 filas. Acá no
-        // se inventan filas para llenar espacio.
-        <div className="flex-1 flex flex-col divide-y divide-border overflow-y-auto">
-          {insights.map((insight) => {
-            const Icon = ICONO_POR_TIPO[insight.type];
-            const color = COLOR_POR_TIPO[insight.type];
-            const contenido = (
-              <div className="flex items-start gap-2.5 px-3 py-2 w-full">
-                <Icon className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${color}`} />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <p className="text-xs font-semibold text-foreground truncate">
-                      {insight.title}
-                    </p>
-                    {nuevos.has(insight.id) && (
-                      <span className="shrink-0 text-xs font-medium text-info bg-info-subtle rounded-full px-1.5">
-                        nuevo
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs leading-snug text-muted-foreground line-clamp-2 mt-0.5">
-                    {insight.message}
-                  </p>
-                </div>
-              </div>
-            );
-
-            // min-h es el piso legible de una fila, no su alto: la card mide lo
-            // que miden sus filas, así que con 5 quedan pegadas y sin aire —
-            // el sobrante de la columna se lo llevan las KPIs.
-            const claseFila = "flex-1 flex items-center min-h-[46px]";
-
-            return insight.href ? (
-              <Link
-                key={insight.id}
-                href={insight.href}
-                className={`${claseFila} hover:bg-muted/30 transition-colors`}
-              >
-                {contenido}
-              </Link>
-            ) : (
-              <div key={insight.id} className={claseFila}>
-                {contenido}
-              </div>
-            );
-          })}
-        </div>
+        <ol className="-mx-2 mt-3 flex-1 space-y-1">
+          {insights.map((insight) => (
+            <Senal
+              key={insight.id}
+              insight={insight}
+              nueva={nuevos.has(insight.id)}
+            />
+          ))}
+        </ol>
       ) : (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <p className="text-xs text-muted-foreground italic text-center">
-            Sin recomendaciones por ahora.
-          </p>
-        </div>
+        <p className="flex flex-1 items-center justify-center py-10 text-sm text-muted-foreground">
+          Todo en orden: no hay nada urgente hoy.
+        </p>
       )}
-    </div>
+    </section>
+  );
+}
+
+const ICONO_POR_TIPO: Record<
+  Insight["type"],
+  { Icono: LucideIcon; color: string }
+> = {
+  danger: { Icono: CircleAlert, color: "text-danger" },
+  warning: { Icono: TriangleAlert, color: "text-warning" },
+  success: { Icono: TrendingUp, color: "text-success" },
+  info: { Icono: Lightbulb, color: "text-primary" },
+};
+
+/** Una fila: ícono de la gravedad, título, el porqué en una o dos líneas y
+ * una flecha. Toda la fila lleva a donde se resuelve. */
+function Senal({
+  insight,
+  nueva,
+}: Readonly<{ insight: Insight; nueva: boolean }>) {
+  const { Icono, color } = ICONO_POR_TIPO[insight.type];
+  const contenido = (
+    <>
+      <span
+        className={`flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted ${color}`}
+      >
+        <Icono className="size-4" strokeWidth={2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">
+          {insight.title}
+          {nueva && (
+            <span className="ml-2 text-xs font-medium text-primary">Nuevo</span>
+          )}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+          {insight.message}
+        </p>
+      </div>
+    </>
+  );
+
+  if (!insight.href) {
+    return (
+      <li className="flex items-start gap-3 rounded-xl px-2 py-2.5">
+        {contenido}
+      </li>
+    );
+  }
+  return (
+    <li>
+      <Link
+        href={insight.href}
+        prefetch={false}
+        aria-label={`${insight.title}: ${insight.actionLabel ?? "ver"}`}
+        className="group flex items-start gap-3 rounded-xl px-2 py-2.5 transition-[background-color,transform] duration-150 ease-out hover:bg-muted/60 active:scale-[0.99]"
+      >
+        {contenido}
+        <ChevronRight className="mt-2.5 size-4 shrink-0 text-muted-foreground transition-transform duration-150 ease-out group-hover:translate-x-0.5" />
+      </Link>
+    </li>
   );
 }
