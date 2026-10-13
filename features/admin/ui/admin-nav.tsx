@@ -7,6 +7,7 @@ import {
   BarChart3,
   CreditCard,
   LayoutDashboard,
+  Megaphone,
   Menu,
   X,
 } from "lucide-react";
@@ -15,6 +16,7 @@ const SECCIONES = [
   { href: "/admincomerz", nombre: "Dashboard", icono: LayoutDashboard },
   { href: "/admincomerz/metricas", nombre: "Métricas", icono: BarChart3 },
   { href: "/admincomerz/planes", nombre: "Planes", icono: CreditCard },
+  { href: "/admincomerz/novedades", nombre: "Novedades", icono: Megaphone },
 ] as const;
 
 /**

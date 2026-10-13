@@ -25,6 +25,7 @@ import {
   Calculator,
   FileText,
   ShoppingBag,
+  Bell,
 } from "lucide-react";
 import {
   Select,
@@ -53,6 +54,7 @@ import {
   usePagosOnline,
 } from "@/shared/components/negocio-activo-provider";
 import { CobrosOnlinePanel } from "@/features/cobros-online/ui/cobros-online-panel";
+import { NotificacionesConfigPanel } from "@/features/notificaciones/ui/notificaciones-config-panel";
 
 const SECTIONS = [
   {
@@ -129,6 +131,13 @@ const SECTIONS = [
     icon: Users,
     description: "Cajeros, administradores y roles",
   },
+  // Solo ADMIN (ver `soloAdmin`): qué avisos de la campana recibe cada rol.
+  {
+    id: "notificaciones",
+    label: "Notificaciones",
+    icon: Bell,
+    description: "Qué avisos le llegan a cada rol",
+  },
   {
     id: "clientes",
     label: "Clientes (CRM)",
@@ -150,7 +159,7 @@ const GRUPOS: { titulo: string; ids: string[] }[] = [
   { titulo: "Negocio", ids: ["comercio", "catalogo", "preferencias"] },
   { titulo: "Ventas", ids: ["caja", "pagos", "cobrosOnline", "ticketConfig", "presupuestos"] },
   { titulo: "Productos", ids: ["categoria", "listasPrecios", "promociones"] },
-  { titulo: "Personas", ids: ["clientes", "empleados"] },
+  { titulo: "Personas", ids: ["clientes", "empleados", "notificaciones"] },
 ];
 
 interface SettingsManagerProps {
@@ -214,7 +223,7 @@ export function SettingsManager({
   // Mismo criterio para Listas de Precios que para Empleados: la RLS exige
   // ADMIN para escribirlas, así que mostrarle la sección a un ENCARGADO sería
   // ofrecerle botones que no funcionan. Además la página ni las consulta.
-  const soloAdmin = new Set(["empleados", "listasPrecios", "presupuestos", "cobrosOnline"]);
+  const soloAdmin = new Set(["empleados", "listasPrecios", "presupuestos", "cobrosOnline", "notificaciones"]);
   const moduloPresupuestos = useModuloPresupuestos();
   const pagosOnline = usePagosOnline();
   const visibleSections = useMemo(
@@ -299,6 +308,8 @@ export function SettingsManager({
         );
       case "clientes":
         return <ClientsPanel config={config} />;
+      case "notificaciones":
+        return isAdmin ? <NotificacionesConfigPanel /> : null;
       case "preferencias":
         return <PreferencesPanel />;
       default:

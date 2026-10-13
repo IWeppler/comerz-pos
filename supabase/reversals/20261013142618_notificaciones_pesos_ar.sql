@@ -1,0 +1,3 @@
+-- Reversión de 20261013142618_notificaciones_pesos_ar.sql: no hace falta. `pesos_ar`
+-- da exactamente lo mismo que el `_monto_ar` borrado. Si se revierte N2 entera, su
+-- reversión borra los triggers igual.

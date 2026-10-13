@@ -36,6 +36,7 @@ import { CobrarCuentaCorrienteModal } from "@/features/clients/ui/cobrar-cuenta-
 import { ReciboCcSheet } from "@/features/clients/ui/recibo-cc-sheet";
 import { PaletaComandos } from "@/shared/components/paleta-comandos";
 import { SincronizadorVentas } from "@/features/sales/ui/sincronizador-ventas";
+import { SincronizadorNotificaciones } from "@/features/notificaciones/ui/sincronizador-notificaciones";
 
 export default async function DashboardLayout({
   children,
@@ -208,7 +209,6 @@ export default async function DashboardLayout({
             userId={user.id}
             puedeOperarCaja={puedeOperarCajaEsta}
             puedeRegistrarIngreso={puedeRegistrarIngreso}
-            userName={perfil?.nombre || undefined}
           />
 
           {/* Prueba gratis: días que quedan y el próximo paso. Solo ADMIN y
@@ -244,6 +244,8 @@ export default async function DashboardLayout({
               paleta: dos instancias serían dos sincronizaciones compitiendo
               por la misma cola. */}
           <SincronizadorVentas />
+          {/* Refresca el contador de la campana al navegar. Una instancia. */}
+          <SincronizadorNotificaciones />
           {userRole === "ADMIN" && <Suspense fallback={null}><WizardInicioServer /></Suspense>}
 
           <main className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
