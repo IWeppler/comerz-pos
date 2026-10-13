@@ -97,8 +97,9 @@ pendientes): **base neutra, tarjetas blancas y un solo acento por lugar**.
 - **Saludo** ("Hola, <nombre>" + fecha) con el selector de período a la
   derecha. El nombre sale de `perfiles` en el mismo Promise.all (el usuario ya está en el
   cache del layout).
-- **Cuatro tarjetas de números** (`KpiFranja` + `KpiMiniCard`): título, ícono de contorno
-  arriba a la derecha, número grande, variación como TEXTO (`growth-badge.tsx`).
+- **Cuatro tarjetas de números** (`KpiFranja` + `KpiMiniCard`): título arriba a la
+  izquierda, variación como TEXTO arriba a la derecha (`growth-badge.tsx`) y número grande.
+  Sin íconos ni leyenda "vs. …" (13/10/2026): contra qué se compara va en el tooltip.
 - **Dos columnas**: contenido (tarjetas, gráfico de ventas, y abajo stock crítico/reservas +
   "Lo que más rinde") y un aside a la derecha (ventas por categoría arriba, "Requiere tu
   atención" abajo). En celular se apilan, contenido primero.

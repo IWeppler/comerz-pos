@@ -1,25 +1,22 @@
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
 
 interface KpiMiniCardProps {
   label: string;
   value: string;
-  /** La línea de abajo: la variación (`GrowthBadge`) o un dato de contexto. */
-  pie: ReactNode;
-  icono: LucideIcon;
-  /** Un dato chico al lado del título ("32% de margen", "41 ventas"). */
+  /** Arriba a la derecha: la variación (`GrowthBadge`). */
+  variacion: ReactNode;
+  /** Un dato chico debajo del título ("32% de margen", "41 ventas"). */
   detalle?: string;
 }
 
 /**
  * Una tarjeta de número del panel (ver `KpiFranja`).
  *
- * Tarjeta blanca propia (12/10/2026, referencias de Nacho): título arriba a la
- * izquierda, ícono de contorno en un círculo arriba a la derecha, el número
- * grande y la variación como texto abajo. Sin fondos de color: el número es
- * lo que se lee.
+ * Minimalista (13/10/2026): título arriba a la izquierda, la variación arriba
+ * a la derecha y el número grande abajo. Sin íconos ni leyenda de contra qué
+ * se compara: el número es lo que se lee.
  */
-export function KpiMiniCard({ label, value, pie, icono: Icono, detalle }: Readonly<KpiMiniCardProps>) {
+export function KpiMiniCard({ label, value, variacion, detalle }: Readonly<KpiMiniCardProps>) {
   return (
     <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5">
       <div className="flex min-h-10 items-start justify-between gap-2">
@@ -27,16 +24,11 @@ export function KpiMiniCard({ label, value, pie, icono: Icono, detalle }: Readon
           <span className="font-medium text-foreground">{label}</span>
           {detalle && <span className="mt-0.5 block truncate text-xs">{detalle}</span>}
         </p>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground">
-          <Icono className="size-4" strokeWidth={1.75} />
-        </span>
+        <div className="shrink-0 pt-0.5">{variacion}</div>
       </div>
-      <div className="min-w-0 space-y-1.5">
-        <p className="truncate text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-[28px]">
-          {value}
-        </p>
-        <div className="min-w-0 truncate">{pie}</div>
-      </div>
+      <p className="truncate text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-[28px]">
+        {value}
+      </p>
     </div>
   );
 }

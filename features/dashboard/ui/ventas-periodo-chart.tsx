@@ -94,9 +94,11 @@ export function VentasPeriodoChart({
       className="flex h-full min-w-0 flex-col rounded-2xl border border-border bg-card p-4 sm:p-5"
     >
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
-        <div className="min-w-0">
+        {/* El tramo y el período van al lado del título, en un solo renglón:
+            en celular el header ocupaba de más con el subtítulo abajo. */}
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <h2 className="text-base font-semibold text-foreground">Ventas</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {etiquetaTramo} · {etiquetaPeriodo}
           </p>
         </div>

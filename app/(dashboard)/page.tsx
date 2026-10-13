@@ -75,7 +75,7 @@ import { PrimerosPasos } from "@/features/onboarding/ui/primeros-pasos";
 import { calcularProgresoActivacion } from "@/features/onboarding/lib/pasos-activacion";
 import { Button } from "@/shared/ui/button";
 import Link from "next/link";
-import { DollarSign, Package, Plus, Receipt, TrendingUp } from "lucide-react";
+import { Plus } from "lucide-react";
 import { bloquearVendedor } from "@/shared/config/supabase/guard-rol";
 import {
   aRelojComercial,
@@ -607,14 +607,13 @@ export default async function DashboardPage({
             (Comerz Intelligence). En celular se apilan: primero el contenido. */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-3 lg:col-span-2">
-          {/* NÚMEROS — cuatro tarjetas: título, ícono de contorno, número
-              grande y la variación como texto. */}
+          {/* NÚMEROS — cuatro tarjetas: título, variación arriba a la derecha
+              y el número grande. */}
           <KpiFranja>
             <KpiMiniCard
               label="Vendiste"
-              icono={DollarSign}
               value={formatearMoneda(metricasActuales.ingresos)}
-              pie={
+              variacion={
                 <GrowthBadge
                   value={crecimientoIngresos}
                   titulo={tituloComparacion}
@@ -625,9 +624,8 @@ export default async function DashboardPage({
             <KpiMiniCard
               label="Ganancia"
               detalle={`${metricasActuales.margenPorcentaje.toFixed(0)}% de margen`}
-              icono={TrendingUp}
               value={formatearMoneda(metricasActuales.gananciaBrutaVentas)}
-              pie={
+              variacion={
                 <GrowthBadge
                   value={crecimientoGanancia}
                   titulo={tituloComparacion}
@@ -638,9 +636,8 @@ export default async function DashboardPage({
             <KpiMiniCard
               label="Ticket promedio"
               detalle={`${metricasActuales.ordenes} ventas`}
-              icono={Receipt}
               value={formatearMoneda(metricasActuales.ticketPromedio)}
-              pie={
+              variacion={
                 <GrowthBadge
                   value={crecimientoTicket}
                   titulo={tituloComparacion}
@@ -651,9 +648,8 @@ export default async function DashboardPage({
             />
             <KpiMiniCard
               label="Unidades vendidas"
-              icono={Package}
               value={String(metricasActuales.unidadesVendidas)}
-              pie={
+              variacion={
                 <GrowthBadge
                   value={crecimientoUnidades}
                   titulo={tituloComparacion}
