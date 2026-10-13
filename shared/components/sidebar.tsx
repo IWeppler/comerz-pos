@@ -6,7 +6,6 @@ import { usePathname } from "next/navigation";
 import { logoutAction } from "@/features/auth/actions/logout";
 import { borrarCacheOffline } from "@/shared/lib/cache-offline";
 import {
-  LayoutDashboard,
   Package,
   ShoppingBag,
   ShoppingCart,
@@ -54,6 +53,7 @@ import {
 import { InstallAppWidget } from "./install-widget";
 import { useContextoPlan } from "@/features/planes/ui/plan-provider";
 import { useModuloPresupuestos, usePagosOnline } from "./negocio-activo-provider";
+import { CampanaNotificaciones } from "@/features/notificaciones/ui/campana-notificaciones";
 
 type NavItem = {
   name: string;
@@ -70,16 +70,9 @@ type NavItem = {
 // 1. Grupos con estructura compacta
 const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: "Operativa",
-    items: [
-      { name: "Panel", href: "/", icon: LayoutDashboard, adminOnly: true },
-      { name: "Vender", href: "/pos", icon: Store, adminOnly: false },
-      { name: "Caja", href: "/caja", icon: Wallet, adminOnly: false },
-    ],
-  },
-  {
     label: "Gestión",
     items: [
+      { name: "Caja", href: "/caja", icon: Wallet, adminOnly: false },
       { name: "Inventario", href: "/stock", icon: Package, adminOnly: false },
       { name: "Ventas", href: "/ventas", icon: ShoppingCart, adminOnly: false },
       { name: "Clientes", href: "/clientes", icon: Users, adminOnly: false },
@@ -275,6 +268,9 @@ export function Sidebar({
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
+          {/* La campana del celular. Comparte el contador con la del navbar
+              de compu (store), así que montar las dos no pide dos veces. */}
+          <CampanaNotificaciones />
           {puedeOperarCaja && (
             <CajaStatusButton
               modoCaja={branding.modo_caja || "UNICA"}
@@ -385,6 +381,9 @@ export function Sidebar({
         <div
           className={`hidden md:flex p-3 ${isCollapsed ? "justify-center" : ""}`}
         >
+          {/* El negocio ES el inicio (reemplaza al ítem "Panel"): logo y
+              nombre llevan al panel; la flecha cambia de negocio. Sin panel
+              (vendedoras) queda como estaba. */}
           <NegocioSwitcher
             negocios={negocios}
             negocioActivoId={negocioActivoId}
@@ -392,7 +391,35 @@ export function Sidebar({
             logoActivo={branding.posLogo}
             inicial={initial}
             isCollapsed={isCollapsed}
+            hrefInicio={esAdmin ? "/" : undefined}
+            inicioActivo={pathname === "/"}
           />
+        </div>
+
+        {/* PUNTO DE VENTA: la acción de todos los días, separada de la
+            navegación y en el único color sólido del menú. Los ítems activos
+            van en tono suave para no competir con él. Sin animación de
+            entrada: se toca decenas de veces por día; solo el press. */}
+        <div className={`px-3 pb-3 ${isCollapsed ? "md:flex md:justify-center" : ""}`}>
+          <Tooltip disableHoverableContent={!isCollapsed}>
+            <TooltipTrigger asChild>
+              <Link
+                href="/pos"
+                prefetch={false}
+                onClick={() => setIsOpenMobile(false)}
+                aria-current={pathname === "/pos" ? "page" : undefined}
+                className={`flex items-center rounded-lg bg-primary font-semibold text-white shadow-sm transition-[transform,background-color] duration-150 ease-out hover:bg-primary/90 active:scale-[0.97] ${
+                  isCollapsed ? "md:h-10 md:w-10 md:justify-center gap-3 px-3 py-3 md:p-0" : "gap-3 px-3 py-3 md:py-2.5"
+                } ${pathname === "/pos" ? "ring-2 ring-primary/30 ring-offset-2 ring-offset-sidebar" : ""}`}
+              >
+                <Store className="h-5 w-5 shrink-0 stroke-2" />
+                <span className={`text-sm ${isCollapsed ? "md:hidden" : ""}`}>Punto de Venta</span>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="right" hidden={!isCollapsed}>
+              Punto de Venta
+            </TooltipContent>
+          </Tooltip>
         </div>
 
         {/* 3. NAVEGACIÓN COMPACTA */}
@@ -459,7 +486,7 @@ export function Sidebar({
                               : "gap-3 px-2.5 py-3 md:py-2"
                           } ${
                             isActive
-                              ? "bg-primary text-white"
+                              ? "bg-primary/10 text-primary"
                               : "text-muted-foreground hover:bg-muted hover:text-foreground"
                           }`}
                         >
@@ -467,7 +494,7 @@ export function Sidebar({
                             <Icon
                               className={`w-4.5 h-4.5 shrink-0 transition-colors stroke-2 ${
                                 isActive
-                                  ? "text-white"
+                                  ? "text-primary"
                                   : "text-muted-foreground/70 group-hover:text-foreground"
                               }`}
                             />

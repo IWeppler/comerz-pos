@@ -4,6 +4,7 @@ import { SidebarIcon } from "lucide-react";
 import { useSidebarStore } from "@/shared/store/sidebar-store";
 import { usePathname } from "next/navigation";
 import { CajaStatusButton } from "@/features/caja/ui/caja-status-button";
+import { CampanaNotificaciones } from "@/features/notificaciones/ui/campana-notificaciones";
 
 interface DashboardNavbarProps {
   modoCaja: string;
@@ -12,8 +13,6 @@ interface DashboardNavbarProps {
   puedeOperarCaja?: boolean;
   /** Permiso `caja.registrar_ingreso`: "Anotar ingreso" en el modal de caja. */
   puedeRegistrarIngreso?: boolean;
-  /** Nombre del perfil, para saludar en el panel. Ausente = saludo sin nombre. */
-  userName?: string;
 }
 
 export function DashboardNavbar({
@@ -21,21 +20,13 @@ export function DashboardNavbar({
   userId,
   puedeOperarCaja = true,
   puedeRegistrarIngreso = false,
-  userName,
 }: Readonly<DashboardNavbarProps>) {
   const { toggleSidebar } = useSidebarStore();
   const pathname = usePathname();
   const getPageInfo = () => {
-    // El panel saluda en vez de titularse: es la pantalla a la que la dueña
-    // entra a la mañana, no una sección. Solo el primer nombre — "Hola,
-    // Romina" y no "Hola, Carneiro Romina".
-    if (pathname === "/") {
-      const primerNombre = userName?.trim().split(/s+/)[0];
-      return {
-        title: primerNombre ? `Hola, ${primerNombre} 👋` : "Hola 👋",
-        description: "",
-      };
-    }
+    // El saludo vive en el encabezado de la página: acá, el nombre de la
+    // sección como en el resto (antes decía "Hola, X" dos veces).
+    if (pathname === "/") return { title: "Panel inicial", description: "" };
     if (pathname.startsWith("/pos"))
       return {
         title: "Realizar Venta",
@@ -108,6 +99,9 @@ export function DashboardNavbar({
           )}
         </div>
       </div>
+
+      {/* La campana, para todos (cada rol ve lo suyo: lo filtra la base). */}
+      <CampanaNotificaciones />
 
       {/* El buscador (Ctrl+K) vive en el sidebar, al lado del logo. */}
       {puedeOperarCaja && (
