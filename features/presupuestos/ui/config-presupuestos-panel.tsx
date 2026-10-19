@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "@/shared/ui/toast";
-import { FileText, Loader2, Plus, Trash2 } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import type { ConfiguracionPOS } from "@/entities/config/types";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -15,14 +15,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/ui/select";
+import {
+  EditorTasasCuotas,
+  filasATasas,
+  filasDesdeTasas,
+  type FilaTasa,
+} from "@/shared/ui/editor-tasas-cuotas";
 import { guardarConfigPresupuestosAction } from "../actions/configuracion";
-import { calcularOpcion, leerTasas } from "../lib/cuotas";
-
-const EJEMPLO = 100_000;
-const pesos = (n: number) =>
-  n.toLocaleString("es-AR", { style: "currency", currency: "ARS" });
-
-type Fila = { cuotas: string; pct: string };
 
 /**
  * Tasas de financiación, frecuencia de las cuotas y vigencia de las
@@ -30,33 +29,25 @@ type Fila = { cuotas: string; pct: string };
  * `settings-manager`; la RLS de `configuracion_pos` lo exige).
  *
  * Cambiar esto no toca las cotizaciones ya emitidas: cada una guarda su
- * copia. Se dice en pantalla porque es la pregunta obvia.
+ * copia. Se dice en pantalla porque es la pregunta obvia. Las tasas son las
+ * mismas que ofrece la venta en cuotas de Clientes (una lista por comercio).
  */
 export function ConfigPresupuestosPanel({ config }: Readonly<{ config: ConfiguracionPOS }>) {
   const router = useRouter();
-  const [filas, setFilas] = useState<Fila[]>(() =>
-    leerTasas(config.plan_tasas_financiacion).map((t) => ({
-      cuotas: String(t.cuotas),
-      pct: String(t.pct).replace(".", ","),
-    })),
+  const [filas, setFilas] = useState<FilaTasa[]>(() =>
+    filasDesdeTasas(config.plan_tasas_financiacion),
   );
   const [frecuencia, setFrecuencia] = useState<string>(config.plan_frecuencia_default ?? "MENSUAL");
   const [vigencia, setVigencia] = useState(String(config.presupuesto_vigencia_dias ?? 7));
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const actualizar = (i: number, campo: keyof Fila, valor: string) =>
-    setFilas((prev) => prev.map((f, j) => (j === i ? { ...f, [campo]: valor } : f)));
-
   const guardar = () => {
     setError(null);
     startTransition(async () => {
       const r = await guardarConfigPresupuestosAction({
         configId: config.id,
-        tasas: filas.map((f) => ({
-          cuotas: Number(f.cuotas),
-          pct: Number(f.pct.replace(",", ".")),
-        })),
+        tasas: filasATasas(filas),
         frecuencia,
         vigenciaDias: Number(vigencia),
       });
@@ -92,63 +83,12 @@ export function ConfigPresupuestosPanel({ config }: Readonly<{ config: Configura
           <h3 className="font-medium">Cuotas</h3>
           <p className="text-xs text-muted-foreground">
             El recargo va sobre lo que se financia (total menos el anticipo).
-            Sin filas, la cotización sale sin opciones de cuotas.
+            Sin filas, la cotización sale sin opciones de cuotas. Son las
+            mismas cuotas que se ofrecen al fiar en el POS.
           </p>
         </div>
 
-        {filas.map((f, i) => {
-          const cuotas = Number(f.cuotas);
-          const pct = Number(f.pct.replace(",", "."));
-          const valida = Number.isInteger(cuotas) && cuotas >= 1 && Number.isFinite(pct) && pct >= 0;
-          const ejemplo = valida ? calcularOpcion(EJEMPLO, { cuotas, pct }) : null;
-          return (
-            <div key={i} className="flex flex-wrap items-end gap-2 rounded-lg border border-border p-3">
-              <div className="w-24 space-y-1">
-                <Label htmlFor={`cuotas-${i}`}>Cuotas</Label>
-                <Input
-                  id={`cuotas-${i}`}
-                  inputMode="numeric"
-                  value={f.cuotas}
-                  onChange={(e) => actualizar(i, "cuotas", e.target.value.replace(/\D/g, ""))}
-                  className="h-11"
-                />
-              </div>
-              <div className="w-28 space-y-1">
-                <Label htmlFor={`pct-${i}`}>Recargo %</Label>
-                <Input
-                  id={`pct-${i}`}
-                  inputMode="decimal"
-                  value={f.pct}
-                  onChange={(e) => actualizar(i, "pct", e.target.value.replace(/[^\d,.]/g, ""))}
-                  className="h-11"
-                />
-              </div>
-              <p className="min-w-0 flex-1 pb-3 text-xs text-muted-foreground">
-                {ejemplo
-                  ? `${pesos(EJEMPLO)} → ${ejemplo.cuotas} × ${pesos(ejemplo.montoCuota)} (total ${pesos(ejemplo.totalFinal)})`
-                  : "Completá cuotas y recargo."}
-              </p>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 text-muted-foreground"
-                onClick={() => setFilas((prev) => prev.filter((_, j) => j !== i))}
-                aria-label="Quitar opción"
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          );
-        })}
-
-        <Button
-          variant="outline"
-          className="h-11 gap-2"
-          onClick={() => setFilas((prev) => [...prev, { cuotas: "", pct: "0" }])}
-        >
-          <Plus className="h-4 w-4" />
-          Agregar opción
-        </Button>
+        <EditorTasasCuotas filas={filas} onChange={setFilas} idPrefijo="presupuestos" />
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2">

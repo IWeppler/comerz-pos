@@ -13,7 +13,9 @@
  * que se anunció.
  *
  * La etapa 3 (el plan) usa esta misma función para generar las cuotas: lo
- * que el cliente vio en la cotización es lo que va a pagar.
+ * que el cliente vio en la cotización es lo que va a pagar. La venta en
+ * cuotas de la cuenta corriente (`plan-cuotas-cc.ts`) también: una sola
+ * lista de tasas y un solo reparto por comercio.
  */
 
 export type TasaFinanciacion = { cuotas: number; pct: number };

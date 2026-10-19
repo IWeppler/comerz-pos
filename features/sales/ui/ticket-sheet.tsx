@@ -269,6 +269,16 @@ export function TicketSheet({
                         estadoEsFiado ? montoPendiente : 0,
                       )}
                     />
+                    {ticket?.planCuotas
+                      ? ticket.planCuotas.detalle.map((c) => (
+                          <DetailRow
+                            key={c.numero}
+                            icon={<Calendar className="w-3.5 h-3.5" />}
+                            label={`Cuota ${c.numero}/${ticket.planCuotas?.cuotas} · vence ${c.venceEl.split("-").reverse().join("/")}`}
+                            value={formatTicketMoney(c.monto)}
+                          />
+                        ))
+                      : null}
                     <div className="flex items-center justify-between px-4 py-3 gap-4">
                       <span className="text-xs text-muted-foreground">
                         Estado

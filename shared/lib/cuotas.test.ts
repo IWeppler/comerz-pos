@@ -4,7 +4,7 @@ import {
   leerTasas,
   opcionesDeFinanciacion,
   validarTasas,
-} from "./cuotas";
+} from "@/shared/lib/cuotas";
 
 describe("calcularOpcion", () => {
   it("sin recargo reparte el total y el centavo que sobra va a la última cuota", () => {

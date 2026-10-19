@@ -1,4 +1,4 @@
-import { opcionesDeFinanciacion } from "./cuotas";
+import { opcionesDeFinanciacion } from "@/shared/lib/cuotas";
 import { formatearNumeroPresupuesto } from "./estado";
 
 /**

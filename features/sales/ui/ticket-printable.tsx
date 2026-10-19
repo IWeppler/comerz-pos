@@ -263,6 +263,24 @@ export function TicketPrintable({
                   <span>Saldo</span>
                   <span>{formatTicketMoney(montoPendiente)}</span>
                 </div>
+                {/* Venta en cuotas: el papel es lo que la clienta guarda para
+                    saber cuánto y cuándo paga cada mes. */}
+                {ticket?.planCuotas ? (
+                  <div className="mt-1 pt-1 border-t border-dashed border-gray-300 text-xs">
+                    <p className="font-bold uppercase">
+                      {ticket.planCuotas.cuotas} cuotas (incluye{" "}
+                      {ticket.planCuotas.pct}% de financiación)
+                    </p>
+                    {ticket.planCuotas.detalle.map((c) => (
+                      <div key={c.numero} className="flex justify-between">
+                        <span>
+                          {c.numero}. vence {c.venceEl.split("-").reverse().join("/")}
+                        </span>
+                        <span>{formatTicketMoney(c.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </>
             ) : pagosDesglosados.length > 0 ? (
               pagosDesglosados.map((p, idx) => (

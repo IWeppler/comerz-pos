@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
-import { validarTasas } from "../lib/cuotas";
+import { validarTasas } from "@/shared/lib/cuotas";
 
 const FRECUENCIAS = ["SEMANAL", "QUINCENAL", "MENSUAL"] as const;
 export type Frecuencia = (typeof FRECUENCIAS)[number];

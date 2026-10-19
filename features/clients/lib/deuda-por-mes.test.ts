@@ -56,6 +56,25 @@ describe("deudaVivaDesdeFila", () => {
   });
 });
 
+describe("etiquetaDeuda en una venta en cuotas", () => {
+  it("cada cuota se distingue por su número", () => {
+    expect(
+      etiquetaDeuda({
+        numeroTicket: "ABAADEC4",
+        esMoraHuerfana: false,
+        descripcion: "Compra Fiada - Ticket #ABAADEC4 - Cuota 2/6",
+      }),
+    ).toBe("Ticket #ABAADEC4 · cuota 2/6");
+    expect(
+      etiquetaDeuda({
+        numeroTicket: "ABAADEC4",
+        esMoraHuerfana: false,
+        descripcion: "Compra Fiada - Ticket #ABAADEC4",
+      }),
+    ).toBe("Ticket #ABAADEC4");
+  });
+});
+
 describe("etiquetaDeuda", () => {
   it("sin venta usa la descripción de la dueña", () => {
     expect(

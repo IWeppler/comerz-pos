@@ -23,6 +23,11 @@ import {
 import { ClienteBasico } from "./client-selector";
 import { calcularRecargoMonto } from "@/shared/lib/recargo-metodo";
 import { montosRapidosEfectivo } from "@/features/pos/lib/montos-efectivo";
+import type { TasaFinanciacion } from "@/shared/lib/cuotas";
+import { armarPlanCuotasCc } from "@/features/clients/lib/plan-cuotas-cc";
+
+/** "2026-11-19" → "19/11/2026". */
+const fechaCorta = (iso: string) => iso.split("-").reverse().join("/");
 
 interface PaymentModalProps {
   /** Total de la mercadería, SIN recargo por método. */
@@ -38,6 +43,17 @@ interface PaymentModalProps {
   isCuentaCorriente: boolean;
   anticipoMinimo: number;
   isEfectivoOnly: boolean;
+  /**
+   * Venta en cuotas: la tasa elegida, lo financiable antes de la entrega
+   * (subtotal − saldo a favor) y el día de la venta. Con plan, el interés va
+   * sobre lo que queda después de la entrega, así que el total y la cuota se
+   * recalculan mientras se tipea (misma cuenta que create-sale).
+   */
+  planCuotas?: {
+    tasa: TasaFinanciacion;
+    baseFinanciable: number;
+    fechaVenta: string;
+  } | null;
   onConfirm: (montoAnticipo?: number) => void;
   onClose: () => void;
 }
@@ -52,6 +68,7 @@ export function PaymentModal({
   isCuentaCorriente,
   anticipoMinimo,
   isEfectivoOnly,
+  planCuotas = null,
   onConfirm,
   onClose,
 }: Readonly<PaymentModalProps>) {
@@ -207,9 +224,24 @@ export function PaymentModal({
 
   // 2. 🚀 LÓGICA DE CUENTA CORRIENTE INTERACTIVA (Calculadora Fiado)
   const isAnticipoInsuficiente = anticipoLocalNum < anticipoMinimo - 0.05;
+  const plan = planCuotas
+    ? armarPlanCuotasCc(
+        Math.max(0, planCuotas.baseFinanciable - anticipoLocalNum),
+        planCuotas.tasa,
+        planCuotas.fechaVenta,
+      )
+    : null;
   // La deuda se calcula sobre el anticipo SIN recargo: el recargo es plata
   // que entra por el método de pago, no capital que el cliente amortiza.
-  const deudaGenerada = totalFinal - anticipoLocalNum;
+  // En cuotas, la deuda es lo financiado más su interés.
+  const deudaGenerada = planCuotas
+    ? planCuotas.baseFinanciable - anticipoLocalNum < 0
+      ? -1
+      : (plan?.totalFinanciado ?? 0)
+    : totalFinal - anticipoLocalNum;
+  const totalMostrado = plan ? anticipoLocalNum + plan.totalFinanciado : totalFinal;
+  // Un plan sin nada que financiar no existe: create-sale lo rechaza.
+  const planVacio = plan !== null && plan.financiado <= 0;
   const recargoAnticipo = calcularRecargoMonto(
     anticipoLocalNum,
     recargoPorcentajeSeleccionado,
@@ -221,7 +253,7 @@ export function PaymentModal({
         <DialogHeader className="mb-2">
           <DialogTitle className="text-xl font-bold text-foreground flex items-center gap-2">
             <BookUser className="w-5 h-5 text-warning" />
-            Resumen de Fiado
+            {planCuotas ? `Fiado en ${planCuotas.tasa.cuotas} cuotas` : "Resumen de Fiado"}
           </DialogTitle>
           <DialogDescription className="sr-only">
             Aprobación de venta a cuenta corriente.
@@ -232,7 +264,7 @@ export function PaymentModal({
           <div className="flex justify-between items-center text-sm font-semibold mb-2">
             <span className="text-foreground">TOTAL</span>
             <span className="text-lg font-mono font-medium">
-              ${totalFinal.toLocaleString("es-AR")}
+              ${totalMostrado.toLocaleString("es-AR")}
             </span>
           </div>
 
@@ -256,6 +288,7 @@ export function PaymentModal({
                   e.key === "Enter" &&
                   !isPending &&
                   !isAnticipoInsuficiente &&
+                  !planVacio &&
                   clienteSeleccionado &&
                   onConfirm(anticipoLocalNum)
                 }
@@ -298,6 +331,29 @@ export function PaymentModal({
               </p>
             </div>
 
+            {plan && !planVacio ? (
+              <div className="mt-3 pt-3 border-t border-border space-y-1 text-xs text-muted-foreground">
+                <p className="text-sm font-medium text-foreground">
+                  {plan.cuotas} cuotas de $
+                  {plan.detalle[0].monto.toLocaleString("es-AR")}
+                  {plan.detalle[plan.cuotas - 1].monto !== plan.detalle[0].monto
+                    ? ` (la última $${plan.detalle[plan.cuotas - 1].monto.toLocaleString("es-AR")})`
+                    : ""}
+                </p>
+                <p>
+                  Incluye {plan.pct}% de financiación ($
+                  {plan.interes.toLocaleString("es-AR")}). La primera vence el{" "}
+                  {fechaCorta(plan.detalle[0].venceEl)}, después una por mes.
+                </p>
+              </div>
+            ) : null}
+            {planVacio ? (
+              <div className="mt-3 pt-3 border-t border-border flex items-start gap-2 text-warning text-xs font-medium">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <p>La entrega cubre la compra: no queda nada para financiar en cuotas.</p>
+              </div>
+            ) : null}
+
             {/* Advertencia suave si entrega poco dinero */}
             {isAnticipoInsuficiente && anticipoLocalNum >= 0 && (
               <div className="mt-3 pt-3 border-t border-border flex items-start gap-2 text-warning text-xs font-medium">
@@ -332,7 +388,7 @@ export function PaymentModal({
         <div className="flex justify-end pt-4 mt-2">
           <Button
             onClick={() => onConfirm(anticipoLocalNum)}
-            disabled={isPending || !clienteSeleccionado || deudaGenerada < 0}
+            disabled={isPending || !clienteSeleccionado || deudaGenerada < 0 || planVacio}
             className="bg-warning hover:bg-warning/80 text-white h-12 w-full"
           >
             {isPending ? (

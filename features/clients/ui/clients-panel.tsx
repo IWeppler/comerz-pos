@@ -74,10 +74,18 @@ import {
   UserX,
   UserCog,
   AlertTriangle,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "@/shared/ui/toast";
 import { createClient } from "@/shared/config/supabase/client";
 import { validarAliasTransferencia } from "../lib/alias-transferencia";
+import { validarTasas } from "@/shared/lib/cuotas";
+import {
+  EditorTasasCuotas,
+  filasATasas,
+  filasDesdeTasas,
+  type FilaTasa,
+} from "@/shared/ui/editor-tasas-cuotas";
 
 interface ClientsPanelProps {
   config: ConfiguracionPOS;
@@ -115,6 +123,10 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
   // Vacío = no se muestra en el resumen (se guarda NULL).
   const [aliasTransferencia, setAliasTransferencia] = useState(
     config.alias_transferencia ?? "",
+  );
+  // La misma lista que Presupuestos (`plan_tasas_financiacion`).
+  const [filasTasas, setFilasTasas] = useState<FilaTasa[]>(() =>
+    filasDesdeTasas(config.plan_tasas_financiacion),
   );
 
   const handleChange = (field: string, value: string | number | boolean) => {
@@ -184,6 +196,12 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
       return;
     }
 
+    const tasas = validarTasas(filasATasas(filasTasas));
+    if (!tasas.ok) {
+      toast.error(`Venta en cuotas: ${tasas.error}`);
+      return;
+    }
+
     // Con 0 una compra vence el mismo día y al siguiente toda la cuenta está
     // en mora. La base lo rechaza igual (CHECK `cc_plazo_mora >= 1`); acá se
     // avisa con un mensaje que se entiende.
@@ -225,6 +243,7 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
         mensaje_recordatorio_cc:
           plantillaLimpia === "" ? null : plantillaLimpia,
         alias_transferencia: alias.valor,
+        plan_tasas_financiacion: tasas.tasas,
       })
       .eq("id", config.id)
       .select("id");
@@ -674,6 +693,31 @@ export function ClientsPanel({ config }: Readonly<ClientsPanelProps>) {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* VENTA EN CUOTAS — las opciones que el POS ofrece al fiar */}
+          <div
+            className={`mt-8 bg-card border border-border rounded-2xl p-5 space-y-4 transition-opacity ${!formData.cc_activas ? "opacity-50 pointer-events-none" : ""}`}
+          >
+            <div className="space-y-0.5 border-b border-border/50 pb-3">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-muted-foreground" />
+                Venta en cuotas
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Al fiar, el POS ofrece estas opciones: la deuda se parte en
+                cuotas mensuales, cada una con su vencimiento (la primera, al
+                mes de la compra). El recargo va sobre lo que se financia —la
+                entrega no paga— y reemplaza al recargo por financiación en esa
+                venta. Sin filas, no se vende en cuotas. Cambiar esto no toca
+                los planes ya vendidos.
+              </p>
+            </div>
+            <EditorTasasCuotas
+              filas={filasTasas}
+              onChange={setFilasTasas}
+              idPrefijo="cc-cuotas"
+            />
           </div>
 
           {/* ALIAS PARA TRANSFERIR — sale en el resumen que abre la clienta */}

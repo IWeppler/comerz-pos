@@ -60,6 +60,12 @@ export function buildWhatsappMessage(
   if (esFiado) {
     mensaje += `*Anticipo cobrado:* ${formatTicketMoney(montoCobrado)}\n`;
     mensaje += `*Saldo pendiente:* ${formatTicketMoney(montoPendiente)}\n`;
+    if (ticket.planCuotas) {
+      mensaje += `\n*${ticket.planCuotas.cuotas} cuotas* (incluye ${ticket.planCuotas.pct}% de financiación):\n`;
+      ticket.planCuotas.detalle.forEach((c) => {
+        mensaje += `${c.numero}. vence ${c.venceEl.split("-").reverse().join("/")}: ${formatTicketMoney(c.monto)}\n`;
+      });
+    }
   } else if (pagosDesglosados.length > 0) {
     mensaje += `\n*Medios de pago:*\n`;
     pagosDesglosados.forEach((p) => {

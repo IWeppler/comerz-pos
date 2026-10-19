@@ -88,6 +88,9 @@ import {
 } from "@/shared/components/negocio-activo-provider";
 import { CotizarDialog } from "@/features/presupuestos/ui/cotizar-dialog";
 import { saldoAFavorDe } from "@/features/clients/lib/saldo-a-favor";
+import { leerTasas } from "@/shared/lib/cuotas";
+import { armarPlanCuotasCc } from "@/features/clients/lib/plan-cuotas-cc";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import {
   baseRecargoCuentaCorriente,
   saldoAFavorAplicable,
@@ -413,6 +416,9 @@ export function CartPanelAdmin({
   /** La vendedora anuló el recargo CC para ESTE ticket. No persiste entre
    * ventas: se resetea al cerrar la venta y al apagar Cuenta Corriente. */
   const [ccSinRecargo, setCcSinRecargo] = useState(false);
+  /** Venta en cuotas: cuántas eligió la vendedora (null = fiado común). Como
+   * `ccSinRecargo`, es de ESTE ticket y se resetea con él. */
+  const [cuotasCc, setCuotasCc] = useState<number | null>(null);
   const [isReserva, setIsReserva] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   // Corte propio para celular (<640px, Tailwind `sm`) — distinto del corte
@@ -895,22 +901,37 @@ export function CartPanelAdmin({
       ? saldoAFavorAplicable(saldoAFavorDisponible, subtotalConDescuento)
       : 0;
 
+  // VENTA EN CUOTAS (docs/cuenta-corriente.md). Las opciones son las de
+  // Configuración > Clientes; la elegida que ya no exista se ignora (no cae a
+  // otra tasa). Sin reservas: una reserva no es un fiado.
+  const opcionesCuotasCc =
+    isCuentaCorriente && !isReserva
+      ? leerTasas(branding?.plan_tasas_financiacion)
+      : [];
+  const tasaPlanCc =
+    cuotasCc === null
+      ? null
+      : (opcionesCuotasCc.find((t) => t.cuotas === cuotasCc) ?? null);
+
   // Lo que el recargo CC sería si se aplicara. Se calcula igual esté anulado
   // o no: es lo que el footer necesita para poder ofrecer "restaurar". La
-  // base excluye lo pagado con saldo a favor.
-  const recargoCuentaCorrientePotencial = isCuentaCorriente
-    ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorAplicado) *
-        (branding?.cc_recargo_default || 0)) /
-      100
-    : 0;
+  // base excluye lo pagado con saldo a favor. Con plan no hay recargo de
+  // fiar: lo reemplaza el interés del plan (más abajo, después de los pagos).
+  const recargoCuentaCorrientePotencial =
+    isCuentaCorriente && !tasaPlanCc
+      ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorAplicado) *
+          (branding?.cc_recargo_default || 0)) /
+        100
+      : 0;
   const recargoCuentaCorriente = ccSinRecargo
     ? 0
     : recargoCuentaCorrientePotencial;
 
-  // `totalFinal` es el TICKET; `totalACubrir` es lo que tienen que cubrir los
-  // pagos (o el fiado): el ticket menos el saldo a favor, que ya está pagado.
-  const totalFinal = subtotalConDescuento + recargoCuentaCorriente;
-  const totalACubrir = Math.max(0, totalFinal - saldoAFavorAplicado);
+  // El ticket SIN el interés de un plan. Con plan, `totalFinal` y
+  // `totalACubrir` se arman después de los pagos: el interés va sobre lo que
+  // queda después de la entrega.
+  const totalSinPlan = subtotalConDescuento + recargoCuentaCorriente;
+  const totalACubrirSinPlan = Math.max(0, totalSinPlan - saldoAFavorAplicado);
   const clienteExceptuadoEntregaMinima =
     clienteSeleccionado?.exceptuado_entrega_minima ?? false;
 
@@ -994,6 +1015,7 @@ export function CartPanelAdmin({
     modoMixto,
     cuentaCorriente: isCuentaCorriente,
     ccSinRecargo,
+    cuotasCc,
     reserva: isReserva,
     promocionId,
     facturarElegido,
@@ -1013,6 +1035,7 @@ export function CartPanelAdmin({
     setModoMixto(venta.modoMixto);
     setIsCuentaCorriente(venta.cuentaCorriente);
     setCcSinRecargo(venta.ccSinRecargo);
+    setCuotasCc(venta.cuotasCc ?? null);
     setIsReserva(venta.reserva);
     setPromocionId(venta.promocionId);
     setFacturarElegido(venta.facturarElegido);
@@ -1190,6 +1213,7 @@ export function CartPanelAdmin({
     modoMixto,
     isCuentaCorriente,
     ccSinRecargo,
+    cuotasCc,
     isReserva,
     promocionId,
     facturarElegido,
@@ -1200,12 +1224,15 @@ export function CartPanelAdmin({
 
   // El saldo a favor cuenta como entrega (es plata que ya pagó): el mínimo que
   // falta cobrar es el porcentaje del ticket menos lo que cubre. Mismo
-  // criterio que el chequeo del server.
+  // criterio que el chequeo del server. En cuotas, sobre el precio de
+  // contado: el interés depende de la entrega y no puede ser su propia base.
   const anticipoMinimo =
     isCuentaCorriente && !clienteExceptuadoEntregaMinima
       ? Math.max(
           0,
-          (totalFinal * (branding?.cc_anticipo_default || 0)) / 100 -
+          ((tasaPlanCc ? subtotalConDescuento : totalSinPlan) *
+            (branding?.cc_anticipo_default || 0)) /
+            100 -
             saldoAFavorAplicado,
         )
       : 0;
@@ -1225,7 +1252,8 @@ export function CartPanelAdmin({
     return [
       {
         metodoPagoId: metodoPagoRapidoId,
-        montoAsignado: isCuentaCorriente ? anticipoMinimo : totalACubrir,
+        // Sin cuenta corriente no hay plan: lo que cubre es el ticket entero.
+        montoAsignado: isCuentaCorriente ? anticipoMinimo : totalACubrirSinPlan,
       },
     ];
   }, [
@@ -1234,7 +1262,7 @@ export function CartPanelAdmin({
     metodoPagoRapidoId,
     modoMixto,
     pagos,
-    totalACubrir,
+    totalACubrirSinPlan,
   ]);
 
   const sumaPagos = useMemo(
@@ -1245,6 +1273,27 @@ export function CartPanelAdmin({
       ),
     [pagosSincronizados],
   );
+
+  // El plan con la entrega que muestra el panel. Misma cuenta que
+  // create-sale: interés sobre subtotal − saldo a favor − entrega. El modal
+  // lo rehace con la entrega que se tipee, y el submit con la definitiva.
+  const fechaVentaPlan = diaComercial(new Date());
+  const baseFinanciablePlan = Math.max(
+    0,
+    subtotalConDescuento - saldoAFavorAplicado,
+  );
+  const planCuotasCc = tasaPlanCc
+    ? armarPlanCuotasCc(
+        Math.max(0, baseFinanciablePlan - sumaPagos),
+        tasaPlanCc,
+        fechaVentaPlan,
+      )
+    : null;
+
+  // `totalFinal` es el TICKET; `totalACubrir` es lo que tienen que cubrir los
+  // pagos (o el fiado): el ticket menos el saldo a favor, que ya está pagado.
+  const totalFinal = totalSinPlan + (planCuotasCc?.interes ?? 0);
+  const totalACubrir = Math.max(0, totalFinal - saldoAFavorAplicado);
 
   // Recargo por método: se recalcula cada vez que cambia el método elegido o
   // el reparto del pago mixto, porque el total a cobrar depende de CÓMO se
@@ -1335,8 +1384,12 @@ export function CartPanelAdmin({
   const handleCuentaCorrienteChange = (value: boolean) => {
     setIsCuentaCorriente(value);
     // Apagar CC descarta la exención: si se vuelve a prender, arranca con el
-    // recargo puesto. Anularlo tiene que ser siempre un acto explícito.
-    if (!value) setCcSinRecargo(false);
+    // recargo puesto. Anularlo tiene que ser siempre un acto explícito. Lo
+    // mismo el plan de cuotas: vuelve a fiado común.
+    if (!value) {
+      setCcSinRecargo(false);
+      setCuotasCc(null);
+    }
     if (value) {
       setIsReserva(false);
       setPromocionId("ninguna");
@@ -1559,6 +1612,8 @@ export function CartPanelAdmin({
     );
     setIsCuentaCorriente(Boolean(ctx.isCuentaCorriente));
     setCcSinRecargo(Boolean(ctx.isCuentaCorriente && ctx.ccSinRecargo));
+    // El pedido no trae plan: las cuotas se eligen en la caja que cobra.
+    setCuotasCc(null);
     setIsReserva(false);
     setModoMixto(Boolean(ctx.modoMixto));
     // Solo métodos que existen en este comercio HOY; uno borrado se cae y
@@ -1704,6 +1759,19 @@ export function CartPanelAdmin({
         const ventaId = crypto.randomUUID();
         const vendidaEn = new Date().toISOString();
 
+        // El plan con la entrega DEFINITIVA (la del modal, si se tipeó): el
+        // server lo arma con los mismos números y la base lo revalida.
+        const planSubmit = tasaPlanCc
+          ? armarPlanCuotasCc(
+              Math.max(0, baseFinanciablePlan - recargoSubmit.totalBase),
+              tasaPlanCc,
+              diaComercial(vendidaEn),
+            )
+          : null;
+        const totalTicketSubmit = planSubmit
+          ? totalSinPlan + planSubmit.interes
+          : totalFinal;
+
         const formData = new FormData();
         formData.append("venta_id", ventaId);
         formData.append("vendida_en", vendidaEn);
@@ -1722,8 +1790,16 @@ export function CartPanelAdmin({
             formData.append("sin_factura_por_arca_caido", "true");
           }
         }
-        formData.append("recargo_cc", String(recargoCuentaCorriente));
+        // Con plan, el "recargo" es el interés del plan (el server lo
+        // recalcula; esto queda solo para el log de diferencias).
+        formData.append(
+          "recargo_cc",
+          String(planSubmit ? planSubmit.interes : recargoCuentaCorriente),
+        );
         formData.append("cc_sin_recargo", String(ccSinRecargo));
+        if (planSubmit) {
+          formData.append("cuotas_cc", String(planSubmit.cuotas));
+        }
         if (saldoAFavorAplicado > 0) {
           formData.append("saldo_a_favor_usado", String(saldoAFavorAplicado));
         }
@@ -1827,6 +1903,15 @@ export function CartPanelAdmin({
             });
             return;
           }
+          // Mismo motivo: la tasa del plan la valida la base al registrar, y
+          // una venta encolada que rebota al sincronizar ya no tiene clienta.
+          if (planSubmit) {
+            toast.error("Sin conexión no se puede vender en cuotas", {
+              description:
+                "Esperá a tener señal, o fiá sin cuotas.",
+            });
+            return;
+          }
           if (!(await guardarParaDespues())) {
             toast.error("No se pudo guardar la venta en este dispositivo", {
               description:
@@ -1846,6 +1931,18 @@ export function CartPanelAdmin({
             // a registrar, y por eso encolarla es seguro: si ya estaba, el
             // reintento la reconoce por su id y no la duplica.
             if (!esErrorDeRed(error)) throw error;
+
+            // Una venta en cuotas no se encola (ver arriba). Y volver a
+            // confirmar genera OTRO id, así que no es idempotente: antes de
+            // cobrar de nuevo hay que mirar si la primera quedó.
+            if (planSubmit) {
+              toast.error("Se cortó la conexión", {
+                description:
+                  "No se sabe si la venta en cuotas quedó registrada. Antes de volver a cobrarla, buscala en Ventas o en la cuenta del cliente.",
+                duration: 15000,
+              });
+              return;
+            }
 
             if (!(await guardarParaDespues())) {
               toast.error(
@@ -1939,9 +2036,11 @@ export function CartPanelAdmin({
             result.comprobante?.puntoVenta,
             result.comprobante?.numero,
           ) ?? (result.ventaId ?? "").split("-")[0].toUpperCase();
-        const montoPendiente = isCuentaCorriente
-          ? Math.max(0, totalACubrir - montoRealAsignado)
-          : 0;
+        const montoPendiente = planSubmit
+          ? planSubmit.totalFinanciado
+          : isCuentaCorriente
+            ? Math.max(0, totalACubrir - montoRealAsignado)
+            : 0;
         const estadoVenta = isCuentaCorriente
           ? montoRealAsignado > 0 || saldoAFavorAplicado > 0
             ? "PARCIAL"
@@ -1963,7 +2062,7 @@ export function CartPanelAdmin({
               ? (imeisParaVenta[item.varianteId] ?? null)
               : null,
           })),
-          total: totalFinal + recargoSubmit.totalRecargo,
+          total: totalTicketSubmit + recargoSubmit.totalRecargo,
           metodoPago: nombreMetodoMostrar,
           nroRecibo: idReal,
           fiscal: result.fiscal ?? null,
@@ -1983,6 +2082,14 @@ export function CartPanelAdmin({
           montoCobrado: montoRealAsignado + recargoSubmit.totalRecargo,
           esFiadoDirecto: isCuentaCorriente,
           saldoAFavorAplicado,
+          planCuotas: planSubmit
+            ? {
+                cuotas: planSubmit.cuotas,
+                pct: planSubmit.pct,
+                interes: planSubmit.interes,
+                detalle: planSubmit.detalle,
+              }
+            : null,
         });
 
         /**
@@ -2021,6 +2128,7 @@ export function CartPanelAdmin({
         setModoMixto(false);
         setIsCuentaCorriente(false);
         setCcSinRecargo(false);
+        setCuotasCc(null);
         setClienteSeleccionado(null);
         // La pestaña cobrada desaparece. Si había otra venta estacionada se
         // restaura; si era la única queda un Ticket nuevo y vacío.
@@ -2389,6 +2497,19 @@ export function CartPanelAdmin({
                     pedidosACaja && !puedeCobrar ? handleEnviarACaja : undefined
                   }
                   puedeCobrar={puedeCobrar}
+                  opcionesCuotas={opcionesCuotasCc}
+                  cuotasElegidas={tasaPlanCc?.cuotas ?? null}
+                  onCuotasChange={setCuotasCc}
+                  planCuotas={planCuotasCc}
+                  planCuotasModal={
+                    tasaPlanCc
+                      ? {
+                          tasa: tasaPlanCc,
+                          baseFinanciable: baseFinanciablePlan,
+                          fechaVenta: fechaVentaPlan,
+                        }
+                      : null
+                  }
                   accionSecundaria={
                     moduloPresupuestos ? (
                       <CotizarDialog

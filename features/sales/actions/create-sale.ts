@@ -27,6 +27,12 @@ import {
 } from "@/shared/lib/precio-de-lista";
 import { mensajeSinStock } from "../lib/mensaje-sin-stock";
 import {
+  armarPlanCuotasCc,
+  mensajeRechazoPlanCuotas,
+  tasaParaCuotas,
+  type PlanCuotasCc,
+} from "@/features/clients/lib/plan-cuotas-cc";
+import {
   baseRecargoCuentaCorriente,
   mensajeSaldoAFavorInsuficiente,
 } from "../lib/saldo-a-favor-venta";
@@ -130,6 +136,11 @@ export async function registrarVentaAction(
   // es una decisión comercial puntual (cliente de confianza, arreglo previo)
   // que no puede salir de la config, porque la config es global.
   const ccSinRecargo = formData.get("cc_sin_recargo") === "true";
+  // Venta en cuotas (docs/cuenta-corriente.md): solo la CANTIDAD viaja del
+  // POS. La tasa sale de la config, acá y otra vez en la base
+  // (`cc_registrar_cuotas_venta`, fail-closed).
+  const cuotasCcRaw = (formData.get("cuotas_cc") as string | null)?.trim();
+  const cuotasCc = cuotasCcRaw ? Number(cuotasCcRaw) : null;
   const clienteId = formData.get("cliente_id") as string | null;
   // Saldo a favor que la clienta usa para pagar (20260928240000). NO es un
   // cobro —esa plata entró antes— así que no va en `pagos`: viaja aparte y lo
@@ -182,6 +193,20 @@ export async function registrarVentaAction(
     return { error: "Identificador de venta inválido.", success: false };
   }
 
+  if (cuotasCc !== null) {
+    if (!Number.isInteger(cuotasCc) || cuotasCc < 1 || !isCuentaCorriente) {
+      return { error: "El plan de cuotas no es válido.", success: false };
+    }
+    // El POS no encola una venta en cuotas (la tasa tiene que ser la
+    // vigente); si llegara una, la base la rechaza igual.
+    if (esVentaOffline) {
+      return {
+        error: "La venta en cuotas necesita conexión. Volvé a cobrarla con señal.",
+        success: false,
+      };
+    }
+  }
+
   // Una factura no se puede emitir sin conexión: el CAE lo da ARCA en el
   // momento. Una venta offline llega acá DESPUÉS de cobrada, con la clienta ya
   // ida, así que rechazarla no la deshace: la deja sin registrar para siempre
@@ -213,7 +238,7 @@ export async function registrarVentaAction(
     .select(
       // `modo_caja` y `requiere_caja_abierta` son para el turno; el resto para
       // los pagos y para el comprobante del paso 11. Misma fila, una consulta.
-      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto, pedidos_a_caja, arca_recargos_iva, arca_ri_a_monotributo, arca_tope_consumidor_final",
+      "modo_caja, requiere_caja_abierta, permitir_venta_sin_stock, cc_anticipo_default, entrega_minima_bloqueante, cc_recargo_default, cc_plazo_mora, plan_tasas_financiacion, modo_facturacion, comprobante_defecto, condicion_iva, punto_venta, arca_ambiente, cuit, facturar_por_defecto, pedidos_a_caja, arca_recargos_iva, arca_ri_a_monotributo, arca_tope_consumidor_final",
     )
     .single();
 
@@ -1248,11 +1273,62 @@ export async function registrarVentaAction(
   }
   const saldoAFavorUsado = saldoAFavorPedido;
 
-  const pctRecargoCC = Number(configVenta?.cc_recargo_default) || 0;
+  // --- 2. VALIDACIÓN DEL ARRAY DE PAGOS ---
+  // Ya parseado arriba, para poder evaluar la condición de una promo por
+  // método antes de calcular el descuento. Se reusa en vez de volver a parsear
+  // el mismo string: dos parseos del mismo JSON son dos oportunidades de que
+  // el ticket cambie entre uno y otro. Va ANTES del recargo de cuenta
+  // corriente: el interés de una venta en cuotas es sobre lo que queda
+  // después de la entrega.
+  const pagosValidos = pagosDelTicket.filter(
+    (p) => Number(p.montoAsignado) > 0,
+  );
+
+  // `montoAsignado` es la BASE: lo que ese cobro imputa al ticket. El recargo
+  // por método se calcula acá, con los porcentajes leídos de la base — nunca
+  // con lo que mande el cliente, mismo criterio que los precios de los items.
+  // Por eso las validaciones de abajo siguen comparando bases contra el total
+  // del ticket: el recargo no cubre mercadería, así que no puede "completar"
+  // un pago que no alcanza.
+  const recargoCalculado = calcularPagosConRecargo(pagosValidos, metodosDb);
+  const sumaPagos = recargoCalculado.totalBase;
+  const recargoMetodoTotal = recargoCalculado.totalRecargo;
+
+  // VENTA EN CUOTAS (20261019140000). La tasa del plan REEMPLAZA al recargo
+  // de fiar y va sobre lo FINANCIADO (subtotal − saldo a favor − entrega).
+  // Mismo cálculo que el POS (`armarPlanCuotasCc`); la base lo revalida.
+  let planCuotas: PlanCuotasCc | null = null;
+  if (cuotasCc !== null) {
+    const tasa = tasaParaCuotas(configVenta?.plan_tasas_financiacion, cuotasCc);
+    if (!tasa) {
+      return {
+        error: `El comercio no ofrece ${cuotasCc} cuotas. Revisá las opciones en Configuración > Clientes.`,
+        success: false,
+      };
+    }
+    planCuotas = armarPlanCuotasCc(
+      Math.max(0, subtotalConDescuento - saldoAFavorUsado - sumaPagos),
+      tasa,
+      diaComercial(vendidaEn || new Date()),
+    );
+    if (planCuotas.financiado <= 0) {
+      return {
+        error: "No queda nada para financiar en cuotas: la entrega cubre la compra.",
+        success: false,
+      };
+    }
+  }
+  // Con plan, "fiar sin recargo" no aplica: la tasa la configuró el comercio.
+  const ccSinRecargoEfectivo = ccSinRecargo && !planCuotas;
+
+  const pctRecargoCC = planCuotas
+    ? planCuotas.pct
+    : Number(configVenta?.cc_recargo_default) || 0;
   // La base del recargo excluye lo pagado con saldo a favor: es plata que la
   // clienta adelantó, no se le cobra por esperar (decidido el 28/9/2026).
-  const recargoCCServer =
-    isCuentaCorriente && !ccSinRecargo
+  const recargoCCServer = planCuotas
+    ? planCuotas.interes
+    : isCuentaCorriente && !ccSinRecargoEfectivo
       ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorUsado) *
           pctRecargoCC) /
         100
@@ -1263,12 +1339,12 @@ export async function registrarVentaAction(
   // prendido es 0, y ese 0 es un dato: dice que se fió sin recargo, distinto
   // de null, que dice que no se sabe.
   const pctRecargoCCAplicado =
-    isCuentaCorriente && !ccSinRecargo ? pctRecargoCC : 0;
+    isCuentaCorriente && !ccSinRecargoEfectivo ? pctRecargoCC : 0;
 
   // El log sigue, pero ya no es el único rastro: desde 20260823180630 la
   // venta guarda el porcentaje aplicado y el monto, así que fiar sin recargo
   // se puede contar, no solo encontrar leyendo logs.
-  if (isCuentaCorriente && ccSinRecargo && pctRecargoCC > 0) {
+  if (isCuentaCorriente && ccSinRecargoEfectivo && pctRecargoCC > 0) {
     // Anular el recargo pide permiso (20261007230000). Se frena acá, antes de
     // mover stock o pedir CAE; `registrar_venta` lo vuelve a exigir.
     if (!(await tienePermiso(supabase, PERMISOS.VENTAS_FIAR_SIN_RECARGO))) {
@@ -1300,24 +1376,6 @@ export async function registrarVentaAction(
   // Calculamos el Total Real del Ticket
   const totalConDescuentoYRecargo = subtotalConDescuento + recargoCCServer;
 
-  // --- 2. VALIDACIÓN DEL ARRAY DE PAGOS ---
-  // Ya parseado arriba, para poder evaluar la condición de una promo por
-  // método antes de calcular el descuento. Se reusa en vez de volver a parsear
-  // el mismo string: dos parseos del mismo JSON son dos oportunidades de que
-  // el ticket cambie entre uno y otro.
-  const pagosValidos = pagosDelTicket.filter(
-    (p) => Number(p.montoAsignado) > 0,
-  );
-
-  // `montoAsignado` es la BASE: lo que ese cobro imputa al ticket. El recargo
-  // por método se calcula acá, con los porcentajes leídos de la base — nunca
-  // con lo que mande el cliente, mismo criterio que los precios de los items.
-  // Por eso las validaciones de abajo siguen comparando bases contra el total
-  // del ticket: el recargo no cubre mercadería, así que no puede "completar"
-  // un pago que no alcanza.
-  const recargoCalculado = calcularPagosConRecargo(pagosValidos, metodosDb);
-  const sumaPagos = recargoCalculado.totalBase;
-  const recargoMetodoTotal = recargoCalculado.totalRecargo;
   const totalConRecargoMetodo = totalConDescuentoYRecargo + recargoMetodoTotal;
   const montoCobradoReal = sumaPagos + recargoMetodoTotal;
 
@@ -1382,8 +1440,13 @@ export async function registrarVentaAction(
         .single();
 
       if (!clienteCC?.exceptuado_entrega_minima) {
+        // En cuotas, sobre el precio de contado: el interés depende de la
+        // entrega, así que no puede ser parte de su propia base (mismo
+        // criterio que el POS).
         const entregaMinimaRequerida =
-          (totalConDescuentoYRecargo * pctEntregaMinima) / 100;
+          ((planCuotas ? subtotalConDescuento : totalConDescuentoYRecargo) *
+            pctEntregaMinima) /
+          100;
         // El saldo a favor cuenta como entrega: es plata que ya pagó.
         if (sumaPagos + saldoAFavorUsado + 0.05 < entregaMinimaRequerida) {
           return {
@@ -1985,6 +2048,9 @@ export async function registrarVentaAction(
             monto_pendiente: montoPendiente,
             plazo_mora: Number(configVenta?.cc_plazo_mora ?? 30),
             descripcion: `Compra Fiada - Ticket #${ticketCorto}`,
+            // `registrar_venta` escribe una deuda por cuota, cada una con
+            // su vencimiento (`cc_registrar_cuotas_venta`).
+            cuotas: planCuotas?.cuotas ?? null,
           }
         : null,
     p_reserva_ids: reservaIds,
@@ -2057,12 +2123,13 @@ export async function registrarVentaAction(
     const sinPermisoRecargo = ventaError?.message?.includes(
       "SIN_PERMISO_FIAR_SIN_RECARGO",
     );
+    const rechazoPlan = mensajeRechazoPlanCuotas(ventaError);
     return {
       error: sinRenglones
         ? "No se pudo registrar el detalle de la venta. No se cobró nada ni se descontó stock: volvé a intentar."
         : sinPermisoRecargo
           ? "No tenés permiso para fiar sin recargo. Aplicá el recargo o pedíselo a una administradora."
-          : (sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
+          : (rechazoPlan ?? sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
       success: false,
     };
   }

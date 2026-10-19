@@ -9,6 +9,14 @@ import { ClienteBasico } from "./client-selector";
 import Link from "next/link";
 import { MetodoPagoPOS } from "./types";
 import { CreateSalePaymentInput } from "@/entities/ventas/types";
+import type { TasaFinanciacion } from "@/shared/lib/cuotas";
+import type { PlanCuotasCc } from "@/features/clients/lib/plan-cuotas-cc";
+
+/** "2026-11-19" → "19/11". */
+const diaMes = (iso: string) => {
+  const [, mes, dia] = iso.split("-");
+  return `${Number(dia)}/${Number(mes)}`;
+};
 
 interface DescuentoDetalle {
   monto: number;
@@ -63,6 +71,21 @@ interface CartSidebarFooterProps {
   /** Botón secundario debajo del principal, solo en el POS ("Cotizar", con
    * el módulo de presupuestos prendido). El footer no sabe qué hace. */
   accionSecundaria?: React.ReactNode;
+  /**
+   * Venta en cuotas (Configuración > Clientes). Vacío o ausente = el
+   * comercio no vende en cuotas y no se dibuja nada. `planCuotas` es el plan
+   * con la entrega que muestra el panel; el modal lo recalcula con la que se
+   * tipee (`planCuotasModal`).
+   */
+  opcionesCuotas?: TasaFinanciacion[];
+  cuotasElegidas?: number | null;
+  onCuotasChange?: (cuotas: number | null) => void;
+  planCuotas?: PlanCuotasCc | null;
+  planCuotasModal?: {
+    tasa: TasaFinanciacion;
+    baseFinanciable: number;
+    fechaVenta: string;
+  } | null;
 }
 
 const formatCurrency = (amount: number) =>
@@ -98,6 +121,11 @@ export function CartSidebarFooter({
   onEnviarACaja,
   puedeCobrar = true,
   accionSecundaria,
+  opcionesCuotas = [],
+  cuotasElegidas = null,
+  onCuotasChange,
+  planCuotas = null,
+  planCuotasModal = null,
 }: Readonly<CartSidebarFooterProps>) {
   const [modalAbierto, setModalAbierto] = useState(false);
 
@@ -154,6 +182,34 @@ export function CartSidebarFooter({
   return (
     <>
       <div className="shrink-0 border-t border-border bg-card p-3 z-10">
+        {isPOSMode && isCuentaCorriente && opcionesCuotas.length > 0 && onCuotasChange ? (
+          <div
+            role="radiogroup"
+            aria-label="Forma de fiar"
+            className="mb-3 flex gap-1.5 overflow-x-auto pb-0.5"
+          >
+            {[null, ...opcionesCuotas.map((t) => t.cuotas)].map((n) => {
+              const activa = cuotasElegidas === n;
+              return (
+                <button
+                  key={n ?? "fiado"}
+                  type="button"
+                  role="radio"
+                  aria-checked={activa}
+                  onClick={() => onCuotasChange(n)}
+                  disabled={isPending}
+                  className={`h-11 shrink-0 rounded-lg border px-3 text-sm font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                    activa
+                      ? "border-warning bg-warning/10 text-foreground"
+                      : "border-border text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {n === null ? "Fiado" : `${n} cuotas`}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
         <div className="space-y-2 mb-4">
           <div className="flex items-center justify-between font-mono text-sm text-muted-foreground">
             <span>SUBTOTAL</span>
@@ -195,6 +251,14 @@ export function CartSidebarFooter({
               </span>
             </div>
           ) : null}
+          {planCuotas && planCuotas.interes > 0 ? (
+            <div className="flex items-center justify-between font-mono text-sm text-warning">
+              <span className="uppercase">
+                Financiación {planCuotas.cuotas} cuotas ({planCuotas.pct}%)
+              </span>
+              <span>+{formatCurrency(planCuotas.interes)}</span>
+            </div>
+          ) : null}
           {recargoMetodoMonto > 0 ? (
             <div className="flex items-center justify-between font-mono text-sm text-warning">
               <span className="truncate uppercase">
@@ -221,6 +285,13 @@ export function CartSidebarFooter({
               {formatCurrency(totalACobrar ?? totalFinal)}
             </span>
           </div>
+          {planCuotas && planCuotas.financiado > 0 ? (
+            <p className="text-right text-xs text-muted-foreground">
+              Fiado: {planCuotas.cuotas} cuotas de{" "}
+              {formatCurrency(planCuotas.detalle[0].monto)} · la 1ª vence el{" "}
+              {diaMes(planCuotas.detalle[0].venceEl)}
+            </p>
+          ) : null}
         </div>
 
         {isPOSMode && onEnviarACaja && !puedeCobrar ? (
@@ -295,6 +366,7 @@ export function CartSidebarFooter({
           isCuentaCorriente={isCuentaCorriente}
           anticipoMinimo={anticipoMinimo}
           isEfectivoOnly={isEfectivoOnly}
+          planCuotas={planCuotasModal}
           onConfirm={handleConfirmar}
           onClose={() => setModalAbierto(false)}
         />

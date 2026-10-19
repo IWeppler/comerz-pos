@@ -246,6 +246,15 @@ export interface TicketData {
    * `total` (es un pago, no un descuento): se imprime como renglón propio
    * debajo del total para que el papel cierre contra lo cobrado. */
   saldoAFavorAplicado?: number;
+  /** Venta en cuotas: el plan como se vendió (lo arma el POS con la misma
+   * cuenta que la base). Ausente en el fiado común y en los tickets que se
+   * abren desde el historial. */
+  planCuotas?: {
+    cuotas: number;
+    pct: number;
+    interes: number;
+    detalle: { numero: number; monto: number; venceEl: string }[];
+  } | null;
   /** Presente SOLO si la venta salió con factura (CAE). Cambia el papel:
    * letra, número, emisor, receptor, IVA, CAE y QR. Ausente = ticket
    * interno, con su leyenda de "no válido como factura". */

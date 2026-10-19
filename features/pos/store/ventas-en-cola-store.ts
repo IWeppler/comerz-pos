@@ -23,6 +23,9 @@ export interface VentaEnCola {
   modoMixto: boolean;
   cuentaCorriente: boolean;
   ccSinRecargo: boolean;
+  /** Venta en cuotas elegida (null o ausente = fiado común). Opcional: las
+   * ventas guardadas antes de que existiera no lo traen. */
+  cuotasCc?: number | null;
   reserva: boolean;
   promocionId: string;
   facturarElegido: boolean | null;

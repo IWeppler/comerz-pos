@@ -82,7 +82,15 @@ export function deudaVivaDesdeFila(fila: FilaDeudaViva): DeudaViva {
 export function etiquetaDeuda(
   deuda: Pick<DeudaViva, "numeroTicket" | "esMoraHuerfana" | "descripcion">,
 ): string {
-  if (deuda.numeroTicket) return `Ticket #${deuda.numeroTicket}`;
+  // Una venta en cuotas son varios tickets con el mismo número: sin la cuota,
+  // un pago que cancela dos dice dos veces "Ticket #X". La cuota sale de la
+  // descripción que escribe `cc_registrar_cuotas_venta` ("... - Cuota 2/6").
+  const cuota = deuda.descripcion?.match(/Cuota (\d+\/\d+)$/)?.[1];
+  if (deuda.numeroTicket) {
+    return cuota
+      ? `Ticket #${deuda.numeroTicket} · cuota ${cuota}`
+      : `Ticket #${deuda.numeroTicket}`;
+  }
   if (deuda.esMoraHuerfana) return "Recargo por mora";
   return deuda.descripcion?.trim() || "Saldo anterior";
 }

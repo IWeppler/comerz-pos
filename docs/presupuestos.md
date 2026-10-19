@@ -137,8 +137,9 @@ Etapas (cada una con las 3 patas):
      guarda: `estadoVisiblePresupuesto` (vigencia inclusiva, día comercial).
    - Cerrar la puede quien la hizo o un ADMIN (policy); la acción chequea las
      filas tocadas.
-   - Cuotas: `features/presupuestos/lib/cuotas.ts` (en centavos; el resto va a
-     la ÚLTIMA cuota). La etapa 3 genera las cuotas con esta misma función.
+   - Cuotas: `shared/lib/cuotas.ts` (en centavos; el resto va a la ÚLTIMA
+     cuota). La etapa 3 genera las cuotas con esta misma función, y la venta
+     en cuotas de la CC también (ver cuenta-corriente.md).
 
    **Lo que la cotización todavía NO cubre** (y qué ve el cliente):
    - **Listas de precios**: sale a precio base aunque el POS tenga una lista

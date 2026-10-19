@@ -26,7 +26,7 @@ import {
   formatearNumeroPresupuesto,
   puedeCerrarse,
 } from "../lib/estado";
-import { opcionesDeFinanciacion } from "../lib/cuotas";
+import { opcionesDeFinanciacion } from "@/shared/lib/cuotas";
 import {
   etiquetaFrecuencia,
   fechaCorta,

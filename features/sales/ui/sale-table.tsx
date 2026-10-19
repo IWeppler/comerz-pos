@@ -53,6 +53,10 @@ import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
 import { fiscalDesdeComprobante } from "../lib/comprobante-fiscal-desde-venta";
 import { letraComprobante } from "@/shared/lib/comprobante-fiscal-ticket";
 import { numeroTicketVenta } from "@/features/sales/lib/numero-ticket";
+import {
+  COLUMNAS_CUOTAS_TICKET,
+  planCuotasDesdeMovimientos,
+} from "@/features/sales/lib/plan-cuotas-ticket";
 import { detalleRenglon, nombreRenglon } from "@/features/sales/lib/nombre-renglon";
 import { SaleTableHeader } from "./sale-table-header";
 import {
@@ -660,6 +664,30 @@ export function VentasTable({
       montoPendiente: Number(venta.monto_pendiente || 0),
       saldoAFavorAplicado: Number(venta.saldo_a_favor_aplicado || 0),
     });
+
+    // Venta en cuotas: el plan sale de las cuotas que quedaron en la cuenta
+    // corriente. Solo para un fiado y solo al abrir (no en el listado). El
+    // ticket ya está abierto; las cuotas se suman cuando llegan, y si la
+    // consulta falla se ve como antes, sin ellas.
+    if (clase === "FACTURA" && Number(venta.monto_pendiente || 0) > 0) {
+      void createClient()
+        .from("cuenta_corriente_movimientos")
+        .select(COLUMNAS_CUOTAS_TICKET)
+        .eq("venta_id", venta.id)
+        .not("cuota_numero", "is", null)
+        .then(({ data, error }) => {
+          if (error) {
+            console.error("[TICKET] No se pudieron leer las cuotas:", error);
+            return;
+          }
+          const planCuotas = planCuotasDesdeMovimientos(data);
+          if (!planCuotas) return;
+          // Si en el medio se abrió otro ticket, no se le pegan estas cuotas.
+          setTicketAbierto((actual) =>
+            actual?.ventaId === venta.id ? { ...actual, planCuotas } : actual,
+          );
+        });
+    }
   };
 
   return (

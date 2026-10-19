@@ -66,7 +66,7 @@ un DEBITO propio que apunta a su ticket.
 - Un pago parcial no salda nada ni corre ninguna fecha.
 - Un recargo que entra después revive su ticket con la fecha vieja.
 - Recargo huérfano (sin `debito_origen_id`): devuelve su propia fecha sin sumar
-  plazo. Hoy no hay.
+  plazo. Hay uno (medido el 19/10/2026, ver "Venta en cuotas").
 - **Controles al tocar la regla**: Vero duarte (Evens) tiene que seguir vencida —un
   pago parcial no saca de mora—; Angi Levis (Estilo Bonito) fue el caso que motivó
   la unidad (saldó agosto antes de vencer y seguía mostrando el 17/09). La
@@ -95,6 +95,12 @@ VENCIMIENTO, imputación guardada, desglose en el detalle del cliente).
   INSERT para `authenticated`; la función es DEFINER y solo acepta un cobro
   creado en la transacción en curso (`xmin`). `recibo_cobro_cc` lo relee para
   reimprimir; los cobros anteriores al 1/10/2026 no tienen recibo guardado.
+- **El recibo se imprime o se descarga** (`recibo-cc-sheet.tsx`). Impreso
+  salen dos copias (cliente y comercio con firma); el PDF
+  (`download-recibo-cc-pdf.tsx`, A5) es SOLO la del cliente: es la constancia
+  que se le manda, y un PDF no se firma. Misma entrega que el comprobante de
+  venta (hoja de compartir en el celular, descarga en la PC) y
+  `@react-pdf/renderer` cargado recién al tocar el botón.
 - Hoy la imputación es la AUTOMÁTICA (la misma que decide vencimiento y mora),
   así nada se contradice. Las etapas 2 y 3 están abajo, en "Pendiente".
 - Estado de la etapa 1 (1/10/2026): migración APLICADA en prod; código en el
@@ -154,6 +160,130 @@ manual que dejara viva una compra vieja contradiría la mora calculada por FIFO.
   tocados por la migración): 58 clientes con `fecha_vencimiento_deuda` distinta
   de la regla. 48 no deben nada y tienen una fecha vieja, 7 son del Kiosco Demo
   y no tienen vencimiento, y 3 tienen deuda real (ver "Pendiente" abajo).
+
+## Venta en cuotas (en construcción, 19/10/2026)
+
+Pedido de ClickTostado (aires, celulares: compras caras que el comercio
+financia). **Es fiado, dentro de la CC**, no el plan de pagos de
+[presupuestos.md](presupuestos.md): sin cotización, sin reservas, sin ledger
+aparte. No se refinancia deuda existente.
+
+Decidido con Ignacio el 19/10/2026:
+- **Las tasas se arman en Configuración** (cuotas → %), por comercio; en la
+  venta se elige una. Es la MISMA lista que presupuestos
+  (`configuracion_pos.plan_tasas_financiacion`, `[{cuotas, pct}]`): la
+  pregunta "cuánto cobra este comercio por financiar en N cuotas" tiene una
+  respuesta. Reparto en `shared/lib/cuotas.ts` (centavos, el resto a la última).
+- **La tasa del plan REEMPLAZA el recargo de fiar** (`cc_recargo_default`) en
+  esa venta, y va sobre lo FINANCIADO (subtotal − entrega − saldo a favor),
+  como en presupuestos: la entrega no paga interés. Queda congelada en
+  `ventas.recargo_cc_porcentaje` / `recargo_cc_monto`, así anular y devolver
+  (que prorratean `recargo_cc_monto`) no cambian.
+- **Mensual**: la cuota k vence fecha de venta (día comercial) + k meses,
+  contados desde la fecha de venta, no encadenados (31/1 → 28/2, 31/3, 30/4),
+  igual que `fecha + k * interval '1 month'` en Postgres. No sigue el cierre
+  mensual del comercio.
+- **Los pagos cancelan por VENCIMIENTO**, no por fecha de compra: si no, una
+  compra fiada de noviembre quedaría vencida mientras el pago se va a la cuota
+  de diciembre de un plan viejo.
+
+Modelo: una venta en N cuotas son **N tickets** (DEBITO con `venta_id`) con
+`cuenta_corriente_movimientos.vence_el` propio (null = la regla del comercio,
+como hasta ahora) y `cuota_numero` / `cuotas_total`. Todo lo que mira deuda
+pasa por `cc_deudas_vivas`, así que vencimiento del cliente (= próxima cuota),
+mora (`PORCION_VENCIDA` toma solo las cuotas vencidas), deuda por mes, resumen
+público, recibo y avisos lo ven sin cambios. `ventas.monto_pendiente` = Σ
+cuotas (sigue siendo fiado, que es lo que suponen sus lectores).
+
+Lo que midió la auditoría (19/10/2026):
+- `anular_venta` acredita `monto_pendiente` entero y `registrar_devolucion`
+  prorratea `recargo_cc_monto`: funcionan sin cambios con N tickets.
+- `deuda_cc_vencida.ventas_vencidas_nuevas` cuenta TICKETS: con MONTO_FIJO, un
+  fijo por cuota vencida (cada cuota es un vencimiento; decidido así).
+- `debito_capital_mas_antiguo_id` (a qué ticket se pega la mora) ordena por
+  fecha: pasa a vencimiento junto con `cc_deudas_vivas`.
+- `registrar_venta` calcula `ventas.fecha_vencimiento` con la fecha en UTC, no
+  el día comercial (una venta fiada después de las 21 vence un día más tarde
+  en esa columna; `cc_deudas_vivas` usa el día AR). Se corrige en la etapa 2.
+- El FIFO en TS (`imputar-pagos-fifo.ts`) solo lo usan sus tests.
+- ClickTostado: plazo 30 días, modo DIAS, recargo de fiar 4,8%, mora 0%,
+  `PORCION_VENCIDA`; 8 clientes deben $2.046.770 en 11 ventas.
+
+Etapas (cada una se cierra y se reporta antes de la siguiente):
+1. Lógica pura con tests: `shared/lib/cuotas.ts` (movido de presupuestos) y
+   `features/clients/lib/plan-cuotas-cc.ts` (tasa elegida, cuotas y
+   vencimientos; espejo de lo que va a hacer la RPC).
+2. Base (`20261019140000_cc_venta_en_cuotas.sql`, reversión en
+   `supabase/reversals/`): columnas con CHECK y trigger `CUOTA_INMUTABLE`
+   (la policy de la tabla deja hacer UPDATE de cualquier columna, `monto`
+   incluido: hueco viejo, sin tocar acá); `cc_registrar_cuotas_venta`
+   (INVOKER) relee la tasa (fail-closed: `PLAN_CUOTAS_INVALIDO`), valida
+   porcentaje (`PLAN_CUOTAS_TASA_DISTINTA`) e interés sobre lo financiado
+   (`PLAN_CUOTAS_INTERES_DISTINTO`), rechaza offline (`PLAN_CUOTAS_OFFLINE`)
+   y escribe los N tickets; `registrar_venta` la llama con `p_cc.cuotas`, el
+   plan no pide `fiar_sin_recargo`, y la venta vence con la primera cuota.
+   - **Orden de cancelación**: `cc_deudas_vivas` devuelve `vence_el` (lo que
+     se muestra) y ordena por `orden`. Un ticket ordena por su vencimiento;
+     un **recargo huérfano** vence el día que nace pero ordena como una
+     compra de ese día. El guard lo encontró: hay UNO (SILVINA GONZALEZ,
+     Librería Colores, $1.414,50 del 7/10, "Recargo por mora"), y ordenarlo
+     por su vencimiento lo pagaba antes que el ticket del 3/10 y la sacaba de
+     vencida.
+   - **Por qué quedó huérfano (investigado el 19/10/2026)**: NO nació sin
+     origen. El 7/10 a las 10:37 se cobraron $37.644,50 por transferencia y
+     el recargo nació pegado a un "Saldo inicial (deuda del 14/08/2026)" de
+     $9.430 (15% = $1.414,50); el recibo dice que ese cobro canceló el saldo
+     inicial con su mora y el ticket del 24/9. A las 17:26 Maximiliano ANULÓ
+     ese saldo inicial (`anularMovimientoManualAction`), que no mira las
+     moras que apuntan al movimiento: el saldo bajó $9.430, pero el recargo
+     de $1.414,50 siguió vivo y `cc_deudas_vivas` lo ve huérfano (filtra los
+     anulados). A las 17:36 entró otro cobro de exactamente $1.414,50, pero
+     el FIFO lo imputó al ticket del 3/10, no al recargo, así que el recargo
+     sigue debiéndose y vencido desde el 7/10. Es el ÚNICO caso en la base
+     (moras vivas con origen anulado, inexistente o nulo).
+   - Pendiente: decidir con la dueña de Colores qué pasa con esos $1.414,50
+     (si el saldo inicial no existía, la mora sobre él tampoco: "Perdonar
+     deuda").
+   - **Arreglado (19/10/2026)**: `anularMovimientoManualAction` frena si el
+     movimiento tiene moras vivas apuntándolo y manda a "Perdonar deuda"
+     primero. Además el UPDATE pasó a condicional (`anulado = false`) con
+     chequeo de filas: antes una anulación filtrada por RLS, o dos al mismo
+     tiempo, reversaban el saldo igual.
+   - Ensayo en seco (19/10, transacción revertida, como la admin de
+     ClickTostado): guards de equivalencia OK para todos los clientes; 6
+     cuotas de $20.000 sobre $100.000 al 20% vendidas a las 23:30 vencen el
+     19 de cada mes (día AR); un pago de $30.000 cancela la deuda vieja
+     ($27.500) y $2.500 de la cuota 1; los cinco frenos responden.
+   - **Aplicada en prod el 19/10/2026** (guards OK; verificado: columnas,
+     trigger, `registrar_venta` llama al plan, `anon` sin EXECUTE, 0 cuotas).
+3. Pantallas (código en el working tree, 19/10/2026):
+   - Configuración > Clientes, tarjeta "Venta en cuotas": el editor de tasas
+     es `shared/ui/editor-tasas-cuotas.tsx`, el mismo que usa Presupuestos
+     (una lista por comercio). Se guarda con `validarTasas`.
+   - POS: al fiar, chips "Fiado / N cuotas" en el pie del ticket
+     (`cart-sidebar-footer.tsx`), renglón "Financiación N cuotas (x%)" y
+     "N cuotas de $X · la 1ª vence el d/m". El modal de la entrega rehace el
+     plan con lo que se tipea (`payment-modal.tsx`, prop `planCuotas`) y no
+     deja confirmar si la entrega cubre todo. **La entrega mínima del plan va
+     sobre el precio de contado** (POS y server): el interés depende de la
+     entrega y no puede ser su propia base. El recargo de fiar y su "Anular"
+     desaparecen con plan.
+   - `create-sale.ts`: los pagos se calculan ANTES del recargo de fiar (el
+     interés va sobre lo que queda después de la entrega); con `cuotas_cc`
+     arma el plan con `armarPlanCuotasCc`, manda `p_cc.cuotas` y traduce los
+     `PLAN_CUOTAS_*` (`mensajeRechazoPlanCuotas`).
+   - **Sin señal no se vende en cuotas** y una venta en cuotas no se encola:
+     si la red se corta a mitad, el POS pide revisar en Ventas antes de
+     volver a cobrar (reconfirmar genera OTRO id, no es idempotente).
+   - Ticket (pantalla, papel y WhatsApp): las cuotas con su vencimiento,
+     desde `TicketData.planCuotas`. Al cerrar la venta lo arma el POS; al
+     reabrirlo desde /ventas sale de las cuotas guardadas
+     (`features/sales/lib/plan-cuotas-ticket.ts`), pedidas SOLO al abrir el
+     ticket de una venta fiada, no como embed del listado (egress).
+   - El detalle del cliente, la deuda por mes y el resumen público ya las
+     muestran sin cambios (cada cuota es un ticket con "Cuota k/N" en la
+     descripción y su `vence_el`).
+4. Smoke en ClickTostado.
 
 ## Mora
 
