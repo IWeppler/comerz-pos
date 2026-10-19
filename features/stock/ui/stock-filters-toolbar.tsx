@@ -20,6 +20,7 @@ import {
   Plus,
   ScanBarcode,
   Search,
+  Star,
   Lock,
   TrendingUp,
 } from "lucide-react";
@@ -125,6 +126,12 @@ interface StockFiltersToolbarProps {
   propiedadesGlobales: Record<string, string[]>;
   filtrosVariantes: Record<string, string | string[]>;
   onFiltroVarianteChange: (propiedad: string, valor: string) => void;
+  /** Filtro "solo destacados" (los de la portada del catálogo). Solo lo manda
+   * Inventario: si no viene `onSoloDestacadosChange`, la sección no se dibuja
+   * (el POS comparte esta barra y ahí no significa nada). */
+  soloDestacados?: boolean;
+  onSoloDestacadosChange?: (valor: boolean) => void;
+  cantidadDestacados?: number;
   isAdmin: boolean;
   onLimpiarFiltros: () => void;
   slugCategoriaActiva?: string | null;
@@ -181,6 +188,9 @@ export function StockFiltersToolbar({
   propiedadesGlobales,
   filtrosVariantes,
   onFiltroVarianteChange,
+  soloDestacados = false,
+  onSoloDestacadosChange,
+  cantidadDestacados,
   isAdmin,
   onLimpiarFiltros,
   slugCategoriaActiva,
@@ -238,9 +248,12 @@ export function StockFiltersToolbar({
   const { ref: filaCategoriasRef, dragProps: dragCategorias } =
     useDragScroll<HTMLDivElement>();
   const propiedadesVariantes = Object.entries(propiedadesGlobales);
-  const hayFiltrosVariantesActivos = Object.values(filtrosVariantes).some(
-    (valor) => (Array.isArray(valor) ? valor.length > 0 : valor !== "todos"),
-  );
+  const hayFiltrosVariantesActivos =
+    soloDestacados ||
+    Object.values(filtrosVariantes).some((valor) =>
+      Array.isArray(valor) ? valor.length > 0 : valor !== "todos",
+    );
+  const conFiltroDestacados = onSoloDestacadosChange !== undefined;
 
   const limpiarFiltrosVariantes = () => {
     propiedadesVariantes.forEach(([propiedad]) => {
@@ -337,7 +350,7 @@ export function StockFiltersToolbar({
                 variant="outline"
                 size="sm"
                 className="relative h-10 w-10 p-0 shrink-0 border-border/60 bg-background"
-                aria-label="Abrir filtros de variantes"
+                aria-label="Abrir filtros"
               >
                 <Filter className="h-4 w-4" />
                 {hayFiltrosVariantesActivos && (
@@ -348,10 +361,51 @@ export function StockFiltersToolbar({
 
             <SheetContent side="right" className="w-full sm:max-w-sm p-0 gap-0">
               <SheetHeader className="p-5 border-b border-border text-left">
-                <SheetTitle>Filtros de Variantes</SheetTitle>
+                <SheetTitle>
+                  {conFiltroDestacados ? "Filtros" : "Filtros de Variantes"}
+                </SheetTitle>
               </SheetHeader>
 
               <div className="flex-1 overflow-y-auto p-5 space-y-6">
+                {onSoloDestacadosChange && (
+                  <div className="space-y-3">
+                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                      Catálogo
+                    </Label>
+                    <div className="flex flex-wrap gap-2">
+                      {[false, true].map((valor) => {
+                        const isActive = soloDestacados === valor;
+                        return (
+                          <button
+                            key={String(valor)}
+                            type="button"
+                            onClick={() => onSoloDestacadosChange(valor)}
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                              isActive
+                                ? "border-transparent bg-foreground text-background"
+                                : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
+                            }`}
+                          >
+                            {isActive && valor && (
+                              <Check className="inline w-3 h-3 mr-1 -mt-0.5" />
+                            )}
+                            {valor ? (
+                              <>
+                                <Star className="inline w-3 h-3 mr-1 -mt-0.5 fill-warning text-warning" />
+                                Destacados
+                                {cantidadDestacados !== undefined &&
+                                  ` (${cantidadDestacados})`}
+                              </>
+                            ) : (
+                              "Todos"
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {propiedadesVariantes.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     No hay variantes disponibles para filtrar.

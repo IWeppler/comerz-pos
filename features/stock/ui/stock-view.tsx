@@ -70,6 +70,7 @@ export function StockView({
   const [filtrosVariantes, setFiltrosVariantes] = useState<
     Record<string, string>
   >({});
+  const [soloDestacados, setSoloDestacados] = useState(false);
   const [orden, setOrden] = useState("nombre_asc");
   const [categoriasDB, setCategoriasDB] = useState<CategoriaDB[]>([]);
 
@@ -117,6 +118,10 @@ export function StockView({
 
   const matchSearchYVariantes = useCallback(
     (p: ProductoIndice) => {
+      // Va acá y no junto a la categoría para que los contadores de los
+      // chips también cuenten solo destacados, igual que con las variantes.
+      if (soloDestacados && !p.destacado_en) return false;
+
       const matchSearch = coincideBusquedaInventario(p, searchDebounced);
 
       const matchVariantes = Object.entries(filtrosVariantes).every(
@@ -136,7 +141,12 @@ export function StockView({
 
       return matchSearch && matchVariantes;
     },
-    [searchDebounced, filtrosVariantes],
+    [searchDebounced, filtrosVariantes, soloDestacados],
+  );
+
+  const cantidadDestacados = useMemo(
+    () => productosIndice.filter((p) => p.destacado_en).length,
+    [productosIndice],
   );
 
   // Lookup id/slug/nombre (lowercased) -> id real de categoría — mismo
@@ -364,6 +374,7 @@ export function StockView({
   const hayFiltrosActivos =
     searchQuery !== "" ||
     categoriaActiva !== "todos" ||
+    soloDestacados ||
     Object.values(filtrosVariantes).some((valor) => valor !== "todos");
 
   // Padres primero (con hijos embebidos), después las categorías sueltas
@@ -401,6 +412,12 @@ export function StockView({
     setSearchQuery("");
     setCategoriaActiva("todos");
     setFiltrosVariantes({});
+    setSoloDestacados(false);
+    setPaginaActual(1);
+  };
+
+  const handleSoloDestacadosChange = (valor: boolean) => {
+    setSoloDestacados(valor);
     setPaginaActual(1);
   };
 
@@ -448,6 +465,9 @@ export function StockView({
           propiedadesGlobales={propiedadesGlobales}
           filtrosVariantes={filtrosVariantes}
           onFiltroVarianteChange={handleFiltroVarianteChange}
+          soloDestacados={soloDestacados}
+          onSoloDestacadosChange={handleSoloDestacadosChange}
+          cantidadDestacados={cantidadDestacados}
           isAdmin={isAdmin}
           onLimpiarFiltros={limpiarFiltros}
           slugCategoriaActiva={slugCategoriaActiva}
