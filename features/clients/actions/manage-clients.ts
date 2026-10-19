@@ -14,6 +14,7 @@ import {
 import { validarPerdonDeuda } from "@/features/clients/lib/validar-perdon-deuda";
 import { mensajeCobroSuperaDeuda } from "@/features/clients/lib/tope-cobro-cc";
 import { deudaDe } from "@/features/clients/lib/saldo-a-favor";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import { urlDeResumen } from "@/shared/lib/dominios";
 import { esCuitValido, normalizarCuit } from "@/shared/lib/cuit";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
@@ -1329,17 +1330,50 @@ export async function anularMovimientoManualAction(movimientoId: string) {
     return { error: "Este movimiento ya está anulado.", success: false };
   }
 
-  const { error: updateError } = await supabase
+  // Una deuda con recargo por mora no se anula sola: el recargo apunta a ella
+  // (`debito_origen_id`), y anularla lo dejaba vivo y huérfano, vencido desde
+  // el día del cobro. Pasó una vez (Librería Colores, 7/10/2026, ver
+  // docs/cuenta-corriente.md). El recargo tiene `pago_id`, así que no se
+  // anula acá: se baja con "Perdonar deuda", que deja rastro.
+  const { data: morasVivas, error: errorMoras } = await supabase
+    .from("cuenta_corriente_movimientos")
+    .select("monto, creado_en")
+    .eq("debito_origen_id", movimientoId)
+    .eq("anulado", false);
+  if (errorMoras) {
+    return { error: "No se pudo revisar el movimiento.", success: false };
+  }
+  if (morasVivas && morasVivas.length > 0) {
+    const total = morasVivas.reduce((acc, m) => acc + Number(m.monto), 0);
+    const fechas = morasVivas
+      .map((m) => diaComercial(m.creado_en).split("-").reverse().slice(0, 2).join("/"))
+      .join(", ");
+    return {
+      error: `Esta deuda tiene recargo por mora de ${total.toLocaleString("es-AR", { style: "currency", currency: "ARS" })} (cobrado el ${fechas}). Si la deuda no existía, el recargo tampoco: bajalo primero con "Perdonar deuda" y después anulá este movimiento.`,
+      success: false,
+    };
+  }
+
+  // Condicional y con `.select("id")`: un UPDATE filtrado por RLS, o uno que
+  // pierde contra otra anulación al mismo tiempo, devuelve 0 filas sin error,
+  // y sin este chequeo el saldo se reversaría igual (dos veces, en la
+  // carrera).
+  const { data: anulados, error: updateError } = await supabase
     .from("cuenta_corriente_movimientos")
     .update({
       anulado: true,
       anulado_en: new Date().toISOString(),
       anulado_por: userId,
     })
-    .eq("id", movimientoId);
+    .eq("id", movimientoId)
+    .eq("anulado", false)
+    .select("id");
 
   if (updateError) {
     return { error: "No se pudo anular el movimiento.", success: false };
+  }
+  if (!anulados || anulados.length === 0) {
+    return { error: "Este movimiento ya está anulado.", success: false };
   }
 
   // Reversa del saldo — un DEBITO anulado resta, un CREDITO anulado suma

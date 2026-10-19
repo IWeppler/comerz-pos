@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { Printer, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, Loader2, Printer, Wallet } from "lucide-react";
+import { toast } from "@/shared/ui/toast";
 import {
   Sheet,
   SheetContent,
@@ -40,9 +41,27 @@ export function ReciboCcSheet() {
   const cerrar = useReciboCcStore((s) => s.cerrar);
   const anchoTicket = normalizarAnchoTicket(recibo?.comercio.anchoTicketMm);
 
+  const [descargando, setDescargando] = useState(false);
+
   const imprimir = () => {
     if (!recibo) return;
     window.print();
+  };
+
+  // `@react-pdf/renderer` se baja recién acá (o al pasar por el botón), igual
+  // que en el ticket de venta: es la dependencia más pesada de la app.
+  const precargarPdf = () => {
+    void import("./download-recibo-cc-pdf");
+  };
+
+  const descargar = async () => {
+    if (!recibo) return;
+    setDescargando(true);
+    const { downloadReciboCcPdf } = await import("./download-recibo-cc-pdf");
+    const ok = await downloadReciboCcPdf(recibo);
+    setDescargando(false);
+    // El éxito no se avisa: el navegador ya muestra la descarga.
+    if (!ok) toast.error("Ocurrió un error al generar el PDF");
   };
 
   // P para imprimir, igual que en el ticket de venta.
@@ -199,7 +218,22 @@ export function ReciboCcSheet() {
                     title="Imprimir recibo (P)"
                   >
                     <Printer className="h-4 w-4" />
-                    Imprimir recibo
+                    Imprimir
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="flex-1 gap-2 h-11 text-sm font-semibold"
+                    onClick={descargar}
+                    onPointerEnter={precargarPdf}
+                    onFocus={precargarPdf}
+                    disabled={descargando}
+                  >
+                    {descargando ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    Descargar
                   </Button>
                   <Button
                     variant="outline"
