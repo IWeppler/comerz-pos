@@ -4,234 +4,170 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { ScrollArea } from "@/shared/ui/scroll-area";
 import { TabsContent } from "@/shared/ui/tabs";
-import {
-  AlertTriangle,
-  Flame,
-  Package,
-  Tags,
-  Clock,
-  TrendingUp,
-} from "lucide-react";
+import { KpiFranja, KpiMiniCard } from "@/features/dashboard/ui/kpi-mini-card";
+import { AlertTriangle, Clock, Flame, TrendingUp } from "lucide-react";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { etiquetaFraccionado } from "@/features/dashboard/lib/unidades-vendidas";
+import { Producto } from "@/entities/productos/types";
+import { BajaAprobadaReporte } from "@/entities/reportes/types";
+import { BajasSeccion } from "@/features/reports/ui/bajas-seccion";
+import { ReportesMetrics } from "@/entities/reportes/types";
 
 interface InventarioTabProps {
-  metrics: any;
+  metrics: ReportesMetrics;
+  bajasDelPeriodo: BajaAprobadaReporte[];
+  productos: Producto[];
 }
 
-export function InventarioTab({ metrics }: Readonly<InventarioTabProps>) {
-  // Estado para controlar la ventana de "Stock sin movimiento"
+/** Ventanas para "sin movimiento". El default es la misma que usa el panel. */
+const VENTANAS_DIAS = [30, 60, 90] as const;
+
+export function InventarioTab({
+  metrics,
+  bajasDelPeriodo,
+  productos,
+}: Readonly<InventarioTabProps>) {
   const [filtroDias, setFiltroDias] = useState<number>(30);
 
-  // Filtramos la lista basándonos en la selección
-  const productosSinMov = (metrics.productosSinMovimiento || [])
-    .filter((p: any) => p.diasSinVender >= filtroDias)
-    .sort((a: any, b: any) => b.diasSinVender - a.diasSinVender);
+  const productosSinMov = metrics.productosSinMovimiento
+    .filter((p) => p.diasSinVender >= filtroDias)
+    .sort((a, b) => b.diasSinVender - a.diasSinVender);
+
+  const hayAlerta = metrics.productosCriticos > 0;
 
   return (
     <TabsContent
       value="inventario"
       className="space-y-6 outline-none animate-in fade-in-50 pt-2"
     >
-      {/* SECCIÓN SUPERIOR DE KPIs */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Capital Inmovilizado Analítico (Ocupa 2/3 de la pantalla) */}
-        <Card className="border-border shadow-none lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between pb-2 border-b border-border/40">
-            <CardTitle className="text-lg font-medium flex items-center gap-2">
-              <Package className="w-5 h-5 text-warning" />
-              Capital en Inventario
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Costo */}
-              <div className="bg-card p-4 rounded-xl border border-border/50 flex flex-col justify-center">
-                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">
-                  Valor al Costo
-                </p>
-                <p className="text-2xl font-semibold text-foreground">
-                  {formatearMoneda(metrics.stockValorizadoCosto)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Capital inmovilizado
-                </p>
-              </div>
+      {/* ── NÚMEROS ── mismo formato que Resumen, Ventas y el panel */}
+      <KpiFranja>
+        <KpiMiniCard
+          label="Capital en mercadería"
+          detalle="Valor al costo: lo que pagaste"
+          value={formatearMoneda(metrics.stockValorizadoCosto)}
+          variacion={null}
+        />
+        <KpiMiniCard
+          label="Venta potencial"
+          detalle="Si vendés todo el stock"
+          value={formatearMoneda(metrics.stockValorizadoPotencial)}
+          variacion={null}
+        />
+        <KpiMiniCard
+          label="Ganancia potencial"
+          detalle="Venta potencial menos costo"
+          value={formatearMoneda(metrics.stockGananciaPotencial)}
+          valorClassName="text-success"
+          variacion={null}
+        />
+        <KpiMiniCard
+          label="Unidades en stock"
+          detalle={[
+            etiquetaFraccionado(metrics.stockFraccionado),
+            hayAlerta ? `${metrics.productosCriticos} en nivel crítico` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || undefined}
+          value={`${metrics.stockTotalUnidades} u.`}
+          valorClassName={hayAlerta ? "text-danger" : "text-foreground"}
+          variacion={null}
+        />
+      </KpiFranja>
 
-              {/* Potencial Venta */}
-              <div className="bg-card p-4 rounded-xl border border-border/50 flex flex-col justify-center">
-                <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">
-                  Valor Venta (Potencial)
-                </p>
-                <p className="text-2xl font-semibold text-foreground">
-                  {formatearMoneda(metrics.stockValorizadoPotencial)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Si vendes el 100% del stock
-                </p>
-              </div>
-
-              {/* Ganancia Potencial */}
-              <div className="bg-card p-4 rounded-xl border border-success/20 flex flex-col justify-center">
-                <p className="text-xs text-success font-semibold uppercase tracking-wider mb-1 flex items-center gap-1">
-                  Ganancia Potencial
-                </p>
-                <p className="text-2xl font-semibold text-success">
-                  +{formatearMoneda(metrics.stockGananciaPotencial)}
-                </p>
-                <p className="text-xs text-success font-medium mt-1">
-                  Rentabilidad estipulada
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Columna Derecha (Stock Total + Alertas) */}
-        <div className="flex flex-col gap-6 lg:col-span-1">
-          <Card className="border-border shadow-none flex-1 flex flex-col justify-center">
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-semibold text-muted-foreground">
-                Stock Físico
-              </CardTitle>
-              <Tags className="w-4 h-4 text-chart-1" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-semibold text-foreground">
-                {metrics.stockTotalUnidades}{" "}
-                <span className="text-sm font-medium text-muted-foreground">
-                  unidades
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`shadow-none flex-1 flex flex-col justify-center ${metrics.productosCriticos > 0 ? "border-danger/20 bg-danger/10" : "border-border"}`}
-          >
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle
-                className={`text-sm font-semibold ${metrics.productosCriticos > 0 ? "text-danger" : "text-muted-foreground"}`}
-              >
-                Alertas de Stock
-              </CardTitle>
-              <AlertTriangle
-                className={`w-4 h-4 ${metrics.productosCriticos > 0 ? "text-danger" : "text-muted-foreground"}`}
-              />
-            </CardHeader>
-            <CardContent>
-              <div
-                className={`text-3xl font-semibold ${metrics.productosCriticos > 0 ? "text-danger" : "text-foreground"}`}
-              >
-                {metrics.productosCriticos}
-              </div>
-              <p
-                className={`text-xs mt-1 ${metrics.productosCriticos > 0 ? "text-danger font-semibold" : "text-muted-foreground"}`}
-              >
-                Productos en nivel crítico
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* ======================= */}
-      {/* SECCIÓN DE LISTAS */}
-      {/* ======================= */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* TOP ROTACIÓN */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* ── MAYOR ROTACIÓN ── */}
         <Card className="border-border shadow-none flex flex-col">
           <CardHeader className="border-b border-border/40 pb-4">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Flame className="w-5 h-5 text-warning" /> Mayor Rotación
-              (Unidades)
+              <Flame className="size-5 text-muted-foreground" aria-hidden="true" />
+              Lo que más se vende
             </CardTitle>
+            <p className="text-sm text-muted-foreground">Por unidades en el período.</p>
           </CardHeader>
           <CardContent className="p-0 flex-1">
             {metrics.topProductos.length > 0 ? (
-              <div className="divide-y divide-border/60">
-                {metrics.topProductos
-                  .slice(0, 5)
-                  .map((producto: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="p-3 px-4 flex items-center justify-between hover:bg-muted/40 transition-colors"
-                    >
-                      <span className="font-semibold text-sm text-foreground flex items-center gap-3">
-                        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
-                          {idx + 1}
-                        </div>
-                        <span className="truncate max-w-[200px] sm:max-w-xs">
-                          {producto.nombre}
-                        </span>
+              <ol className="divide-y divide-border/60">
+                {metrics.topProductos.slice(0, 5).map((producto, idx) => (
+                  <li key={idx} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+                        {idx + 1}
                       </span>
-                      <span className="font-semibold text-foreground">
-                        {producto.unidades} u.
+                      <span className="min-w-0 break-words text-sm font-medium text-foreground">
+                        {producto.nombre}
                       </span>
-                    </div>
-                  ))}
-              </div>
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                      {producto.cantidadEtiqueta}
+                    </span>
+                  </li>
+                ))}
+              </ol>
             ) : (
-              <div className="p-12 text-center text-sm text-muted-foreground h-full flex items-center justify-center">
-                Aún no hay datos de ventas.
-              </div>
+              <p className="flex min-h-[200px] items-center justify-center p-8 text-center text-sm text-muted-foreground">
+                Todavía no hay ventas en este período.
+              </p>
             )}
           </CardContent>
         </Card>
 
-        {/* PRODUCTOS SIN MOVIMIENTO (Módulo Interactivo) */}
+        {/* ── SIN MOVIMIENTO ── */}
         <Card className="border-border shadow-none flex flex-col">
-          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-4 gap-4 border-b border-border/40">
-            <CardTitle className="text-lg flex items-center gap-2 text-slate-600 dark:text-slate-300 shrink-0">
-              <Clock className="w-5 h-5 text-chart-1" /> Stock sin movimiento
+          <CardHeader className="flex flex-col gap-4 border-b border-border/40 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle className="text-lg flex shrink-0 items-center gap-2">
+              <Clock className="size-5 text-muted-foreground" aria-hidden="true" />
+              Sin movimiento
             </CardTitle>
 
-            {/* SELECTOR DE VENTANA DE TIEMPO */}
-            <div className="flex bg-muted/50 p-1 rounded-lg border border-border/50 shrink-0 w-full sm:w-auto overflow-x-auto">
-              {[30, 60, 90].map((dias) => (
-                <button
-                  key={dias}
-                  onClick={() => setFiltroDias(dias)}
-                  className={`flex-1 sm:flex-none text-xs font-bold px-3 py-1.5 rounded-md transition-all ${
-                    filtroDias === dias
-                      ? "bg-background text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  }`}
-                >
-                  +{dias} días
-                </button>
-              ))}
+            <div
+              role="group"
+              aria-label="Días sin vender"
+              className="flex w-full items-center gap-1 rounded-lg border border-border/50 bg-muted/50 p-1 sm:w-auto"
+            >
+              {VENTANAS_DIAS.map((dias) => {
+                const activa = filtroDias === dias;
+                return (
+                  <button
+                    key={dias}
+                    type="button"
+                    aria-pressed={activa}
+                    onClick={() => setFiltroDias(dias)}
+                    className={`min-h-11 flex-1 cursor-pointer rounded-md px-3 text-xs font-semibold transition-colors sm:min-h-0 sm:flex-none sm:py-1.5 ${
+                      activa ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    +{dias} días
+                  </button>
+                );
+              })}
             </div>
           </CardHeader>
 
           <CardContent className="p-0 flex-1">
             {productosSinMov.length > 0 ? (
               <ScrollArea className="h-[280px]">
-                <div className="divide-y divide-border/60">
-                  {productosSinMov.map((producto: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="p-3 px-4 flex items-center justify-between hover:bg-muted/40 transition-colors"
-                    >
-                      <span className="font-medium text-sm text-foreground truncate max-w-[200px] sm:max-w-xs pr-2">
+                <ul className="divide-y divide-border/60">
+                  {productosSinMov.map((producto, idx) => (
+                    <li key={idx} className="flex items-center justify-between gap-3 px-5 py-3">
+                      <span className="min-w-0 break-words text-sm font-medium text-foreground">
                         {producto.nombre}
                       </span>
-                      <p className="text-[10px] font-semibold text-danger shrink-0 shadow-none uppercase">
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
                         {producto.diasSinVender === 9999
                           ? "Nunca se vendió"
                           : `Hace ${producto.diasSinVender} días`}
-                      </p>
-                    </div>
+                      </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </ScrollArea>
             ) : (
-              <div className="p-12 text-center flex flex-col items-center justify-center text-sm text-muted-foreground h-full min-h-[280px]">
-                <TrendingUp className="w-8 h-8 text-success mb-3 opacity-50" />
-                <p className="font-semibold text-foreground text-base">
-                  ¡Excelente rotación!
-                </p>
-                <p className="mt-1">
-                  No tienes productos estancados hace más de {filtroDias} días.
+              <div className="flex min-h-[280px] flex-col items-center justify-center gap-2 p-8 text-center">
+                <TrendingUp className="size-7 text-success" aria-hidden="true" />
+                <p className="text-base font-semibold text-foreground">¡Buena rotación!</p>
+                <p className="text-sm text-muted-foreground">
+                  No tenés productos sin vender hace más de {filtroDias} días.
                 </p>
               </div>
             )}
@@ -239,60 +175,68 @@ export function InventarioTab({ metrics }: Readonly<InventarioTabProps>) {
         </Card>
       </div>
 
-      {/* ======================= */}
-      {/* ALERTA STOCK CRÍTICO */}
-      {/* ======================= */}
-      <Card className="border-border shadow-none">
-        <CardHeader className="bg-muted/20 border-b border-border py-4">
-          <CardTitle className="text-base text-danger flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> Stock Crítico Detallado (≤ 3
-            unidades)
+      {/* ── STOCK CRÍTICO ── */}
+      <Card className={`shadow-none ${hayAlerta ? "border-danger/30" : "border-border"}`}>
+        <CardHeader className="border-b border-border/50 pb-4">
+          <CardTitle className={`text-lg flex items-center gap-2 ${hayAlerta ? "text-danger" : ""}`}>
+            <AlertTriangle className="size-5" aria-hidden="true" />
+            Stock crítico (3 unidades o menos)
           </CardTitle>
         </CardHeader>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
-            <thead className="bg-muted/40 text-muted-foreground text-[10px] uppercase font-bold tracking-widest">
-              <tr>
-                <th className="px-5 py-3 border-b border-border/50">
-                  Producto
-                </th>
-                <th className="px-5 py-3 border-b border-border/50">
-                  Talle / Variante
-                </th>
-                <th className="px-5 py-3 text-right border-b border-border/50">
-                  Cant. Actual
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border/60">
-              {metrics.stockCriticoDetallado.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={3}
-                    className="px-5 py-10 text-center text-muted-foreground font-medium"
-                  >
-                    Tu inventario está sano. No hay productos críticos.
-                  </td>
-                </tr>
-              ) : (
-                metrics.stockCriticoDetallado.map((item: any, idx: number) => (
-                  <tr key={idx} className="hover:bg-card transition-colors">
-                    <td className="px-5 py-3 font-semibold text-foreground">
-                      {item.nombre}
-                    </td>
-                    <td className="px-5 py-3 text-muted-foreground text-xs font-medium">
-                      {item.variante}
-                    </td>
-                    <td className="px-5 py-3 text-right font-black text-danger">
-                      {item.cantidad} u.
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+
+        <CardContent className="p-0">
+          {metrics.stockCriticoDetallado.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm font-medium text-muted-foreground">
+              Tu inventario está sano. No hay productos críticos.
+            </p>
+          ) : (
+            <>
+              {/* Celular: una fila por producto con la cantidad a la derecha. */}
+              <ul className="divide-y divide-border/60 sm:hidden">
+                {metrics.stockCriticoDetallado.map((item, idx) => (
+                  <li key={idx} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <span className="min-w-0">
+                      <span className="block break-words text-sm font-semibold text-foreground">{item.nombre}</span>
+                      {item.variante ? (
+                        <span className="block break-words text-xs text-muted-foreground">{item.variante}</span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-danger">{item.cantidad} u.</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* Desde sm: tabla con encabezados. */}
+              <div className="hidden overflow-x-auto sm:block">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/40 text-xs font-semibold text-muted-foreground">
+                    <tr>
+                      <th scope="col" className="px-5 py-3 font-semibold">Producto</th>
+                      <th scope="col" className="px-5 py-3 font-semibold">Talle o variante</th>
+                      <th scope="col" className="px-5 py-3 text-right font-semibold">Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    {metrics.stockCriticoDetallado.map((item, idx) => (
+                      <tr key={idx} className="transition-colors hover:bg-muted/30">
+                        <td className="px-5 py-3 font-medium text-foreground">{item.nombre}</td>
+                        <td className="px-5 py-3 text-xs text-muted-foreground">{item.variante}</td>
+                        <td className="px-5 py-3 text-right font-semibold tabular-nums text-danger">{item.cantidad} u.</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </CardContent>
       </Card>
+
+      <BajasSeccion
+        metrics={metrics}
+        bajasDelPeriodo={bajasDelPeriodo}
+        productos={productos}
+      />
     </TabsContent>
   );
 }

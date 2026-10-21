@@ -17,7 +17,19 @@ export function BarChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const rowHeight = 45;
-  const margin = { top: 10, right: 60, bottom: 10, left: 100 };
+  // El margen izquierdo se adapta a la etiqueta más larga: con un margen fijo,
+  // "Remeras · Mujer" se partía en dos líneas. Con etiquetas cortas queda en 100.
+  const LARGO_MAX_ETIQUETA = 28;
+  const largoEtiqueta = Math.min(
+    d3.max(data, (d) => d.label.length) ?? 0,
+    LARGO_MAX_ETIQUETA,
+  );
+  const margin = {
+    top: 10,
+    right: 60,
+    bottom: 10,
+    left: Math.min(Math.max(largoEtiqueta * 6.6 + 16, 100), 210),
+  };
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -87,9 +99,10 @@ export function BarChart({
                   textAnchor="end"
                   className={`text-xs font-semibold transition-colors ${isHovered ? "fill-foreground" : "fill-muted-foreground"}`}
                 >
-                  {d.label.length > 15
-                    ? d.label.substring(0, 15) + "..."
+                  {d.label.length > LARGO_MAX_ETIQUETA
+                    ? d.label.substring(0, LARGO_MAX_ETIQUETA - 1) + "…"
                     : d.label}
+                  <title>{d.label}</title>
                 </text>
 
                 {/* Fondo de la barra (Rail) */}

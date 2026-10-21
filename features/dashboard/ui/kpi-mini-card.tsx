@@ -7,6 +7,9 @@ interface KpiMiniCardProps {
   variacion: ReactNode;
   /** Un dato chico debajo del título ("32% de margen", "41 ventas"). */
   detalle?: string;
+  /** Color del número. Por defecto el texto principal; el rojo solo para un
+   * valor que está mal (margen negativo), no para decorar. */
+  valorClassName?: string;
 }
 
 /**
@@ -16,7 +19,7 @@ interface KpiMiniCardProps {
  * a la derecha y el número grande abajo. Sin íconos ni leyenda de contra qué
  * se compara: el número es lo que se lee.
  */
-export function KpiMiniCard({ label, value, variacion, detalle }: Readonly<KpiMiniCardProps>) {
+export function KpiMiniCard({ label, value, variacion, detalle, valorClassName = "text-foreground" }: Readonly<KpiMiniCardProps>) {
   return (
     <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-border bg-card p-4 sm:p-5">
       <div className="flex min-h-10 items-start justify-between gap-2">
@@ -26,7 +29,7 @@ export function KpiMiniCard({ label, value, variacion, detalle }: Readonly<KpiMi
         </p>
         <div className="shrink-0 pt-0.5">{variacion}</div>
       </div>
-      <p className="truncate text-2xl font-semibold tracking-tight tabular-nums text-foreground sm:text-[28px]">
+      <p className={`truncate text-2xl font-semibold tracking-tight tabular-nums sm:text-[28px] ${valorClassName}`}>
         {value}
       </p>
     </div>

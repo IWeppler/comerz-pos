@@ -65,3 +65,28 @@ export function etiquetaFraccionado(
     fraccionado.map((f) => formatearCantidad(f.cantidad, f.unidad)).join(" · ")
   );
 }
+
+/** Unidad de medida de un renglón: la relación `producto` puede llegar como
+ * objeto o como lista de un elemento, según la consulta. */
+function unidadDelRenglon(producto: unknown): unknown {
+  const p = Array.isArray(producto) ? producto[0] : producto;
+  return (p as { unidad_medida?: unknown } | null | undefined)?.unidad_medida ?? null;
+}
+
+/**
+ * Cuántas PIEZAS tiene una venta, contando solo sus renglones por pieza.
+ *
+ * `ventas.cantidad` NO sirve para esto: es la suma de todos los renglones sin
+ * mirar la unidad, así que un ticket con 2 kg de caramelos y 3 alfajores daba
+ * 5. Medido en El Nono Cacho: las 314 ventas con algo por peso tienen esa suma
+ * mezclada. Una venta sin renglones cargados cuenta 0: no se inventa un número.
+ */
+export function piezasDeVenta(
+  items: readonly { cantidad?: unknown; producto?: unknown }[] | null | undefined,
+): number {
+  const acc = nuevoAcumuladorUnidades();
+  for (const item of items ?? []) {
+    acumularUnidad(acc, Number(item.cantidad ?? 0), unidadDelRenglon(item.producto));
+  }
+  return acc.piezas;
+}

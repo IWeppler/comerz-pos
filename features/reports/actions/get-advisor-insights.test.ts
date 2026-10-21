@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   getAdvisorInsights,
   recargoParaEmpatar,
+  LIMITE_RECOMENDACIONES,
   type AdvisorMetrics,
 } from "./get-advisor-insights";
 
@@ -142,7 +143,7 @@ describe("getAdvisorInsights — remitos pendientes (nueva regla)", () => {
 });
 
 describe("getAdvisorInsights — integración con el corte a top-3 existente", () => {
-  it("las reglas nuevas compiten por prioridad junto a las 10 originales, top-3 final", () => {
+  it("las reglas nuevas compiten por prioridad junto a las originales, top-3 final", () => {
     const r = getAdvisorInsights(
       baseMetrics({
         margenPorcentaje: -5, // priority 100
@@ -150,6 +151,7 @@ describe("getAdvisorInsights — integración con el corte a top-3 existente", (
         deudaVencida: { monto: 60000, clientes: 2 }, // priority 92 (danger, >50k)
         remitosPendientes: { cantidad: 1, diasMasAntiguo: 10, idMasAntiguo: "o1" }, // priority 58
       }),
+      3,
     );
     expect(r).toHaveLength(3);
     expect(r.map((i) => i.id)).toEqual([
@@ -201,17 +203,15 @@ describe("getAdvisorInsights — inventario estancado (conteo corregido)", () =>
   });
 });
 
-describe("getAdvisorInsights — dependencia de catálogo", () => {
-  it("muestra el porcentaje MEDIDO, no el umbral", () => {
+describe("getAdvisorInsights — dependencia de catálogo (regla retirada)", () => {
+  it("un producto con 90% de las unidades ya no genera recomendación", () => {
     const r = getAdvisorInsights(
       baseMetrics({
         unidadesVendidas: 100,
         topProductos: [{ nombre: "Campera Puffer", unidades: 90, ganancia: 0 }],
       }),
     );
-    const insight = r.find((i) => i.id === "high_dependency");
-    expect(insight?.message).toContain("90%");
-    expect(insight?.message).not.toContain("40%");
+    expect(r.find((i) => i.id === "high_dependency")).toBeUndefined();
   });
 });
 
@@ -288,12 +288,22 @@ describe("getAdvisorInsights — límite por superficie", () => {
     },
   });
 
-  it("por defecto corta en 3 (el banner de /reportes)", () => {
-    expect(getAdvisorInsights(muchasAlertas)).toHaveLength(3);
+  it("por defecto corta en 5, igual que el panel y /reportes", () => {
+    expect(LIMITE_RECOMENDACIONES).toBe(5);
+    expect(getAdvisorInsights(muchasAlertas)).toHaveLength(LIMITE_RECOMENDACIONES);
   });
 
-  it("el panel puede pedir 5", () => {
-    expect(getAdvisorInsights(muchasAlertas, 5)).toHaveLength(5);
+  it("nunca devuelve dos recomendaciones de la misma familia", () => {
+    // stock_critical y categoria_riesgo_stock son ambas "quiebre"
+    const r = getAdvisorInsights(
+      baseMetrics({
+        ordenes: 50,
+        productosCriticos: 2,
+        categoriaEnRiesgo: { categoria: "Remeras", unidadesVendidas: 30, diasCobertura: 4 },
+      }),
+    );
+    const quiebres = r.filter((i) => i.id === "stock_critical" || i.id === "categoria_riesgo_stock");
+    expect(quiebres).toHaveLength(1);
   });
 
   it("el orden por prioridad se respeta al subir el límite", () => {
@@ -605,5 +615,32 @@ describe("getAdvisorInsights — señales gerenciales nuevas", () => {
       10,
     );
     expect(r.some((i) => i.id === "best_day")).toBe(false);
+  });
+});
+
+describe("getAdvisorInsights — asociación sugerida en Requiere tu atención", () => {
+  const asociacion = { producto_a: "Remera Lisa", producto_b: "Jean Recto", producto_a_id: "pa", producto_b_id: "pb", ventas_juntas: 5 };
+
+  it("sin la señal no agrega fila", () => {
+    expect(getAdvisorInsights(baseMetrics()).some((i) => i.id === "asociacion_sugerida")).toBe(false);
+  });
+
+  it("con la señal agrega una fila info con botón que activa el par (sin link)", () => {
+    const r = getAdvisorInsights(baseMetrics({ asociacionSugerida: asociacion }), 10);
+    const fila = r.find((i) => i.id === "asociacion_sugerida");
+    expect(fila?.type).toBe("info");
+    expect(fila?.message).toContain("Remera Lisa y Jean Recto");
+    expect(fila?.message).toContain("5 ventas");
+    expect(fila?.accionAsociacion).toEqual({ producto_a_id: "pa", producto_b_id: "pb" });
+    expect(fila?.href).toBeUndefined();
+  });
+
+  it("no compite con otra oportunidad de la misma familia", () => {
+    const r = getAdvisorInsights(
+      baseMetrics({ asociacionSugerida: asociacion, renglonAdicional: { margenPromedio: 1000, ticketsDeUnRenglon: 50, pctDeUnRenglon: 60 } }),
+      10,
+    );
+    expect(r.some((i) => i.id === "asociacion_sugerida")).toBe(true);
+    expect(r.some((i) => i.id === "upselling")).toBe(true);
   });
 });

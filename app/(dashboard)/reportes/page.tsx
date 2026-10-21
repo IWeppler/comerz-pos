@@ -1,6 +1,4 @@
 import { cookies } from "next/headers";
-import { Suspense } from "react";
-import { ComplementosCatalogoSeccion } from "@/features/reports/ui/complementos-catalogo-seccion";
 import {
   getVentasAction,
   getPagosCuentaCorrienteAction,
@@ -14,7 +12,9 @@ import {
 import { ReportesFilterbar } from "@/features/reports/ui/reportes-filterbar";
 import { contarDiasConVentas } from "@/features/dashboard/lib/contar-dias-con-ventas";
 import { getAdvisorInsights } from "@/features/reports/actions/get-advisor-insights";
-import { AdvisorBanner } from "@/features/reports/ui/advisor-banner";
+import { AdvisorMiniList } from "@/features/dashboard/ui/advisor-mini-list";
+import { getAsociacionSugeridaAction } from "@/features/reports/actions/complementos-catalogo";
+import { getDeudaCcCrmAction } from "@/features/reports/actions/get-deuda-cc-crm";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { ExportacionesTab } from "@/features/exportaciones/ui/exportaciones-tab";
 import { puedeVerVistaGerencialAction } from "@/features/caja/actions/permisos-caja";
@@ -26,22 +26,18 @@ import { ScrollArea, ScrollBar } from "@/shared/ui/scroll-area";
 import {
   Activity,
   DollarSign,
-  DropletOff,
   Package,
   PiggyBank,
   ShoppingCart,
-  TrendingUp,
   FileSpreadsheet,
   Users,
 } from "lucide-react";
-import { BajasTab } from "@/features/reports/ui/bajas-tab";
 import { InventarioTab } from "@/features/reports/ui/inventario-tab";
 import { RentabilidadTab } from "@/features/reports/ui/rentabilidad-tab";
 import { ResumenTab } from "@/features/reports/ui/resumen-tab";
 import { BajaAprobadaReporte } from "@/entities/reportes/types";
 import { VentasTab } from "@/features/reports/ui/ventas-tab";
 import { CrmTab } from "@/features/reports/ui/crm-tab";
-import { VendedoresTab } from "@/features/reports/ui/vendedores-tab";
 import { Venta, VentaPago } from "@/entities/ventas/types";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { PaywallModulo } from "@/features/planes/ui/paywall-modulo";
@@ -59,13 +55,18 @@ export const dynamic = "force-dynamic";
 const PERIODO_INICIAL_FINANZAS = "mes" as const;
 
 interface PageProps {
-  searchParams: Promise<{ periodo?: string; desde?: string; hasta?: string }>;
+  searchParams: Promise<{ periodo?: string; desde?: string; hasta?: string; tab?: string }>;
 }
 
 export default async function ReportesPage({
   searchParams,
 }: Readonly<PageProps>) {
   const params = await searchParams;
+  // Deep link desde los avisos de Requiere tu atención (?tab=inventario).
+  const PESTAÑAS_VALIDAS = ["resumen", "ventas", "rentabilidad", "inventario", "crm", "finanzas", "exportaciones"];
+  // Vendedores vive dentro de Ventas: un enlace viejo a ?tab=vendedores cae ahí.
+  const pestañaPedida = params.tab === "vendedores" ? "ventas" : (params.tab ?? "");
+  const pestañaInicial = PESTAÑAS_VALIDAS.includes(pestañaPedida) ? pestañaPedida : "resumen";
   const periodoParam = (params.periodo as PeriodoDashboard) || "mes";
   const desdeParam = params.desde;
   const hastaParam = params.hasta;
@@ -105,6 +106,8 @@ export default async function ReportesPage({
     configResponse,
     pagosCuentaCorrienteResponse,
     categoriasResponse,
+    asociacionSugerida,
+    deudaCcCrm,
   ] = await Promise.all([
     getVentasAction(),
     getStockAction(),
@@ -124,6 +127,8 @@ export default async function ReportesPage({
     // Para agrupar por categoría real con su padre ("Mujer › Remeras"), no
     // por el nombre suelto. Ver el parámetro `categorias` de getDashboardMetrics.
     supabase.from("categorias").select("id, nombre, slug, parent_id"),
+    getAsociacionSugeridaAction(),
+    getDeudaCcCrmAction(),
   ]);
 
   const ventas = (ventasResponse.data || []) as unknown as Venta[];
@@ -244,6 +249,7 @@ export default async function ReportesPage({
   // pantalla, contadas por día local.
   const insights = getAdvisorInsights({
     ...metrics,
+    asociacionSugerida: asociacionSugerida ?? undefined,
     diasDelPeriodo: contarDiasConVentas(ventasDelPeriodo, {
       inicio: startDate,
       fin: endDate,
@@ -263,12 +269,9 @@ export default async function ReportesPage({
 
   return (
     <div className="flex flex-col gap-4 px-4 p-2">
-      <AdvisorBanner insights={insights} />
-      <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-muted" aria-label="Cargando asociaciones del catálogo" />}>
-        <ComplementosCatalogoSeccion />
-      </Suspense>
+      <AdvisorMiniList insights={insights} />
 
-      <Tabs defaultValue="resumen" className="w-full space-y-4 mt-2">
+      <Tabs defaultValue={pestañaInicial} className="w-full space-y-4 mt-2">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 border-b border-border/50 pb-2">
           <ScrollArea className="w-full pb-2 lg:pb-0 lg:w-auto">
             <TabsList className="bg-sidebar border border-border h-10! inline-flex w-max min-w-full sm:min-w-0">
@@ -297,25 +300,11 @@ export default async function ReportesPage({
                 <Package className="w-4 h-4 mr-2" /> Inventario
               </TabsTrigger>
               <TabsTrigger
-                value="bajas"
-                className="rounded-sm px-2 data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:text-foreground  cursor-pointer transition-colors"
-              >
-                <DropletOff className="w-4 h-4 mr-2" /> Bajas
-              </TabsTrigger>
-              <TabsTrigger
                 value="crm"
                 className="rounded-sm px-2 data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:text-foreground  cursor-pointer transition-colors"
               >
                 <Users className="w-4 h-4 mr-2" /> CRM & Cobranza
               </TabsTrigger>
-              {puedeVerVendedores && (
-                <TabsTrigger
-                  value="vendedores"
-                  className="rounded-sm px-2 data-[state=active]:bg-background data-[state=active]:border-border data-[state=active]:text-foreground  cursor-pointer transition-colors"
-                >
-                  <TrendingUp className="w-4 h-4 mr-2" /> Vendedores
-                </TabsTrigger>
-              )}
               {puedeVerFinanzas && (
                 <TabsTrigger
                   value="finanzas"
@@ -344,13 +333,19 @@ export default async function ReportesPage({
           ventasDelPeriodo={ventasDelPeriodo}
           periodo={periodoParam}
         />
-        <VentasTab metrics={metrics} />
+        <VentasTab
+          metrics={metrics}
+          vendedores={{
+            puedeVer: puedeVerVendedores,
+            desde: desdeVendedores,
+            hasta: hastaVendedores,
+          }}
+        />
         <RentabilidadTab
           metrics={metrics}
           costoMercaderiaVendida={costoMercaderiaVendida}
         />
-        <InventarioTab metrics={metrics} />
-        <BajasTab
+        <InventarioTab
           metrics={metrics}
           bajasDelPeriodo={bajasDelPeriodo}
           productos={productos}
@@ -363,12 +358,8 @@ export default async function ReportesPage({
           clientes={clientes}
           plazoMora={plazoMora}
           diasInactivo={diasInactivo}
-        />
-
-        <VendedoresTab
-          puedeVer={puedeVerVendedores}
-          desde={desdeVendedores}
-          hasta={hastaVendedores}
+          deudaCc={deudaCcCrm.data}
+          deudaCcError={deudaCcCrm.error}
         />
 
         {/* Los dos traen su propio selector de período y se refrescan solos;

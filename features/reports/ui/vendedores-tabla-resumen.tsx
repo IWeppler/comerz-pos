@@ -7,7 +7,6 @@ import {
   TableRow,
 } from "@/shared/ui/table";
 import { formatearMoneda } from "@/shared/utils/formatters";
-import { colorVendedor } from "../lib/vendedores-palette";
 import type { VendedorResumen } from "@/entities/reportes/types";
 
 interface VendedoresTablaResumenProps {
@@ -42,20 +41,21 @@ export function VendedoresTablaResumen({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {resumen.map((r, i) => (
+          {resumen.map((r) => (
             <TableRow
               key={r.vendedorId}
               onClick={() => onSeleccionar(r.vendedorId)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSeleccionar(r.vendedorId);
+                }
+              }}
+              tabIndex={0}
+              aria-selected={seleccionadoId === r.vendedorId}
               className={`cursor-pointer ${seleccionadoId === r.vendedorId ? "bg-muted/50" : ""}`}
             >
-              <TableCell className="font-medium text-foreground">
-                <span className="flex items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full shrink-0 ${colorVendedor(i).legend}`}
-                  />
-                  {r.nombre}
-                </span>
-              </TableCell>
+              <TableCell className="font-medium text-foreground">{r.nombre}</TableCell>
               <TableCell className="text-right font-semibold">
                 {formatearMoneda(r.totalVendido)}
               </TableCell>

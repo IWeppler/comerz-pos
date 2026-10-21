@@ -25,7 +25,7 @@ interface VentaRow {
     cantidad: number;
     precio_final: number | null;
     precio_unitario: number;
-    producto: { nombre?: string | null } | { nombre?: string | null }[] | null;
+    producto: { nombre?: string | null; unidad_medida?: string | null } | { nombre?: string | null; unidad_medida?: string | null }[] | null;
     producto_id?: string | null;
     variante?: string | null;
     es_venta_libre?: boolean | null;
@@ -64,7 +64,7 @@ export async function getReporteVendedoresAction(
       metodo_pago,
       estado_operacion,
       perfiles(nombre),
-      ventas_items(cantidad, precio_final, precio_unitario, producto_id, variante, es_venta_libre, producto:productos(nombre)),
+      ventas_items(cantidad, precio_final, precio_unitario, producto_id, variante, es_venta_libre, producto:productos(nombre, unidad_medida)),
       venta_pagos(metodo_tipo, monto_bruto)
       `,
     )
@@ -88,7 +88,7 @@ export async function getReporteVendedoresAction(
   const metodoAcc = new Map<string, number>(); // key: `${vendedorId}|${metodo}`
   const productosAcc = new Map<
     string,
-    Map<string, { nombre: string; cantidad: number; totalFacturado: number }>
+    Map<string, { nombre: string; unidadMedida: string | null; cantidad: number; totalFacturado: number }>
   >();
   const anuladasAcc = new Map<string, VentaAnuladaVendedor[]>();
 
@@ -173,6 +173,7 @@ export async function getReporteVendedoresAction(
       if (!productosDelVendedor.has(productoId)) {
         productosDelVendedor.set(productoId, {
           nombre: productoNombre,
+          unidadMedida: getSupabaseRelation(item.producto)?.unidad_medida ?? null,
           cantidad: 0,
           totalFacturado: 0,
         });
@@ -214,7 +215,8 @@ export async function getReporteVendedoresAction(
     const productos = Array.from(
       productosAcc.get(vendedorId)?.entries() || [],
     ).map(([productoId, p]): ProductoTopVendedor => ({ productoId, ...p }));
-    productos.sort((a, b) => b.cantidad - a.cantidad);
+    // Por facturación: la cantidad mezcla piezas con kilos entre productos.
+    productos.sort((a, b) => b.totalFacturado - a.totalFacturado);
 
     const anuladas = (anuladasAcc.get(vendedorId) || []).sort(
       (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),

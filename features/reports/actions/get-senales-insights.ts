@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Las señales de Comerz Insights que viven en la base, en una sola action.
+ * Las señales de Comerz Intelligence que viven en la base, en una sola action.
  *
  * Todas están gateadas por `caja.ver_gerencial` y LANZAN sin permiso, así que
  * cada una se trae por separado y el error se traga: una vendedora no ve

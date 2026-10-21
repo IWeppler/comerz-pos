@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useTransition } from "react";
+import { pendienteDeVenta } from "@/features/clients/lib/pendiente-venta";
 import { useRouter } from "next/navigation";
 import {
   RANGO_HISTORIAL_DEFAULT,
@@ -224,7 +225,7 @@ export function VentasTable({
     { value: "antiguos", label: "Más antiguos" },
     { value: "mayor_total", label: "Mayor ingreso" },
     ...(isAdmin
-      ? [{ value: "mayor_ganancia", label: "Mayor ganancia neta" }]
+      ? [{ value: "mayor_ganancia", label: "Mayor ganancia bruta" }]
       : []),
     { value: "menor_total", label: "Menor ingreso" },
     { value: "mayor_cantidad", label: "Más unidades vendidas" },
@@ -252,7 +253,7 @@ export function VentasTable({
       };
     }
 
-    const montoPendiente = Number(venta.monto_pendiente || 0);
+    const montoPendiente = pendienteDeVenta(venta);
     const estaPagado =
       venta.estado_pago === "PAGADA" ||
       (!venta.estado_pago && montoPendiente <= 0) ||
@@ -279,7 +280,7 @@ export function VentasTable({
    */
   const cobroCorregible = (venta: Venta) => {
     if (venta.estado_operacion === "ANULADA") return null;
-    if (Number(venta.monto_pendiente || 0) > 0) return null;
+    if (pendienteDeVenta(venta) > 0) return null;
 
     const cobros = (venta.venta_pagos || []).filter(
       (pago) => (pago.tipo_movimiento ?? "PAGO_VENTA") === "PAGO_VENTA",
@@ -302,7 +303,7 @@ export function VentasTable({
     // Cuenta corriente: la devolución baja la deuda, así que no importa con
     // qué se cobró el anticipo ni cuántos cobros haya. Solo hace falta que
     // exista el cliente al que acreditarle.
-    if (Number(venta.monto_pendiente || 0) > 0) return !!venta.cliente_id;
+    if (pendienteDeVenta(venta) > 0) return !!venta.cliente_id;
 
     // Contado: un solo cobro, y de un medio que se pueda devolver.
     const cobro = cobroCorregible(venta);
@@ -661,7 +662,7 @@ export function VentasTable({
         clienteNombre === "Consumidor final" ? undefined : clienteNombre,
       estadoPago: venta.estado_pago ?? undefined,
       montoCobrado: Number(venta.monto_cobrado || 0),
-      montoPendiente: Number(venta.monto_pendiente || 0),
+      montoPendiente: pendienteDeVenta(venta),
       saldoAFavorAplicado: Number(venta.saldo_a_favor_aplicado || 0),
     });
 
@@ -669,7 +670,7 @@ export function VentasTable({
     // corriente. Solo para un fiado y solo al abrir (no en el listado). El
     // ticket ya está abierto; las cuotas se suman cuando llegan, y si la
     // consulta falla se ve como antes, sin ellas.
-    if (clase === "FACTURA" && Number(venta.monto_pendiente || 0) > 0) {
+    if (clase === "FACTURA" && pendienteDeVenta(venta) > 0) {
       void createClient()
         .from("cuenta_corriente_movimientos")
         .select(COLUMNAS_CUOTAS_TICKET)

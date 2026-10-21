@@ -1,5 +1,6 @@
 import type { Venta } from "@/entities/ventas/types";
 import type { MuestraMedia } from "@/shared/lib/periodo-ranges";
+import { piezasDeVenta } from "./unidades-vendidas";
 
 /** Cuántas semanas hacia atrás se buscan días de referencia. Se usan las que
  * haya: con 5 semanas de historia salen 5 martes, y alcanza. */
@@ -105,12 +106,12 @@ export function compararConDiaTipico(
     const totalTicket =
       Number(v.total || 0) - Number(v.recargo_metodo_total || 0);
     const ganancia = totalTicket - Number(v.precio_costo || 0);
-    const unidades = Number(v.cantidad || 0);
+    // Piezas, no `v.cantidad`: esa suma mezcla kilos con unidades (ver piezasDeVenta).
 
     const destino = esHoy ? hoy : (porDia.get(clave) ?? vacio());
     destino.ingresos += totalTicket;
     destino.ganancia += ganancia;
-    destino.unidades += unidades;
+    destino.unidades += piezasDeVenta(v.ventas_items);
     destino.tickets.push(totalTicket);
     if (!esHoy) porDia.set(clave, destino);
   }

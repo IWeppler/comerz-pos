@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useId } from "react";
 import * as d3 from "d3";
 import { Venta } from "@/entities/ventas/types";
 
@@ -9,6 +9,16 @@ interface SalesChartProps {
   periodo: string;
   desde?: string;
   hasta?: string;
+}
+
+/** Un punto del eje X. `current` es el período elegido, `previous` el de
+ * comparación. `null` = todavía no ocurrió (no dibuja la línea ahí). */
+interface PuntoGrafico {
+  dateObj: Date;
+  label: string;
+  prevLabel: string;
+  current: number | null;
+  previous: number | null;
 }
 
 // Helpers de fechas
@@ -28,6 +38,8 @@ const addDays = (d: Date, days: number) => {
   return newD;
 };
 
+const formatoMoneda = (valor: number) => `$${valor.toLocaleString("es-AR")}`;
+
 export function SalesChart({
   ventas,
   periodo,
@@ -36,6 +48,7 @@ export function SalesChart({
 }: Readonly<SalesChartProps>) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const gradientId = useId();
   const height = 320;
   const margin = { top: 20, right: 20, bottom: 30, left: 60 };
 
@@ -55,7 +68,7 @@ export function SalesChart({
       currEnd = new Date();
     let prevStart = new Date(0),
       prevEnd = new Date(0);
-    let points: any[] = [];
+    let points: PuntoGrafico[] = [];
     let hasPrevious = true;
 
     // A. Construir el andamiaje (Puntos base en el eje X)
@@ -169,7 +182,7 @@ export function SalesChart({
     } else {
       // Personalizado / Histórico (Fallback de 1 sola línea)
       hasPrevious = false;
-      const grouped = new Map<string, any>();
+      const grouped = new Map<string, PuntoGrafico>();
       const ds = desde ? new Date(desde + "T00:00:00") : new Date(0);
       const hs = hasta
         ? endOfDay(new Date(hasta + "T23:59:59"))
@@ -198,7 +211,8 @@ export function SalesChart({
             previous: null,
           });
         }
-        grouped.get(key).current += Number(v.total);
+        const punto = grouped.get(key);
+        if (punto && punto.current !== null) punto.current += Number(v.total);
       });
       points = Array.from(grouped.values()).sort(
         (a, b) => a.dateObj.getTime() - b.dateObj.getTime(),
@@ -250,7 +264,7 @@ export function SalesChart({
   const [hoveredData, setHoveredData] = useState<{
     x: number;
     y: number;
-    data: (typeof data.points)[0];
+    data: PuntoGrafico;
   } | null>(null);
 
   if (data.points.length === 0) {
@@ -279,38 +293,46 @@ export function SalesChart({
     .domain([0, Math.max(100, maxTotal * 1.15)]) // 15% extra de respiro arriba
     .range([innerHeight, 0]);
 
-  // Línea Actual (Verde)
+  // Línea del período elegido (acento de la interfaz)
   const lineCurr = d3
-    .line<any>()
+    .line<PuntoGrafico>()
     .defined((d) => d.current !== null)
     .x((d) => xScale(d.dateObj))
-    .y((d) => yScale(d.current))
+    .y((d) => yScale(d.current ?? 0))
     .curve(d3.curveMonotoneX);
 
-  // Línea Anterior (Gris punteada)
+  // Línea del período anterior (gris punteada)
   const linePrev = d3
-    .line<any>()
+    .line<PuntoGrafico>()
     .defined((d) => d.previous !== null)
     .x((d) => xScale(d.dateObj))
-    .y((d) => yScale(d.previous))
+    .y((d) => yScale(d.previous ?? 0))
     .curve(d3.curveMonotoneX);
 
-  // Área Gradiente (Solo para la Actual)
+  // Área gradiente (solo para la actual)
   const areaGenerator = d3
-    .area<any>()
+    .area<PuntoGrafico>()
     .defined((d) => d.current !== null)
     .x((d) => xScale(d.dateObj))
     .y0(innerHeight)
-    .y1((d) => yScale(d.current))
+    .y1((d) => yScale(d.current ?? 0))
     .curve(d3.curveMonotoneX);
 
   const xTicks = xScale.ticks(width < 500 ? 4 : 6);
   const yTicks = yScale.ticks(5);
 
-  const handleMouseMove = (event: React.MouseEvent<SVGRectElement>) => {
+  // Resumen para lectores de pantalla: el dibujo solo no le dice nada a quien no lo ve.
+  const totalActual = data.points.reduce((acc, p) => acc + (p.current ?? 0), 0);
+  const totalAnterior = data.points.reduce((acc, p) => acc + (p.previous ?? 0), 0);
+  const resumenAccesible = data.hasPrevious
+    ? `Ventas del período: ${formatoMoneda(totalActual)}. Período anterior: ${formatoMoneda(totalAnterior)}.`
+    : `Ventas del período: ${formatoMoneda(totalActual)}.`;
+
+  // Mouse, lápiz y dedo: pointer events. Con mousemove el tooltip nunca aparecía en celular.
+  const handlePointerMove = (event: React.PointerEvent<SVGRectElement>) => {
     const [xPos] = d3.pointer(event);
     const dateOnX = xScale.invert(xPos);
-    const bisectDate = d3.bisector<any, Date>((d) => d.dateObj).left;
+    const bisectDate = d3.bisector<PuntoGrafico, Date>((d) => d.dateObj).left;
     const index = bisectDate(data.points, dateOnX, 1);
     const d0 = data.points[index - 1];
     const d1 = data.points[index];
@@ -342,11 +364,17 @@ export function SalesChart({
       ref={containerRef}
       className="relative w-full h-[320px] mt-4 select-none"
     >
-      <svg width={width} height={height} className="overflow-visible">
+      <svg
+        width={width}
+        height={height}
+        className="overflow-visible"
+        role="img"
+        aria-label={resumenAccesible}
+      >
         <defs>
-          <linearGradient id="gradient-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#6cc581" stopOpacity={0.3} />
-            <stop offset="100%" stopColor="#6cc58185" stopOpacity={0} />
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" style={{ stopColor: "var(--primary)" }} stopOpacity={0.18} />
+            <stop offset="100%" style={{ stopColor: "var(--primary)" }} stopOpacity={0} />
           </linearGradient>
         </defs>
 
@@ -356,7 +384,7 @@ export function SalesChart({
               <line
                 x1={0}
                 x2={innerWidth}
-                stroke="#e5e7eb"
+                className="stroke-border"
                 strokeDasharray="4 4"
                 strokeWidth={1}
               />
@@ -364,9 +392,9 @@ export function SalesChart({
                 x={-10}
                 y={4}
                 textAnchor="end"
-                className="text-xs fill-muted-foreground font-medium"
+                className="text-xs fill-muted-foreground font-medium tabular-nums"
               >
-                ${tickValue.toLocaleString("es-AR")}
+                {formatoMoneda(tickValue)}
               </text>
             </g>
           ))}
@@ -391,41 +419,41 @@ export function SalesChart({
             </g>
           ))}
 
-          {/* DIBUJO DE LÍNEAS */}
+          {/* DIBUJO DE LÍNEAS. Sin transition-all: el atributo `d` no anima con CSS, y
+              "all" enciende transiciones en propiedades que no deberían moverse. */}
           {data.hasPrevious && (
             <path
               d={linePrev(data.points) || ""}
               fill="none"
-              stroke="#9ca3af" // Gris
+              className="stroke-muted-foreground"
               strokeWidth={2}
               strokeDasharray="4 4"
               strokeLinecap="round"
-              className="transition-all duration-300"
             />
           )}
 
           <path
             d={areaGenerator(data.points) || ""}
-            fill="url(#gradient-area)"
-            className="transition-all duration-300"
+            fill={`url(#${gradientId})`}
           />
 
           <path
             d={lineCurr(data.points) || ""}
             fill="none"
-            stroke="#6cc581" // Esmeralda
+            style={{ stroke: "var(--primary)" }}
             strokeWidth={2}
             strokeLinecap="round"
             strokeLinejoin="round"
-            className="transition-all duration-300 drop-shadow-sm"
           />
 
           <rect
             width={innerWidth}
             height={innerHeight}
             fill="transparent"
-            onMouseMove={handleMouseMove}
-            onMouseLeave={() => setHoveredData(null)}
+            style={{ touchAction: "pan-y" }}
+            onPointerDown={handlePointerMove}
+            onPointerMove={handlePointerMove}
+            onPointerLeave={() => setHoveredData(null)}
           />
 
           {hoveredData && (
@@ -435,20 +463,17 @@ export function SalesChart({
                 x2={hoveredData.x}
                 y1={0}
                 y2={innerHeight}
-                stroke="#6cc581"
+                className="stroke-primary opacity-70 pointer-events-none"
                 strokeWidth={1.5}
                 strokeDasharray="4 4"
-                className="opacity-70 pointer-events-none"
               />
               {hoveredData.data.current !== null && (
                 <circle
                   cx={hoveredData.x}
                   cy={yScale(hoveredData.data.current)}
                   r={5}
-                  fill="#ffffff"
-                  stroke="#6cc581"
+                  className="fill-card stroke-primary pointer-events-none"
                   strokeWidth={3}
-                  className="pointer-events-none"
                 />
               )}
               {data.hasPrevious && hoveredData.data.previous !== null && (
@@ -456,10 +481,8 @@ export function SalesChart({
                   cx={hoveredData.x}
                   cy={yScale(hoveredData.data.previous)}
                   r={4}
-                  fill="#ffffff"
-                  stroke="#9ca3af"
+                  className="fill-card stroke-muted-foreground pointer-events-none"
                   strokeWidth={2}
-                  className="pointer-events-none"
                 />
               )}
             </g>
@@ -467,10 +490,10 @@ export function SalesChart({
         </g>
       </svg>
 
-      {/* TOOLTIP ESTILO VERCEL/ROSENCHARTS */}
+      {/* TOOLTIP: en tokens, así sigue al modo oscuro */}
       {hoveredData && (
         <div
-          className="absolute pointer-events-none z-10 bg-white border border-border shadow-xl rounded-xl p-3.5 transform -translate-x-1/2 -translate-y-[120%] min-w-[160px]"
+          className="absolute pointer-events-none z-10 bg-card text-card-foreground border border-border shadow-xl rounded-xl p-3.5 transform -translate-x-1/2 -translate-y-[120%] min-w-[160px]"
           style={{
             left: hoveredData.x + margin.left,
             top: hoveredData.y + margin.top,
@@ -483,12 +506,12 @@ export function SalesChart({
           <div className="flex flex-col gap-1.5">
             {hoveredData.data.current !== null && (
               <div className="flex items-center justify-between gap-4">
-                <span className="flex items-center gap-1.5 text-xs font-medium text-success">
-                  <div className="w-2 h-2 rounded-full bg-success" />
+                <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                  <span className="w-2 h-2 rounded-full bg-primary" />
                   Actual
                 </span>
-                <span className="font-bold text-sm text-neutral-900">
-                  ${hoveredData.data.current?.toLocaleString("es-AR")}
+                <span className="font-bold text-sm tabular-nums text-foreground">
+                  {formatoMoneda(hoveredData.data.current)}
                 </span>
               </div>
             )}
@@ -496,11 +519,11 @@ export function SalesChart({
             {data.hasPrevious && hoveredData.data.previous !== null && (
               <div className="flex items-center justify-between gap-4">
                 <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                  <div className="w-2 h-2 rounded-full bg-gray-400" />
+                  <span className="w-2 h-2 rounded-full bg-muted-foreground" />
                   {hoveredData.data.prevLabel}
                 </span>
-                <span className="font-bold text-sm text-muted-foreground">
-                  ${hoveredData.data.previous?.toLocaleString("es-AR")}
+                <span className="font-bold text-sm tabular-nums text-muted-foreground">
+                  {formatoMoneda(hoveredData.data.previous)}
                 </span>
               </div>
             )}

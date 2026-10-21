@@ -69,6 +69,7 @@ export default async function VentasPage({ searchParams }: Readonly<PageProps>) 
   const ventasResponse = await getVentasAction({
     soloPropias: !puedeVerTodas,
     desde: desdeRangoHistorial(rango) ?? undefined,
+    pendienteActual: true,
   });
 
   const ventas = (ventasResponse.data || []) as unknown as Venta[];

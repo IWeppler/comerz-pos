@@ -1,5 +1,3 @@
-import { Suspense } from "react";
-import { ComplementosCatalogoSeccion } from "@/features/reports/ui/complementos-catalogo-seccion";
 import {
   getVentasAction,
   getPagosCuentaCorrienteAction,
@@ -57,6 +55,7 @@ import { RendimientoCard } from "@/features/dashboard/ui/rendimiento-card";
 import { getAdvisorInsights } from "@/features/reports/actions/get-advisor-insights";
 import { getDeudaVencidaAction } from "@/features/clients/actions/get-deuda-vencida";
 import { getRemitosPendientesAction } from "@/features/purchases/actions/get-remitos-pendientes";
+import { getAsociacionSugeridaAction } from "@/features/reports/actions/complementos-catalogo";
 import { getSenalesInsightsAction } from "@/features/reports/actions/get-senales-insights";
 import { listarReservasActivasAction } from "@/features/reservations/actions/manage-reservations";
 import { normalizarRubro } from "@/entities/config/types";
@@ -188,6 +187,7 @@ export default async function DashboardPage({
     reservasResponse,
     deudaVencida,
     remitosPendientes,
+    asociacionSugerida,
     categoriasResponse,
     pagosCuentaCorrienteResponse,
     estadoActivacion,
@@ -211,6 +211,7 @@ export default async function DashboardPage({
     listarReservasActivasAction(),
     getDeudaVencidaAction(),
     getRemitosPendientesAction(),
+    getAsociacionSugeridaAction(),
     supabase.from("categorias").select("id, nombre, slug, parent_id"),
     getPagosCuentaCorrienteAction({ desde: desdeIso }),
     // Devuelve null si no es ADMIN: el gate vive en la RPC, así que acá no hay
@@ -291,7 +292,7 @@ export default async function DashboardPage({
 
   // Zona analítica (KPIs + chart + rankings): TODO lo de acá para abajo
   // depende de `periodo`. La zona de excepciones (Atención Requerida,
-  // Comerz Insights) es fija y vive fuera de este bloque.
+  // Comerz Intelligence) es fija y vive fuera de este bloque.
   const rangoActual = resolverRangoActual(periodo, hoy);
   const rangoAnterior = resolverRangoAnterior(periodo, hoy);
   const rangoRanking = resolverRangoRanking(periodo, hoy);
@@ -319,7 +320,7 @@ export default async function DashboardPage({
     formatearFechaISO(rangoAnterior.fin),
     pagosCuentaCorriente,
   );
-  // Comerz Insights corre sobre su propia ventana fija (resuelta arriba, junto
+  // Comerz Intelligence corre sobre su propia ventana fija (resuelta arriba, junto
   // al fetch de su señal). Ver DIAS_INSIGHTS.
   const metricasInsights = getDashboardMetrics(
     ventasOperativas,
@@ -478,6 +479,7 @@ export default async function DashboardPage({
     {
       ...metricasInsights,
       deudaVencida: deudaVencida ?? undefined,
+      asociacionSugerida: asociacionSugerida ?? undefined,
       remitosPendientes:
         remitosPendientes && remitosPendientes.cantidad > 0
           ? remitosPendientes
@@ -597,10 +599,6 @@ export default async function DashboardPage({
         </Button>
         <EgresoModal triggerVariant="outline" triggerClassName="h-11 w-full" />
       </div>
-
-      <Suspense fallback={<div className="h-32 animate-pulse rounded-xl bg-muted" aria-label="Cargando asociaciones del catálogo" />}>
-        <ComplementosCatalogoSeccion compacto />
-      </Suspense>
 
       {/* DOS COLUMNAS — contenido (números, ventas por día, stock y lo que
             rinde) y un aside con qué se vende (categorías) y qué atender

@@ -111,7 +111,7 @@ export function VentasFacturadas({
           </div>
           <div className="text-[11px] text-muted-foreground">
             {datos.sin_facturar.cantidad} venta(s) con ticket interno
-            {base > 0 ? ` · ${100 - porcentaje}%` : ""}
+            {base > 0 ? ` · ${100 - porcentaje}% del total` : ""}
           </div>
         </div>
 

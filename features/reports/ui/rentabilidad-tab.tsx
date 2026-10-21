@@ -1,288 +1,305 @@
 "use client";
 
-import { BarChart } from "@/features/reports/ui/bar-chart";
-import { DonutChart } from "@/features/reports/ui/donut-chart";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { TabsContent } from "@/shared/ui/tabs";
 import {
   AlertTriangle,
-  ArrowDownRight,
+  Calculator,
   CreditCard,
   Package,
-  PieChart,
+  PiggyBank,
+  Percent,
+  Receipt,
+  TrendingDown,
   Trophy,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { ReportesMetrics } from "@/entities/reportes/types";
 
 interface RentabilidadTabProps {
-  metrics: any;
+  metrics: ReportesMetrics;
   costoMercaderiaVendida: number;
+}
+
+/** Color por tipo de paso. La identidad va en la paleta de gráficos (`--viz-*`);
+ * los de estado (verde/rojo) solo para el resultado, que es un estado. */
+const COLOR_TONO = {
+  ingresos: "var(--viz-1)",
+  costo: "var(--muted-foreground)",
+  bruta: "var(--foreground)",
+  recargo: "var(--viz-3)",
+  comision: "var(--viz-4)",
+  gasto: "var(--viz-2)",
+  neta: "var(--success)",
+  perdida: "var(--danger)",
+} as const;
+
+type Tono = keyof typeof COLOR_TONO;
+
+interface Paso {
+  etiqueta: string;
+  signo: "Menos" | "Más" | "Total";
+  monto: number;
+  /** En la escala de pesos: de dónde a dónde se mueve la barra. */
+  desde: number;
+  hasta: number;
+  tono: Tono;
+  Icono: LucideIcon;
 }
 
 export function RentabilidadTab({
   metrics,
   costoMercaderiaVendida,
 }: Readonly<RentabilidadTabProps>) {
-  const totalBrutoCobrado = (metrics.ventasPorMetodo || []).reduce(
-    (acc: number, metodo: { bruto: number }) => acc + Number(metodo.bruto || 0),
-    0,
-  );
+  const ingresos = metrics.ingresos;
+  const brutaValor = metrics.gananciaBrutaVentas;
+  const conRecargo = brutaValor + metrics.recargosCobrados;
+  const conComision = conRecargo - metrics.totalComisiones;
+  const neta = metrics.gananciaNeta;
+  const enRojo = neta < 0;
+
+  const pasos: Paso[] = [
+    { etiqueta: "Ingresos por ventas", signo: "Total", monto: ingresos, desde: 0, hasta: ingresos, tono: "ingresos", Icono: Receipt },
+    { etiqueta: "Costo de la mercadería", signo: "Menos", monto: costoMercaderiaVendida, desde: ingresos, hasta: brutaValor, tono: "costo", Icono: Package },
+    { etiqueta: "Ganancia bruta", signo: "Total", monto: brutaValor, desde: 0, hasta: brutaValor, tono: brutaValor < 0 ? "perdida" : "bruta", Icono: Calculator },
+    { etiqueta: "Recargos cobrados al cliente", signo: "Más", monto: metrics.recargosCobrados, desde: brutaValor, hasta: conRecargo, tono: "recargo", Icono: Percent },
+    { etiqueta: "Comisiones de tarjetas y MP", signo: "Menos", monto: metrics.totalComisiones, desde: conRecargo, hasta: conComision, tono: "comision", Icono: CreditCard },
+    { etiqueta: "Gastos operativos", signo: "Menos", monto: metrics.totalEgresos, desde: conComision, hasta: neta, tono: "gasto", Icono: Wallet },
+    { etiqueta: "Resultado operativo", signo: "Total", monto: neta, desde: 0, hasta: neta, tono: enRojo ? "perdida" : "neta", Icono: enRojo ? TrendingDown : PiggyBank },
+  ];
+
+  // Escala común: todas las barras comparten el mismo 100% (la venta total o
+  // el pico del recorrido si supera la venta).
+  const escala = Math.max(ingresos, conRecargo, 1);
+  const pct = (v: number) => Math.min(Math.max((v / escala) * 100, 0), 100);
 
   return (
     <TabsContent
       value="rentabilidad"
       className="space-y-6 outline-none animate-in fade-in-50 pt-2"
     >
-      {/* ── 4 KPIs FINANCIEROS ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ── DE LA VENTA A LA GANANCIA: cascada ── */}
+      <Card className="border-border shadow-none">
+        <CardHeader>
+          <CardTitle className="text-lg">De la venta a la ganancia</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Cada barra muestra cuánto suma o resta ese paso sobre lo vendido. El resultado incluye los gastos cargados en caja y las comisiones. No descuenta impuestos, ni sueldos o retiros que no se hayan cargado como gasto.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <ol className="flex flex-col gap-4">
+            {pasos.map((p) => {
+              const inicio = pct(Math.min(p.desde, p.hasta));
+              const ancho = Math.max(pct(Math.max(p.desde, p.hasta)) - inicio, 0.5);
+              const esTotal = p.signo === "Total";
+              const color = COLOR_TONO[p.tono];
+              return (
+                <li key={p.etiqueta} className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 sm:grid-cols-[minmax(0,13rem)_1fr_auto] sm:items-center">
+                  <div className="flex min-w-0 items-center gap-2.5 sm:col-span-1">
+                    <span
+                      className="flex size-8 shrink-0 items-center justify-center rounded-lg"
+                      style={{ background: `color-mix(in oklab, ${color} 14%, transparent)`, color }}
+                    >
+                      <p.Icono className="size-4" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className={`break-words text-sm leading-snug ${esTotal ? "font-semibold text-foreground" : "text-foreground"}`}>
+                        {p.etiqueta}
+                      </p>
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {p.signo}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="relative col-span-2 h-3 w-full rounded-full bg-muted/60 sm:col-span-1">
+                    <div
+                      role="img"
+                      aria-label={`${p.etiqueta}: ${p.signo === "Menos" ? "resta" : p.signo === "Más" ? "suma" : "total"} ${formatearMoneda(Math.abs(p.monto))}`}
+                      className="absolute top-0 h-full rounded-full transition-[left,width] duration-500 ease-out"
+                      style={{ left: `${inicio}%`, width: `${ancho}%`, background: color }}
+                    />
+                  </div>
+                  <span className={`text-right text-sm tabular-nums sm:w-28 ${esTotal ? "font-semibold" : ""} ${p.tono === "perdida" ? "text-danger" : "text-foreground"}`}>
+                    {p.tono === "perdida" && p.monto < 0 ? "Pierde " : ""}
+                    {formatearMoneda(Math.abs(p.monto))}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+
+          {metrics.coberturaCosto != null ? (
+            <p className={`mt-5 text-sm ${metrics.coberturaCosto < 95 ? "text-warning" : "text-muted-foreground"}`}>
+              Costo cargado en <span className="font-semibold tabular-nums">{metrics.coberturaCosto}%</span> de lo vendido.
+              {metrics.coberturaCosto < 95
+                ? " Lo que no tiene costo cuenta como margen completo: cargá el costo de los productos que lo necesitan para que el margen sea real."
+                : ""}
+            </p>
+          ) : null}
+
+          {enRojo ? (
+            <p className="mt-5 flex items-start gap-2 rounded-lg bg-danger-subtle px-3 py-2 text-sm text-danger">
+              <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+              El período cerró en pérdida: los gastos y comisiones superaron la ganancia bruta más los recargos.
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <MargenPorCategoria
+        ganancias={metrics.rentabilidadPorCategoria}
+        ventasPorCategoria={metrics.ventasPorCategoria}
+      />
+
+      {/* ── PRODUCTOS ── */}
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
         <Card className="border-border shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Costo Mercadería Vendida
-            </CardTitle>
-            <Package className="w-4 h-4 text-chart-1" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-foreground">
-              -{formatearMoneda(costoMercaderiaVendida)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Lo que te costó la mercadería
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border shadow-none">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Egresos físicos
-            </CardTitle>
-            <ArrowDownRight className="w-4 h-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-foreground">
-              -{formatearMoneda(metrics.totalEgresos)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Gastos operativos registrados
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Comisiones Digitales
-            </CardTitle>
-            <CreditCard className="w-4 h-4 text-chart-3" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-foreground">
-              -{formatearMoneda(metrics.totalComisiones)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Retenciones MP / Tarjetas
-            </p>
-            {metrics.recargosCobrados > 0 ? (
-              <p className="text-xs font-medium text-chart-4 mt-2">
-                +{formatearMoneda(metrics.recargosCobrados)} recuperados por
-                recargo al cliente
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Ganancia Neta
-            </CardTitle>
-            <Trophy className="w-4 h-4 text-warning" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold text-foreground">
-              {formatearMoneda(metrics.gananciaNeta)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Dinero limpio a tu favor
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── GRÁFICOS DE ANÁLISIS ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        {/* Columna Izquierda: Rentabilidad */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="border-border shadow-none">
-            <CardHeader>
-              <CardTitle className="text-lg">
-                Rentabilidad por Categoría
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="overflow-hidden">
-              <BarChart
-                data={metrics.rentabilidadPorCategoria.slice(0, 10)}
-                color="#00b3c2"
-                valuePrefix="$"
-              />
-            </CardContent>
-          </Card>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-            <Card className="border-border shadow-none">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Trophy className="w-5 h-5 text-success" /> Mayor Rentabilidad
-                  (Top)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {metrics.topProductosRentables.length > 0 ? (
-                  <div className="divide-y divide-border">
-                    {metrics.topProductosRentables
-                      .slice(0, 5)
-                      .map((producto: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-4 flex items-center justify-between hover:bg-muted/60 transition-colors"
-                        >
-                          <span className="font-medium text-sm truncate pr-2">
-                            {idx + 1}. {producto.nombre}
-                          </span>
-                          <span className="font-semibold text-chart-1 shrink-0">
-                            +{formatearMoneda(producto.ganancia)}
-                          </span>
-                        </div>
-                      ))}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    Sin datos.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-border shadow-none">
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2 text-foreground">
-                  <AlertTriangle className="w-5 h-5 text-destructive" />
-                  Menor Margen de Ganancia
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                {metrics.peoresProductosRentables.length > 0 ? (
-                  <div className="divide-y divide-border">
-                    {metrics.peoresProductosRentables.map(
-                      (producto: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-4 flex items-center justify-between hover:bg-muted/60 transition-colors"
-                        >
-                          <span className="text-sm text-foreground truncate pr-2">
-                            {producto.nombre}
-                          </span>
-                          <span className="font-semibold text-destructive shrink-0">
-                            +{formatearMoneda(producto.ganancia)}
-                          </span>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                ) : (
-                  <div className="p-8 text-center text-sm text-muted-foreground">
-                    Sin datos.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        {/* Columna Derecha: Composición Financiera */}
-        <div className="lg:col-span-1 h-full">
-          <Card className="border-border flex flex-col shadow-none h-full min-h-[480px] justify-center">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <PieChart className="w-5 h-5 text-chart-3" />
-                Composición Financiera
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 flex items-center justify-center py-4">
-              <DonutChart
-                data={metrics.donutData}
-                totalIngresos={metrics.ingresos}
-                margen={metrics.margenPorcentaje}
-              />
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* TABLA ANALÍTICA */}
-        <Card className="lg:col-span-3 border-border shadow-none mt-2">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-violet-500" />
-              Análisis de Cobros y Comisiones
+              <Trophy className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+              Los que más dejan
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-0 overflow-x-auto">
-            {metrics.ventasPorMetodo.length > 0 ? (
-              <table className="w-full text-sm text-left">
-                <thead className="bg-muted/40 text-muted-foreground text-[10px] uppercase font-bold tracking-widest border-b border-border/50">
-                  <tr>
-                    <th className="px-5 py-4">Método</th>
-                    <th className="px-5 py-4 text-right">Bruto</th>
-                    <th className="px-5 py-4 text-right">Costo Fin.</th>
-                    <th className="px-5 py-4 text-right">Neto</th>
-                    <th className="px-5 py-4 text-right">Participación (%)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border/60">
-                  {metrics.ventasPorMetodo.map((metodo: any, idx: number) => (
-                    <tr
-                      key={idx}
-                      className="hover:bg-muted/30 transition-colors"
-                    >
-                      <td className="px-2 py-4 font-semibold text-foreground">
-                        {metodo.label}
-                      </td>
-                      <td className="px-2 py-4 text-right font-medium text-muted-foreground">
-                        {formatearMoneda(metodo.bruto)}
-                      </td>
-                      <td className="px-2 py-4 text-right font-medium text-muted-foreground">
-                        {metodo.comision > 0
-                          ? `-${formatearMoneda(metodo.comision)}`
-                          : "$0"}
-                      </td>
-                      <td className="px-2 py-4 text-right font-semibold text-muted-foreground">
-                        {formatearMoneda(metodo.neto)}
-                      </td>
-                      <td className="px-2 py-4 text-right font-semibold text-muted-foreground">
-                        {/* Participación sobre el total COBRADO por método,
-                            no sobre ingresos: la tabla incluye cobros de
-                            deuda, que no son ingresos del período y harían
-                            pasar la suma del 100%. */}
-                        {totalBrutoCobrado > 0
-                          ? ((metodo.bruto / totalBrutoCobrado) * 100).toFixed(
-                              1,
-                            )
-                          : 0}
-                        %
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          <CardContent className="p-0">
+            {metrics.topProductosRentables.length > 0 ? (
+              <ol className="divide-y divide-border">
+                {metrics.topProductosRentables.slice(0, 5).map((producto, idx) => (
+                  <li key={idx} className="flex items-center justify-between gap-3 px-6 py-3">
+                    <span className="min-w-0 break-words text-sm font-medium text-foreground">
+                      {idx + 1}. {producto.nombre}
+                    </span>
+                    <span className="shrink-0 font-semibold tabular-nums text-foreground">
+                      {formatearMoneda(producto.ganancia)}
+                    </span>
+                  </li>
+                ))}
+              </ol>
             ) : (
-              <div className="text-center text-muted-foreground text-sm py-8">
-                Sin datos registrados.
-              </div>
+              <p className="p-8 text-center text-sm text-muted-foreground">Sin datos.</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="border-border shadow-none">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+              Los que menos dejan
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {metrics.peoresProductosRentables && metrics.peoresProductosRentables.length > 0 ? (
+              <ol className="divide-y divide-border">
+                {metrics.peoresProductosRentables.map((producto, idx) => (
+                  <li key={idx} className="flex items-center justify-between gap-3 px-6 py-3">
+                    <span className="min-w-0 break-words text-sm text-foreground">
+                      {producto.nombre}
+                    </span>
+                    {producto.ganancia < 0 ? (
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-danger">
+                        Pierde {formatearMoneda(Math.abs(producto.ganancia))}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 font-semibold tabular-nums text-foreground">
+                        {formatearMoneda(producto.ganancia)}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="p-8 text-center text-sm text-muted-foreground">Sin datos.</p>
             )}
           </CardContent>
         </Card>
       </div>
     </TabsContent>
+  );
+}
+
+/**
+ * Margen por categoría en barra 100%: la parte gris es lo que costó la
+ * mercadería y la azul es la ganancia. Así el margen se ve, no hay que
+ * leerlo como porcentaje. Una categoría que pierde llena la barra de costo y
+ * dice cuánto perdió.
+ */
+function MargenPorCategoria({
+  ganancias,
+  ventasPorCategoria,
+}: Readonly<{
+  ganancias: { label: string; value: number }[];
+  ventasPorCategoria: { label: string; ingresos: number }[];
+}>) {
+  const ingresosPorCategoria = new Map(
+    ventasPorCategoria.map((c) => [c.label, c.ingresos]),
+  );
+  const filas = ganancias
+    .map((g) => {
+      const ingresos = ingresosPorCategoria.get(g.label) ?? 0;
+      return { label: g.label, ganancia: g.value, ingresos };
+    })
+    .filter((f) => f.ingresos > 0)
+    // Mayor margen arriba. Se ordena por porcentaje, no por pesos: una categoría
+    // que deja poco en plata pero casi todo de lo que vende, va primero.
+    .sort((a, b) => b.ganancia / b.ingresos - a.ganancia / a.ingresos)
+    .slice(0, 10);
+
+  return (
+    <Card className="border-border shadow-none">
+      <CardHeader>
+        <CardTitle className="text-lg">Margen por categoría</CardTitle>
+        <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="size-2.5 rounded-full bg-muted-foreground" aria-hidden="true" /> Costo
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="size-2.5 rounded-full bg-primary" aria-hidden="true" /> Ganancia
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {filas.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">Sin datos en este período.</p>
+        ) : (
+          <ol className="flex flex-col gap-4">
+            {filas.map((f) => {
+              const pierde = f.ganancia < 0;
+              const gananciaPct = pierde ? 0 : Math.min((f.ganancia / f.ingresos) * 100, 100);
+              const margenTexto = Math.round((f.ganancia / f.ingresos) * 100);
+              return (
+                <li key={f.label} className="flex flex-col gap-1.5">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 break-words text-sm font-medium text-foreground">{f.label}</span>
+                    {pierde ? (
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-danger">
+                        Pierde {formatearMoneda(Math.abs(f.ganancia))}
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-sm tabular-nums">
+                        <span className="font-semibold text-foreground">{formatearMoneda(f.ganancia)}</span>
+                        <span className="ml-1.5 text-xs text-muted-foreground">{margenTexto}%</span>
+                      </span>
+                    )}
+                  </div>
+                  <div
+                    role="img"
+                    aria-label={
+                      pierde
+                        ? `${f.label}: pierde ${formatearMoneda(Math.abs(f.ganancia))}`
+                        : `${f.label}: ganancia ${formatearMoneda(f.ganancia)}, margen ${margenTexto}%`
+                    }
+                    className="flex h-3 w-full overflow-hidden rounded-full bg-muted-foreground/25"
+                  >
+                    <div className="h-full bg-primary transition-[width] duration-500 ease-out" style={{ width: `${gananciaPct}%` }} />
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </CardContent>
+    </Card>
   );
 }

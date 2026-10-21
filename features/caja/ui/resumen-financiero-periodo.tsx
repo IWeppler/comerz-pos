@@ -33,7 +33,7 @@ import {
 } from "../actions/get-resumen-financiero";
 
 const LABEL =
-  "text-[10px] uppercase tracking-widest text-muted-foreground font-bold";
+  "text-[11px] uppercase tracking-wider text-muted-foreground font-bold";
 
 const MEDIOS: Record<string, { label: string; Icono: typeof Banknote }> = {
   EFECTIVO: { label: "Efectivo", Icono: Banknote },
@@ -43,7 +43,7 @@ const MEDIOS: Record<string, { label: string; Icono: typeof Banknote }> = {
 };
 
 const ACLARACION_NETO =
-  "No es la ganancia: no descuenta el costo de la mercadería vendida. La ganancia real está en el Panel.";
+  "Es cobrado más otros ingresos, menos reintegros y gastos. No es la ganancia: no descuenta el costo de la mercadería vendida. La ganancia está en Reportes › Rentabilidad.";
 
 type FilaMonto = {
   id: string;
@@ -142,7 +142,6 @@ export function ResumenFinancieroPeriodo({
             monto={Number(resumen.reintegros.total)}
             detalle={`${resumen.reintegros.cantidad} reintegro(s)`}
             Icono={RotateCcw}
-            negativo
             cargando={cargando}
             ayuda="Plata devuelta a clientes por cualquier medio. Se resta una sola vez del neto de caja."
           />
@@ -151,7 +150,6 @@ export function ResumenFinancieroPeriodo({
             monto={Number(resumen.egresos.sin_devolucion)}
             detalle="Sin devoluciones a clientes"
             Icono={ReceiptText}
-            negativo
             cargando={cargando}
             ayuda="Todas las salidas registradas, excepto las devoluciones que ya están incluidas en Reintegros."
           />
@@ -180,7 +178,6 @@ export function ResumenFinancieroPeriodo({
           filas={gastosPorCategoria}
           vacio="No hubo gastos operativos en este período."
           sustantivo="gasto"
-          negativo
           cargando={cargando}
         />
 
@@ -203,7 +200,7 @@ export function ResumenFinancieroPeriodo({
               <div>
                 <div className="text-muted-foreground">Faltantes</div>
                 <div className="font-semibold tabular-nums text-danger">
-                  −{formatearMoneda(Number(resumen.arqueo.faltantes))}
+                  {formatearMoneda(Number(resumen.arqueo.faltantes))}
                 </div>
               </div>
               <div>
@@ -223,8 +220,8 @@ export function ResumenFinancieroPeriodo({
         <div className="rounded-xl border border-border bg-muted/30 px-3 py-3">
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className={`${LABEL} flex items-center gap-1`}>
-              Neto de caja
-              <Ayuda titulo="Neto de caja" texto={ACLARACION_NETO} />
+              Lo que quedó en caja
+              <Ayuda titulo="Lo que quedó en caja" texto={ACLARACION_NETO} />
             </span>
             <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" />
           </div>
@@ -249,14 +246,12 @@ function ListaMontos({
   filas,
   vacio,
   sustantivo,
-  negativo = false,
   cargando = false,
 }: Readonly<{
   titulo: string;
   filas: FilaMonto[];
   vacio: string;
   sustantivo: string;
-  negativo?: boolean;
   cargando?: boolean;
 }>) {
   return (
@@ -284,10 +279,7 @@ function ListaMontos({
                     </div>
                   </div>
                 </div>
-                <div
-                  className={`shrink-0 font-semibold tabular-nums ${negativo ? "text-danger" : ""}`}
-                >
-                  {negativo && "−"}
+                <div className="shrink-0 font-semibold tabular-nums">
                   {formatearMoneda(fila.monto)}
                 </div>
               </li>
@@ -304,7 +296,6 @@ function Tarjeta({
   monto,
   detalle,
   Icono,
-  negativo = false,
   ayuda,
   cargando = false,
 }: Readonly<{
@@ -312,7 +303,6 @@ function Tarjeta({
   monto: number;
   detalle: string;
   Icono: typeof Banknote;
-  negativo?: boolean;
   ayuda?: string;
   cargando?: boolean;
 }>) {
@@ -327,10 +317,9 @@ function Tarjeta({
       </div>
       <div
         className={`text-xl font-bold tabular-nums transition-opacity ${
-          negativo || monto < 0 ? "text-danger" : ""
+          monto < 0 ? "text-danger" : ""
         } ${cargando ? "opacity-40" : ""}`}
       >
-        {negativo && monto >= 0 && "−"}
         {formatearMoneda(monto)}
       </div>
       <div className="text-[11px] text-muted-foreground">{detalle}</div>
@@ -374,7 +363,7 @@ function Ayuda({ titulo, texto }: Readonly<{ titulo: string; texto: string }>) {
         <button
           type="button"
           aria-label={`Qué es ${titulo}`}
-          className="-m-1 cursor-pointer p-1 text-muted-foreground hover:text-foreground"
+          className="-m-2.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-foreground"
         >
           <Info className="h-3.5 w-3.5" />
         </button>

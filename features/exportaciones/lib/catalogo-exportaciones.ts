@@ -24,7 +24,8 @@ export type ClaveExportacion =
   | "notas_credito"
   | "notas_debito"
   | "movimientos_caja"
-  | "movimientos_generales";
+  | "movimientos_generales"
+  | "conciliacion";
 
 export interface DefinicionExportacion {
   clave: ClaveExportacion;
@@ -126,6 +127,14 @@ export const EXPORTACIONES: DefinicionExportacion[] = [
     titulo: "Movimientos generales",
     descripcion:
       "Todo lo que movió plata: cobros por método, egresos y pagos de cuenta corriente.",
+    grupo: "Dinero",
+    disponible: true,
+  },
+  {
+    clave: "conciliacion",
+    titulo: "Conciliación del período",
+    descripcion:
+      "Controles que cruzan ventas, cobros, fiado y stock. Dice dónde cierran y dónde no, con la diferencia y el motivo. No corrige nada: para que el contador vea lo que hay que revisar.",
     grupo: "Dinero",
     disponible: true,
   },
