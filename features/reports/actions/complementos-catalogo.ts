@@ -2,7 +2,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
-import type { AnalisisComplementos } from "../lib/complementos-catalogo";
+import { seleccionarAsociaciones, type AnalisisComplementos } from "../lib/complementos-catalogo";
 
 export async function getComplementosCatalogoAction(): Promise<{ data: AnalisisComplementos | null; error: string | null }> {
   const db = createClient(await cookies());
@@ -24,4 +24,31 @@ export async function configurarComplementoAction(a: string, b: string, activo: 
   revalidatePath("/");
   revalidatePath("/reportes");
   return { error: null };
+}
+
+/** La asociación sugerida más fuerte (no activada), para una fila de
+ * "Requiere tu atención". Usa la misma selección que la lista de asociaciones,
+ * así el aviso y la lista nunca se contradicen. */
+export type AsociacionSugerida = {
+  producto_a: string;
+  producto_b: string;
+  producto_a_id: string;
+  producto_b_id: string;
+  ventas_juntas: number;
+};
+
+/** Solo para ADMIN: quien no puede activar nada no ve la fila. */
+export async function getAsociacionSugeridaAction(): Promise<AsociacionSugerida | null> {
+  const { data } = await getComplementosCatalogoAction();
+  if (!data || !data.puede_editar) return null;
+  const sugerida = seleccionarAsociaciones(data.pares).find((p) => !p.activo);
+  return sugerida
+    ? {
+        producto_a: sugerida.producto_a,
+        producto_b: sugerida.producto_b,
+        producto_a_id: sugerida.producto_a_id,
+        producto_b_id: sugerida.producto_b_id,
+        ventas_juntas: sugerida.ventas_juntas,
+      }
+    : null;
 }

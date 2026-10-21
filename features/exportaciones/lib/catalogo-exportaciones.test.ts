@@ -8,7 +8,9 @@ import {
 } from "./catalogo-exportaciones";
 import {
   normalizarPeriodoExportacion,
+  opcionesPeriodoExportacion,
   rangoDeExportacion,
+  rangoLegible,
 } from "./periodo-exportacion";
 
 describe("catálogo", () => {
@@ -114,5 +116,50 @@ describe("período de exportación", () => {
     expect(inicio.getMonth()).toBe(0);
     expect(inicio.getDate()).toBe(1);
     expect(inicio.getFullYear()).toBe(2026);
+  });
+});
+
+describe("meses cerrados y año anterior", () => {
+  const ahora = new Date(2026, 7, 21); // 21 de agosto de 2026
+
+  it("ofrece los 12 meses anteriores al actual, y el año anterior", () => {
+    const valores = opcionesPeriodoExportacion(ahora).map((o) => o.valor);
+    expect(valores).toContain("mes:2026-03");
+    expect(valores).toContain("mes:2025-08");
+    expect(valores).toContain("anio_anterior");
+    expect(valores).not.toContain("mes:2026-08"); // ese es "mes", no un cierre
+  });
+
+  it("un mes cerrado va del 1 al último día, aunque hoy esté en otro mes", () => {
+    const { inicio, fin } = rangoDeExportacion("mes:2026-03", ahora);
+    expect(inicio.getMonth()).toBe(2);
+    expect(inicio.getDate()).toBe(1);
+    expect(fin.getMonth()).toBe(2);
+    expect(fin.getDate()).toBe(31);
+  });
+
+  it("febrero bisiesto se cierra en 29", () => {
+    expect(rangoDeExportacion("mes:2028-02", new Date(2028, 3, 10)).fin.getDate()).toBe(29);
+  });
+
+  it("una clave de mes inventada o fuera de rango cae al mes anterior", () => {
+    expect(normalizarPeriodoExportacion("mes:2026-13", ahora)).toBe("mes_anterior");
+    expect(normalizarPeriodoExportacion("mes:2026-08-01", ahora)).toBe("mes_anterior");
+    expect(normalizarPeriodoExportacion("mes:2010-01", ahora)).toBe("mes_anterior");
+    expect(normalizarPeriodoExportacion("mes:2027-01", ahora)).toBe("mes_anterior");
+  });
+
+  it("el año anterior va del 1 de enero al 31 de diciembre", () => {
+    const { inicio, fin } = rangoDeExportacion("anio_anterior", ahora);
+    expect(inicio.getFullYear()).toBe(2025);
+    expect(inicio.getMonth()).toBe(0);
+    expect(fin.getMonth()).toBe(11);
+    expect(fin.getDate()).toBe(31);
+  });
+
+  it("el texto de período muestra las fechas exactas", () => {
+    const texto = rangoLegible("mes:2026-03", ahora);
+    expect(texto).toContain("1 de marzo de 2026");
+    expect(texto).toContain("31 de marzo de 2026");
   });
 });

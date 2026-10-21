@@ -1417,7 +1417,7 @@ export async function anularMovimientoManualAction(movimientoId: string) {
  * Escribe un CRÉDITO en el libro y RECIÉN DESPUÉS baja el saldo. El orden
  * importa: poner la columna en cero sin el movimiento deja un libro que sigue
  * sumando la deuda vieja, y el cliente aparece en la señal de "cuenta corriente
- * sin cuadrar" de Comerz Insights, que cuenta exactamente esa diferencia.
+ * sin cuadrar" de Comerz Intelligence, que cuenta exactamente esa diferencia.
  *
  * NO toca caja, a propósito: no entró plata. Es una deuda que se deja de
  * reclamar, no un cobro.

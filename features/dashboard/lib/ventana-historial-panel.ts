@@ -35,7 +35,7 @@ import { DIAS_SIN_MOVIMIENTO } from "@/features/reports/actions/get-advisor-insi
  *                         salvo "Año" (12 meses enteros contra los mismos
  *                         del año anterior: hasta el día 1 de hace 23 meses,
  *                         que puede caer antes que los 728 días de las KPIs).
- *   Comerz Insights ..... DIAS_INSIGHTS días.
+ *   Comerz Intelligence ..... DIAS_INSIGHTS días.
  *   Quiebres y riesgo ... VENTANA_ROTACION_DIAS.
  *   Temporada ........... DIAS_VENTANA_FIN_TEMPORADA / _PROXIMA_TEMPORADA.
  *   Inventario estancado  DIAS_SIN_MOVIMIENTO. Este es el que engaña: la regla
@@ -52,7 +52,7 @@ import { DIAS_SIN_MOVIMIENTO } from "@/features/reports/actions/get-advisor-insi
  * arranque a las 00:00 del día más viejo que alguien mira.
  */
 
-/** Ventana de Comerz Insights. NO es la del selector: lo que necesita tu
+/** Ventana de Comerz Intelligence. NO es la del selector: lo que necesita tu
  * atención no cambia porque alguien haya clickeado "Hoy". Ver el comentario
  * largo en `app/(dashboard)/page.tsx`. */
 export const DIAS_INSIGHTS = 28;

@@ -20,8 +20,9 @@ import {
 } from "../lib/catalogo-exportaciones";
 import {
   normalizarPeriodoExportacion,
+  opcionesPeriodoExportacion,
   PERIODO_EXPORTACION_DEFAULT,
-  PERIODOS_EXPORTACION,
+  rangoLegible,
   type PeriodoExportacion,
 } from "../lib/periodo-exportacion";
 import { exportarAction } from "../actions/exportar";
@@ -97,7 +98,7 @@ export function ExportacionesTab() {
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PERIODOS_EXPORTACION.map((p) => (
+            {opcionesPeriodoExportacion().map((p) => (
               <SelectItem key={p.valor} value={p.valor}>
                 {p.etiqueta}
               </SelectItem>
@@ -105,6 +106,11 @@ export function ExportacionesTab() {
           </SelectContent>
         </Select>
       </div>
+
+      {/* Las fechas exactas, antes de descargar: el contador tiene que saber qué rango está pidiendo. */}
+      <p className="-mt-3 text-sm text-muted-foreground">
+        Período: <span className="font-medium text-foreground">{rangoLegible(periodo)}</span>
+      </p>
 
       {GRUPOS_EXPORTACION.map((grupo) => (
         <section key={grupo} className="space-y-3">
@@ -119,7 +125,7 @@ export function ExportacionesTab() {
                 className={`border rounded-xl p-4 flex flex-col gap-3 ${
                   def.disponible
                     ? "border-border bg-card"
-                    : "border-border/60 bg-muted/20"
+                    : "border-dashed border-border bg-muted/20"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
@@ -127,7 +133,7 @@ export function ExportacionesTab() {
                     <p className="font-semibold text-sm flex items-center gap-2">
                       {def.titulo}
                       {!def.disponible && (
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-[11px]">
                           Todavía no
                         </Badge>
                       )}
@@ -154,7 +160,7 @@ export function ExportacionesTab() {
                     variant={def.disponible ? "default" : "outline"}
                     disabled={!def.disponible || descargando !== null}
                     onClick={() => descargar(def)}
-                    className="w-full sm:w-auto"
+                    className="min-h-11 w-full sm:w-auto"
                   >
                     {descargando === def.clave ? (
                       <>

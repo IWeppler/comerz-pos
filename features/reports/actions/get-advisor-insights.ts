@@ -5,6 +5,8 @@ export interface Insight {
   message: string;
   actionLabel?: string;
   href?: string;
+  /** Fila con botón de acción en vez de link: activa una asociación del catálogo. */
+  accionAsociacion?: { producto_a_id: string; producto_b_id: string };
   priority: number; // Define el orden de aparición (100 = Máxima urgencia)
   /** Plata en juego, cuando la regla puede ponerle un número. Desempata entre
    * insights de la MISMA urgencia: dos advertencias operativas no son igual de
@@ -88,6 +90,15 @@ export interface AdvisorMetrics {
     margenPctAPrecioLleno: number;
     unidades: number;
   };
+  /** Asociación sugerida (no activada) que sale de compras juntas repetidas. Ver
+   * seleccionarAsociaciones: el aviso y la lista de asociaciones comparten el criterio. */
+  asociacionSugerida?: {
+    producto_a: string;
+    producto_b: string;
+    producto_a_id: string;
+    producto_b_id: string;
+    ventas_juntas: number;
+  };
   /** Renglones vendidos sin costo cargado, sobre el total. Ver margen_realizado. */
   renglonesSinCosto?: { renglones: number; total: number };
   /** Margen de la prenda que se SUMA en un ticket de dos, y cuántos tickets de
@@ -147,9 +158,33 @@ const MIN_DIAS_PARA_RITMO = 14;
  * meses de venta al ritmo del período. */
 const DIAS_COBERTURA_ALTA = 180;
 
-/** Cuántos insights devuelve por defecto. El panel pide más (su card los
- * muestra en una columna alta); el banner de /reportes se queda con 3. */
-const LIMITE_DEFAULT = 3;
+/** Cuántos insights devuelve por defecto. Mismo tope en el panel y en
+ * /reportes (Comerz Intelligence): más de cinco es lista, no recomendación. */
+export const LIMITE_RECOMENDACIONES = 5;
+const LIMITE_DEFAULT = LIMITE_RECOMENDACIONES;
+
+/** Una recomendación por familia: dos avisos del mismo problema (quiebre de
+ * producto + quiebre de categoría, o los cuatro de inventario) cuentan como
+ * una. Se queda el de mayor prioridad, que ya viene primero. Los ids que no
+ * están acá no se agrupan. */
+const FAMILIA_POR_ID: Record<string, string> = {
+  stock_critical: "quiebre",
+  categoria_riesgo_stock: "quiebre",
+  no_movement: "inventario",
+  capital_stuck: "inventario",
+  fin_de_temporada: "inventario",
+  proxima_temporada: "inventario",
+  metodo_pierde: "recargo",
+  descuentos_mostrador: "descuentos",
+  margin_negative: "rentabilidad",
+  high_expenses: "rentabilidad",
+  cc_descuadrada: "datos",
+  renglones_sin_costo: "datos",
+  remitos_pendientes: "datos",
+  upselling: "venta",
+  best_day: "venta",
+  asociacion_sugerida: "asociacion",
+};
 
 export function getAdvisorInsights(
   metrics: AdvisorMetrics,
@@ -181,7 +216,7 @@ export function getAdvisorInsights(
         priority: 100,
         title: "Recopilando datos...",
         message:
-          "El Advisor necesita al menos 3 ventas en este período para analizar el comportamiento de tu negocio y darte recomendaciones precisas.",
+          "Comerz Intelligence necesita al menos 3 ventas en este período para analizar el comportamiento de tu negocio y darte recomendaciones precisas.",
       },
     ];
   }
@@ -197,7 +232,7 @@ export function getAdvisorInsights(
       type: "danger",
       priority: 100,
       title: "Alerta de Rentabilidad",
-      message: `Tu margen operativo está en rojo (${pct(metrics.margenPorcentaje)}%). Tus gastos superan tus ganancias brutas. Revisa urgente la caja o ajusta tus precios.`,
+      message: `Tu margen operativo está en rojo (${pct(metrics.margenPorcentaje)}%). Los gastos le ganan a la ganancia bruta. Revisá la caja o ajustá precios ya.`,
       actionLabel: "Analizar Caja",
       href: "/caja",
     });
@@ -214,10 +249,10 @@ export function getAdvisorInsights(
       type: "danger",
       priority: 95,
       impacto: metrics.costoPerdidoBajas,
-      title: "Fuga de Capital en Bajas",
-      message: `Has perdido ${formatter.format(metrics.costoPerdidoBajas)} en productos dados de baja (${metrics.unidadesBajas} u.). Esto afecta directamente tu bolsillo limpio.`,
+      title: "Se te va plata en bajas",
+      message: `Diste de baja ${formatter.format(metrics.costoPerdidoBajas)} en productos (${metrics.unidadesBajas} u.). Esa plata sale directo de tu ganancia.`,
       actionLabel: "Ver historial",
-      href: "/reportes", // O "/stock/bajas"
+      href: "/reportes?tab=inventario", // Las bajas viven en Inventario
     });
   }
 
@@ -232,8 +267,8 @@ export function getAdvisorInsights(
       type: "warning",
       priority: 90,
       impacto: metrics.totalEgresos,
-      title: "Egresos Elevados",
-      message: `Tus gastos operativos consumen el ${pct(proporcionGastos, 0)}% de tu ganancia bruta. Audita en qué se está yendo el efectivo físico.`,
+      title: "Gastos altos",
+      message: `Los gastos se comen el ${pct(proporcionGastos, 0)}% de tu ganancia bruta. Fijate en qué se va la plata de la caja.`,
       actionLabel: "Revisar Caja",
       href: "/caja",
     });
@@ -248,7 +283,7 @@ export function getAdvisorInsights(
       type: "danger",
       priority: 85,
       title: "Riesgo de Quiebre",
-      message: `Tienes ${metrics.productosCriticos} productos/variantes que están rotando y con stock crítico (≤ 3 unidades). Podrías estar perdiendo ventas por falta de mercadería.`,
+      message: `Tenés ${metrics.productosCriticos} productos o variantes que rotan y están con stock crítico (≤ 3 unidades). Podés estar perdiendo ventas por falta de mercadería.`,
       actionLabel: "Reponer Stock",
       href: "/stock",
     });
@@ -268,7 +303,7 @@ export function getAdvisorInsights(
       type: "warning",
       priority: 80,
       title: "Categoría en Riesgo de Stock",
-      message: `Estás vendiendo mucho en ${metrics.categoriaEnRiesgo.categoria} y te estás quedando con poco stock (quedan ~${diasRestantes} día${diasRestantes === 1 ? "" : "s"} al ritmo actual) — reponé antes de perder ventas.`,
+      message: `Se vende mucho en ${metrics.categoriaEnRiesgo.categoria} y queda poco stock (quedan ~${diasRestantes} día${diasRestantes === 1 ? "" : "s"} al ritmo actual). Reponé antes de perder ventas.`,
       actionLabel: "Ver stock",
       href: "/stock",
     });
@@ -300,7 +335,7 @@ export function getAdvisorInsights(
       priority: Math.round(72 + 20 * factorDeuda),
       impacto: metrics.deudaVencida.monto,
       title: "Deuda Vencida",
-      message: `Tenés ${formatter.format(metrics.deudaVencida.monto)} en deuda vencida de ${metrics.deudaVencida.clientes} cliente${metrics.deudaVencida.clientes === 1 ? "" : "s"}. Es plata tuya que ya deberías haber cobrado.`,
+      message: `Tenés ${formatter.format(metrics.deudaVencida.monto)} en deuda vencida de ${metrics.deudaVencida.clientes} cliente${metrics.deudaVencida.clientes === 1 ? "" : "s"}. Es plata tuya que ya tendrías que haber cobrado.`,
       actionLabel: "Ver clientes",
       href: "/clientes",
     });
@@ -357,7 +392,7 @@ export function getAdvisorInsights(
 
   // 4d. Un método de pago cuyo recargo no cubre su propia comisión.
   //
-  // Es la primera señal de Comerz Insights que llega al panel, y la que apunta
+  // Es la primera señal de Comerz Intelligence que llega al panel, y la que apunta
   // a plata que se está yendo AHORA sin que nadie la vea: no es un problema
   // operativo que se resuelve reponiendo, es un precio mal puesto que sangra
   // en cada venta. Medido en Evens sobre Tarjeta Banco Nación: recargo 15% y
@@ -380,7 +415,7 @@ export function getAdvisorInsights(
       priority: 78,
       impacto: Math.abs(m.neto),
       title: `${m.medio} te está costando plata`,
-      message: `Perdés ${formatter.format(Math.abs(m.neto))} en ${m.operaciones} ${m.operaciones === 1 ? "cobro" : "cobros"}: cobrás ${pct(actual)}% de recargo y la comisión se lleva más. Para empatar tendrías que cobrar ${pct(necesario)}%.`,
+      message: `Perdés ${formatter.format(Math.abs(m.neto))} en ${m.operaciones} ${m.operaciones === 1 ? "cobro" : "cobros"}: cobrás ${pct(actual)}% de recargo y la comisión se lleva más. Para empatar tenés que cobrar ${pct(necesario)}%.`,
       actionLabel: "Ajustar recargo",
       href: "/configuracion",
     });
@@ -411,7 +446,7 @@ export function getAdvisorInsights(
         title: "Descuentos de mostrador",
         message: `Resignaste ${formatter.format(d.monto)} en descuentos: ${pct(puntos)} puntos de margen (${pct(d.margenPct)}% en vez de ${pct(d.margenPctAPrecioLleno)}%). Mirá a qué productos se les está bajando el precio.`,
         actionLabel: "Ver rentabilidad",
-        href: "/reportes",
+        href: "/reportes?tab=rentabilidad",
       });
     }
   }
@@ -448,32 +483,16 @@ export function getAdvisorInsights(
         priority: 75,
         impacto: metrics.stockValorizadoCosto,
         title: "Capital Inmovilizado",
-        message: `Tenés ${formatter.format(metrics.stockValorizadoCosto)} en mercadería: unos ${diasCobertura} días de venta al ritmo de este período. Es plata frenada que podrías estar rotando.`,
+        message: `Tenés ${formatter.format(metrics.stockValorizadoCosto)} en mercadería: unos ${diasCobertura} días de venta al ritmo de este período. Es plata parada que podrías estar moviendo.`,
         actionLabel: "Ver stock",
         href: "/stock",
       });
     }
   }
 
-  // 6. Mucha rotación concentrada en pocos productos (Dependencia)
-  if (metrics.topProductos.length > 0) {
-    const ventasDelTop1 = metrics.topProductos[0]?.unidades || 0;
-    if (ventasDelTop1 > metrics.unidadesVendidas * 0.4) {
-      // El % que se muestra es el MEDIDO, no el umbral. Antes el mensaje decía
-      // "El 40%" siempre, fuera 41% o 90%: el umbral estaba escrito como si
-      // fuera la medición.
-      const concentracion = Math.round(
-        (ventasDelTop1 / metrics.unidadesVendidas) * 100,
-      );
-      insights.push({
-        id: "high_dependency",
-        type: "warning",
-        priority: 70,
-        title: "Dependencia de Catálogo",
-        message: `El ${concentracion}% de tu volumen de ventas depende de un solo producto: "${metrics.topProductos[0].nombre}". Intenta promocionar otras categorías para diversificar el riesgo.`,
-      });
-    }
-  }
+  // (Antes había una regla de "dependencia de catálogo" con umbral 40%. Se
+  // sacó: un producto que vende mucho no es un problema por sí solo, no tenía
+  // acción concreta y ocupaba lugar en la lista.)
 
   // 7. Productos con stock pero sin movimiento.
   //
@@ -493,7 +512,7 @@ export function getAdvisorInsights(
       type: "warning",
       priority: 65,
       title: "Inventario Estancado",
-      message: `Tenés ${estancados} productos con stock que no venden hace más de ${DIAS_SIN_MOVIMIENTO} días. Considerá armar un combo o un descuento temporal para liquidarlos.`,
+      message: `Tenés ${estancados} productos con stock que no venden hace más de ${DIAS_SIN_MOVIMIENTO} días. Pensá en armar un combo o un descuento temporal para liquidarlos.`,
       actionLabel: "Ver stock",
       href: "/stock",
     });
@@ -508,7 +527,7 @@ export function getAdvisorInsights(
       type: "warning",
       priority: 58,
       title: "Remitos sin Conciliar",
-      message: `Tenés ${metrics.remitosPendientes.cantidad} remito${metrics.remitosPendientes.cantidad === 1 ? "" : "s"} sin conciliar — el más antiguo hace ${metrics.remitosPendientes.diasMasAntiguo} día${metrics.remitosPendientes.diasMasAntiguo === 1 ? "" : "s"}. El costo y stock real de esos productos puede no estar actualizado hasta que los revises.`,
+      message: `Tenés ${metrics.remitosPendientes.cantidad} remito${metrics.remitosPendientes.cantidad === 1 ? "" : "s"} sin conciliar — el más antiguo hace ${metrics.remitosPendientes.diasMasAntiguo} día${metrics.remitosPendientes.diasMasAntiguo === 1 ? "" : "s"}. El costo y stock real de esos productos puede no estar actualizado hasta que los revisés.`,
       actionLabel: "Conciliar",
       href: `/compras/merge/${metrics.remitosPendientes.idMasAntiguo}`,
     });
@@ -524,7 +543,7 @@ export function getAdvisorInsights(
       priority: 68,
       impacto: metrics.finDeTemporada.valorizado,
       title: "Fin de Temporada",
-      message: `${metrics.finDeTemporada.frase} y tenés ${formatter.format(metrics.finDeTemporada.valorizado)} en esa categoría con poca rotación — considerá una liquidación.`,
+      message: `${metrics.finDeTemporada.frase} y tenés ${formatter.format(metrics.finDeTemporada.valorizado)} en esa categoría con poca rotación — pensá en una liquidación.`,
       actionLabel: "Ver stock",
       href: "/stock",
     });
@@ -547,6 +566,24 @@ export function getAdvisorInsights(
       message: `${metrics.proximaTemporada.frase} y tu stock de esa categoría está bajo — es buen momento para reponer.`,
       actionLabel: "Ver stock",
       href: "/stock",
+    });
+  }
+
+  // 7e. Asociación sugerida: dos productos que salen juntos en el mostrador.
+  // Es una oportunidad, no una promesa: el número es compras juntas observadas.
+  if (metrics.asociacionSugerida) {
+    const a = metrics.asociacionSugerida;
+    insights.push({
+      id: "asociacion_sugerida",
+      type: "info",
+      priority: 44,
+      title: "Se compran juntos",
+      message: `${a.producto_a} y ${a.producto_b} salieron juntos en ${a.ventas_juntas} ventas. Si activás la asociación, el carrito los muestra uno al lado del otro.`,
+      actionLabel: "Activar asociación",
+      accionAsociacion: {
+        producto_a_id: a.producto_a_id,
+        producto_b_id: a.producto_b_id,
+      },
     });
   }
 
@@ -617,7 +654,7 @@ export function getAdvisorInsights(
       type: "success",
       priority: 40,
       title: "Producto Estrella",
-      message: `"${top.nombre}" es tu producto más rentable (te dejó +${formatter.format(top.ganancia)} limpios). Dale prioridad en el escaparate o publícalo más seguido.`,
+      message: `"${top.nombre}" es tu producto más rentable (te dejó +${formatter.format(top.ganancia)} limpios). Dale prioridad en la vidriera o publicalo más seguido.`,
     });
   }
 
@@ -683,7 +720,7 @@ export function getAdvisorInsights(
         type: "success",
         priority: 20,
         title: "Rentabilidad Saludable",
-        message: `¡Excelente trabajo! Tu margen operativo está muy sano (${pct(metrics.margenPorcentaje)}%). Estás controlando muy bien tus gastos.`,
+        message: `¡Muy bien! Tu margen operativo está muy sano (${pct(metrics.margenPorcentaje)}%). Controlás bien los gastos.`,
       });
     }
 
@@ -705,10 +742,16 @@ export function getAdvisorInsights(
   // solo lea los consejos MÁS importantes, evitando la fatiga de información.
   // Cuántos, lo decide la superficie: el banner de /reportes es un carrusel y
   // se queda con 3; la card del panel es una columna alta y pide 5.
-  return insights
-    .sort(
-      (a, b) =>
-        b.priority - a.priority || (b.impacto ?? 0) - (a.impacto ?? 0),
-    )
-    .slice(0, limite);
+  const ordenados = insights.sort(
+    (a, b) => b.priority - a.priority || (b.impacto ?? 0) - (a.impacto ?? 0),
+  );
+  const familiasUsadas = new Set<string>();
+  const unicos = ordenados.filter((i) => {
+    const familia = FAMILIA_POR_ID[i.id];
+    if (!familia) return true;
+    if (familiasUsadas.has(familia)) return false;
+    familiasUsadas.add(familia);
+    return true;
+  });
+  return unicos.slice(0, limite);
 }

@@ -3,8 +3,10 @@ import {
   acumularUnidad,
   listarFraccionado,
   nuevoAcumuladorUnidades,
+  piezasDeVenta,
+  type AcumuladorUnidades,
 } from "./unidades-vendidas";
-import { formatearCantidad } from "@/shared/lib/unidad-venta";
+import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import {
   resolverCategoriaDisplayLabel,
   type CategoriaBase,
@@ -173,6 +175,9 @@ export function getDashboardMetrics(
   let ticketsDeUnaUnidad = 0;
   let costoMercaderiaVendida = 0;
   let gananciaBrutaVentas = 0;
+  // Cobertura de costo: qué parte de lo vendido (en pesos) tiene costo cargado.
+  let ingresoRenglones = 0;
+  let ingresoRenglonesConCosto = 0;
   // Piezas y fraccionado (kg, g, m…) por separado: ver unidades-vendidas.ts.
   const unidades = nuevoAcumuladorUnidades();
   let totalComisiones = 0; // NUEVO: Fuga de capital por comisiones
@@ -183,9 +188,11 @@ export function getDashboardMetrics(
   // vender más caro de lo que en realidad se vendió).
   let recargosCobrados = 0;
 
+  // Cada categoría junta piezas y fraccionado por separado: sumar kilos con
+  // piezas daba un número que no existe (ver unidades-vendidas.ts).
   const catMap = new Map<
     string,
-    { ingresos: number; unidades: number; tickets: Set<string> }
+    { ingresos: number; acum: AcumuladorUnidades; tickets: Set<string> }
   >();
   const rentabilidadCatMap = new Map<string, number>();
 
@@ -368,12 +375,9 @@ export function getDashboardMetrics(
         ventas: 0,
         unidades: 0,
       };
-      const cantidadTicket = (
-        (v.ventas_items || []) as VentaItemExtended[]
-      ).reduce(
-        (acc: number, item: VentaItemExtended) =>
-          acc + Number(item.cantidad || 0),
-        0,
+      // Piezas: sumar kilos con unidades daba un número que no existe.
+      const cantidadTicket = piezasDeVenta(
+        (v.ventas_items || []) as VentaItemExtended[],
       );
 
       heatmapMap.set(heatKey, {
@@ -403,6 +407,8 @@ export function getDashboardMetrics(
       );
       const itemIngreso = precioUnitario * cantidadItem;
       const itemGanancia = (precioUnitario - costoUnitario) * cantidadItem;
+      ingresoRenglones += itemIngreso;
+      if (costoUnitario > 0) ingresoRenglonesConCosto += itemIngreso;
 
       const unidadMedidaItem =
         prodDataGuardado?.unidad_medida ?? prodCat?.unidad_medida ?? null;
@@ -420,12 +426,16 @@ export function getDashboardMetrics(
         "Sin categoría";
 
       if (!catMap.has(cat)) {
-        catMap.set(cat, { ingresos: 0, unidades: 0, tickets: new Set() });
+        catMap.set(cat, {
+          ingresos: 0,
+          acum: nuevoAcumuladorUnidades(),
+          tickets: new Set(),
+        });
       }
 
       const catData = catMap.get(cat)!;
       catData.ingresos += itemIngreso;
-      catData.unidades += cantidadItem;
+      acumularUnidad(catData.acum, cantidadItem, unidadMedidaItem);
       catData.tickets.add(v.id);
 
       rentabilidadCatMap.set(
@@ -554,7 +564,10 @@ export function getDashboardMetrics(
     ingresosBrutos > 0 ? (resultadoOperativo / ingresosBrutos) * 100 : 0;
 
   // --- OPERATIVO Y STOCK ---
+  // Stock en piezas (`stockTotalUnidades`) y stock fraccionable por unidad
+  // (kg, m, l): sumar 40 kg de caramelos como "40 unidades" era el bug.
   let stockTotalUnidades = 0;
+  const stockFraccionadoAcum = nuevoAcumuladorUnidades();
   let stockValorizadoCosto = 0;
   let stockValorizadoPotencial = 0;
   const productosSinMovimiento: ProductoSinMovimiento[] = [];
@@ -588,7 +601,11 @@ export function getDashboardMetrics(
 
     pro.stock?.forEach((s) => {
       const cantidadStock = Number(s.cantidad);
-      stockTotalUnidades += cantidadStock;
+      if (esFraccionable(pro.unidad_medida)) {
+        acumularUnidad(stockFraccionadoAcum, cantidadStock, pro.unidad_medida);
+      } else {
+        stockTotalUnidades += cantidadStock;
+      }
       stockValorizadoCosto += cantidadStock * costo;
       stockValorizadoPotencial += cantidadStock * precio;
       stockTotalProducto += cantidadStock;
@@ -660,7 +677,9 @@ export function getDashboardMetrics(
     .map(([label, data]) => ({
       label,
       ingresos: data.ingresos,
-      unidades: data.unidades,
+      /** Piezas. Lo fraccionable va aparte, por unidad. */
+      unidades: data.acum.piezas,
+      fraccionado: listarFraccionado(data.acum),
       tickets: data.tickets.size,
     }))
     .sort((a, b) => b.ingresos - a.ingresos);
@@ -731,6 +750,11 @@ export function getDashboardMetrics(
     ticketsDeUnaUnidad,
     gananciaBrutaVentas,
     gananciaNeta: resultadoOperativo,
+    /** % de lo vendido (en pesos) con costo cargado. Null si no hubo ventas. */
+    coberturaCosto:
+      ingresoRenglones > 0
+        ? Math.round((ingresoRenglonesConCosto / ingresoRenglones) * 100)
+        : null,
     /** Solo gastos operativos: es lo que resta de la ganancia. */
     totalEgresos,
     /** Todo lo que salió del cajón (gastos + retiros + compras). Es lo que
@@ -746,6 +770,7 @@ export function getDashboardMetrics(
     unidadesBajas,
     margenPorcentaje,
     stockTotalUnidades,
+    stockFraccionado: listarFraccionado(stockFraccionadoAcum),
     stockValorizadoCosto,
     stockValorizadoPotencial,
     stockGananciaPotencial,

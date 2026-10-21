@@ -3,6 +3,8 @@
 import { cookies } from "next/headers";
 import * as XLSX from "xlsx";
 import { createClient } from "@/shared/config/supabase/server";
+import { traerTodo } from "@/shared/lib/traer-todo";
+import { pendientesActualesDeVentas } from "@/features/clients/actions/pendiente-venta-servidor";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { formatearFechaISO } from "@/shared/lib/periodo-ranges";
 import {
@@ -14,7 +16,10 @@ import {
   esExportable,
   type ClaveExportacion,
 } from "../lib/catalogo-exportaciones";
+import { calcularConciliacion } from "@/features/reports/lib/conciliacion";
+import { leerDatosConciliacion } from "@/features/reports/actions/conciliacion-datos";
 import {
+  filasConciliacion,
   filasComprobantes,
   filasCompras,
   filasLibroIvaVentas,
@@ -120,21 +125,41 @@ async function construirFilas(
 ): Promise<Fila[]> {
   switch (clave) {
     case "ventas": {
-      const { data } = await supabase
-        .from("ventas")
-        .select(
-          // `ventas_items` viaja SOLO por el costo de lo devuelto: es lo único
-          // que no se puede sacar de la cabecera, porque `ventas` guarda
-          // cuánta plata volvió pero no cuánto costaba esa mercadería. Ver
-          // `filasVentas`.
-          "id, fecha_venta, estado_operacion, estado_pago, metodo_pago, lista_precio_nombre, total, recargo_metodo_total, precio_costo, comision_total, total_neto, monto_cobrado, monto_pendiente, monto_devuelto, base_devuelta, cantidad, clientes(nombre), perfiles(nombre), comprobantes(tipo, punto_venta, numero), ventas_items(precio_costo, cantidad_devuelta)",
-        )
-        .gte("fecha_venta", desde)
-        .lte("fecha_venta", hasta)
-        .order("fecha_venta", { ascending: true });
+      // Paginado: PostgREST corta en 1.000 filas, y un mes con más ventas
+      // saldría truncado en el archivo del contador sin ningún aviso.
+      const ventas = await traerTodo<Record<string, unknown> & { id: string; cliente_id?: string | null; monto_pendiente?: number | string | null }>(
+        "exportacion ventas",
+        (d, h) =>
+          supabase
+            .from("ventas")
+            .select(
+              // `ventas_items` viaja SOLO por el costo de lo devuelto (ver filasVentas).
+              "id, fecha_venta, estado_operacion, estado_pago, metodo_pago, lista_precio_nombre, total, recargo_metodo_total, precio_costo, comision_total, total_neto, monto_cobrado, monto_pendiente, monto_devuelto, base_devuelta, cantidad, cliente_id, clientes(nombre), perfiles(nombre), comprobantes(tipo, punto_venta, numero), ventas_items(precio_costo, cantidad_devuelta)",
+              { count: "exact" },
+            )
+            .gte("fecha_venta", desde)
+            .lte("fecha_venta", hasta)
+            .order("fecha_venta", { ascending: true })
+            .order("id", { ascending: true })
+            .range(d, h),
+      );
+      if (ventas.error) throw new Error(ventas.error);
+
+      // Pendiente REAL de cada venta, desde la cuenta corriente. El campo
+      // monto_pendiente es el congelado al vender: no baja con los cobros. Si
+      // no se puede calcular alguna, no se exporta: un número inventado en un
+      // libro que firma el comerciante es peor que no exportar.
+      const pendientes = await pendientesActualesDeVentas(supabase, ventas.data);
+      if ([...pendientes.values()].some((p) => p === null)) {
+        throw new Error("PENDIENTE_NO_CALCULABLE");
+      }
+      const conPendienteReal = ventas.data.map((v) => ({
+        ...v,
+        monto_pendiente: pendientes.get(v.id) ?? 0,
+      }));
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return filasVentas((data ?? []) as any);
+      return filasVentas(conPendienteReal as any);
     }
 
     case "comprobantes": {
@@ -202,6 +227,12 @@ async function construirFilas(
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return filasMovimientosCaja((data ?? []) as any);
+    }
+
+    case "conciliacion": {
+      // Mismo período y mismos criterios que la pantalla: ver conciliacion.ts.
+      const datos = await leerDatosConciliacion(supabase, desde, hasta);
+      return filasConciliacion(calcularConciliacion(datos));
     }
 
     case "movimientos_generales": {

@@ -162,7 +162,7 @@ export function HeatmapChart({ data }: Readonly<HeatmapProps>) {
               </span>
             </div>
             <div className="flex justify-between items-center text-sm gap-4">
-              <span className="text-muted-foreground">Unidades:</span>
+              <span className="text-muted-foreground">Piezas:</span>
               <span className="font-medium text-foreground">
                 {hoveredData.unidades} u.
               </span>

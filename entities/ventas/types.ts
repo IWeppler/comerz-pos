@@ -135,6 +135,9 @@ export interface Venta {
   clientes?: SupabaseRelation<{ nombre?: string | null }>;
   monto_cobrado?: number | null;
   monto_pendiente?: number | null;
+  /** Pendiente real de la venta según la cuenta corriente (FIFO). Ver
+   * features/clients/lib/pendiente-venta.ts. Usar esto, no monto_pendiente. */
+  pendiente_actual?: number | null;
   /** Parte del ticket pagada con saldo a favor. NO está en `monto_cobrado`:
    * esa plata entró antes (20260928240000). */
   saldo_a_favor_aplicado?: number | null;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acumularUnidad,
+  piezasDeVenta,
   etiquetaFraccionado,
   listarFraccionado,
   nuevoAcumuladorUnidades,
@@ -46,5 +47,25 @@ describe("unidades vendidas: piezas y fraccionado aparte", () => {
         { unidad: "METRO", cantidad: 3 },
       ]),
     ).toBe("+ 0,206 kg · 3 m");
+  });
+});
+
+describe("piezasDeVenta", () => {
+  it("un ticket con kilos y piezas cuenta solo las piezas", () => {
+    // ventas.cantidad daría 5 (2 kg + 3 alfajores). Las piezas son 3.
+    const items = [
+      { cantidad: 2, producto: { unidad_medida: "KG" } },
+      { cantidad: 3, producto: { unidad_medida: "UNIDAD" } },
+    ];
+    expect(piezasDeVenta(items)).toBe(3);
+  });
+
+  it("acepta la relación de producto como lista de un elemento", () => {
+    expect(piezasDeVenta([{ cantidad: 4, producto: [{ unidad_medida: "UNIDAD" }] }])).toBe(4);
+  });
+
+  it("una venta sin renglones cargados cuenta 0, no inventa un número", () => {
+    expect(piezasDeVenta(undefined)).toBe(0);
+    expect(piezasDeVenta([])).toBe(0);
   });
 });

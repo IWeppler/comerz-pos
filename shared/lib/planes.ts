@@ -80,7 +80,7 @@ export const NOMBRE_FEATURE: Record<string, string> = {
   cuenta_corriente_ilimitada: "Cuenta corriente ilimitada",
   tickets: "Tickets digitales",
   historial_ventas: "Historial completo de ventas",
-  insights_basico: "Comerz Insights (básico)",
+  insights_basico: "Comerz Intelligence (básico)",
   resumen_semanal: "Resumen semanal por mail",
   catalogo_sin_marca: "Catálogo sin marca Comerz",
   reportes: "Reportes de ventas y productos",

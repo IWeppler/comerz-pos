@@ -135,3 +135,25 @@ pendientes): **base neutra, tarjetas blancas y un solo acento por lugar**.
   lo que junta. Arreglo compartido con /reportes (mismo cálculo).
 - Stock crítico/reservas y "Lo que más rinde": mismas cards de antes, bordes redondeados
   como el resto.
+
+## Comerz Intelligence en /reportes (21/10/2026, sin commit)
+
+- **El banner gigante de recomendaciones salió de /reportes** (`advisor-banner.tsx`
+  borrado). Las recomendaciones ahora son la misma lista del panel
+  (`AdvisorMiniList`), con tope común `LIMITE_RECOMENDACIONES = 5`.
+- **Una recomendación por familia** (`FAMILIA_POR_ID` en `get-advisor-insights.ts`):
+  quiebre, inventario, recargo, descuentos, rentabilidad, datos, venta. Dos avisos del
+  mismo problema cuentan como uno; se queda el de mayor prioridad.
+- **Regla de dependencia de catálogo retirada**: un producto con 40%+ de las unidades
+  no es un problema por sí solo y no tenía acción.
+- **Asociaciones: máximo 5 y con criterio** (`seleccionarAsociaciones` en
+  `features/reports/lib/complementos-catalogo.ts`). Sugeridas: al menos 3 compras
+  juntas y 20% de las ventas del producto menos vendido. Las activadas por el admin
+  van primero aunque sean débiles. Medido en Evens (180 días): 85 pares con 2+ juntas,
+  12 con 3+, 10 con 20%+. Con 2 compras juntas es coincidencia.
+- El umbral de 20% es criterio, no medición de conversión: no promete ventas.
+- **Asociaciones: la tarjeta grande de /reportes salió (21/10/2026).** La activación
+  vive ahora en la fila "Se compran juntos" de Requiere tu atención (botón
+  "Activar asociación", solo ADMIN, `getAsociacionSugeridaAction`). Limitación: la
+  UI no permite QUITAR una asociación activada; `configurar_complemento_catalogo`
+  sí lo permite (`p_activo = false`), pero no hay botón. Pendiente si hace falta.

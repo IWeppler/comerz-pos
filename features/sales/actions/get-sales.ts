@@ -3,6 +3,7 @@
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { traerTodo } from "@/shared/lib/traer-todo";
+import { pendientesActualesDeVentas } from "@/features/clients/actions/pendiente-venta-servidor";
 
 /**
  * El historial de ventas.
@@ -28,6 +29,10 @@ export async function getVentasAction(opts?: {
   soloPropias?: boolean;
   desde?: string;
   hasta?: string;
+  /** Calcula el pendiente real desde la cuenta corriente (una consulta por
+   * cliente con deuda). Solo lo pide la pantalla de ventas: el panel y
+   * reportes no lo usan y no deben pagar ese costo. */
+  pendienteActual?: boolean;
 }) {
   try {
     const cookieStore = await cookies();
@@ -160,7 +165,16 @@ export async function getVentasAction(opts?: {
       return { data: null, error: "No se pudo cargar el historial de ventas." };
     }
 
-    return { data, error: null };
+    if (!opts?.pendienteActual) return { data, error: null };
+
+    // Pendiente real de cada venta desde la cuenta corriente. El campo
+    // congelado no baja con los cobros: ver pendiente-venta.ts.
+    const pendientes = await pendientesActualesDeVentas(supabase, data ?? []);
+    const conPendiente = (data ?? []).map((v) => ({
+      ...v,
+      pendiente_actual: pendientes.get(v.id) ?? 0,
+    }));
+    return { data: conPendiente, error: null };
   } catch (err) {
     console.error("Unexpected error in getVentasAction:", err);
     return {

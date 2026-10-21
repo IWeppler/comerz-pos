@@ -39,6 +39,8 @@ export interface DesgloseMetodoVendedor {
 }
 
 export interface ProductoTopVendedor {
+  /** Unidad real del producto (kg, u., m): la cantidad se lee con ella. */
+  unidadMedida: string | null;
   productoId: string;
   nombre: string;
   cantidad: number;

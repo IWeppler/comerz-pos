@@ -1,6 +1,7 @@
 import { Trophy, RotateCcw, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { formatearFechaHora, formatearMoneda } from "@/shared/utils/formatters";
+import { formatearCantidad } from "@/shared/lib/unidad-venta";
 import type {
   VendedorResumen,
   ReporteVendedoresData,
@@ -36,7 +37,7 @@ export function VendedorDetallePanel({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="space-y-3">
           <h5 className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-warning" /> Top 5 productos
+            <Trophy className="w-4 h-4 text-muted-foreground" /> Lo que más facturó
           </h5>
           {detalle.topProductos.length === 0 ? (
             <p className="text-sm text-muted-foreground">
@@ -55,8 +56,8 @@ export function VendedorDetallePanel({
                     </span>
                     {p.nombre}
                   </span>
-                  <span className="text-muted-foreground shrink-0 pl-2">
-                    {p.cantidad}u · {formatearMoneda(p.totalFacturado)}
+                  <span className="text-muted-foreground shrink-0 pl-2 tabular-nums">
+                    {formatearCantidad(p.cantidad, p.unidadMedida)} · {formatearMoneda(p.totalFacturado)}
                   </span>
                 </div>
               ))}

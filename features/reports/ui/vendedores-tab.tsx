@@ -2,12 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Loader2, ShieldAlert } from "lucide-react";
-import { TabsContent } from "@/shared/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { getReporteVendedoresAction } from "../actions/get-reporte-vendedores";
 import { VendedoresTablaResumen } from "./vendedores-tabla-resumen";
-import { VendedoresBarChart } from "./vendedores-bar-chart";
-import { VendedoresLineChart } from "./vendedores-line-chart";
-import { VendedoresMetodosChart } from "./vendedores-metodos-chart";
+import { VendedoresRanking, VendedoresCobros, VendedoresDiario } from "./vendedores-graficos";
 import { VendedorDetallePanel } from "./vendedor-detalle-panel";
 import type { ReporteVendedoresData } from "@/entities/reportes/types";
 
@@ -17,7 +15,8 @@ interface VendedoresTabProps {
   hasta: string;
 }
 
-export function VendedoresTab({ puedeVer, desde, hasta }: Readonly<VendedoresTabProps>) {
+/** Vendedores como sección de Ventas (antes era una pestaña propia). */
+export function VendedoresSeccion({ puedeVer, desde, hasta }: Readonly<VendedoresTabProps>) {
   const [data, setData] = useState<ReporteVendedoresData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,7 +57,10 @@ export function VendedoresTab({ puedeVer, desde, hasta }: Readonly<VendedoresTab
   );
 
   return (
-    <TabsContent value="vendedores" className="space-y-6 mt-0">
+    <section aria-labelledby="vendedores-titulo" className="space-y-6">
+      <h2 id="vendedores-titulo" className="text-lg font-semibold text-foreground">
+        Vendedores
+      </h2>
       {isLoading && (
         <div className="flex items-center justify-center py-24 text-muted-foreground gap-2">
           <Loader2 className="w-5 h-5 animate-spin" /> Cargando reporte...
@@ -94,36 +96,36 @@ export function VendedoresTab({ puedeVer, desde, hasta }: Readonly<VendedoresTab
             />
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Ranking por total vendido
-              </h3>
-              <VendedoresBarChart resumen={data.resumen} />
-            </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card className="border-border shadow-none">
+              <CardHeader>
+                <CardTitle className="text-lg">Cuánto vendió cada uno</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <VendedoresRanking resumen={data.resumen} />
+              </CardContent>
+            </Card>
 
-            <div className="bg-card rounded-xl border border-border p-5">
-              <h3 className="text-sm font-semibold text-foreground mb-4">
-                Desglose por método de pago
-              </h3>
-              <VendedoresMetodosChart
-                resumen={data.resumen}
-                desglosePorMetodo={data.desglosePorMetodo}
-              />
-            </div>
+            <Card className="border-border shadow-none">
+              <CardHeader>
+                <CardTitle className="text-lg">Cómo cobra cada uno</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <VendedoresCobros resumen={data.resumen} desglose={data.desglosePorMetodo} />
+              </CardContent>
+            </Card>
           </div>
 
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="text-sm font-semibold text-foreground mb-4">
-              Ventas por día
-            </h3>
-            <VendedoresLineChart
-              resumen={data.resumen}
-              ventasPorDia={data.ventasPorDia}
-            />
-          </div>
+          <Card className="border-border shadow-none">
+            <CardHeader>
+              <CardTitle className="text-lg">Ventas por día</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <VendedoresDiario resumen={data.resumen} ventasPorDia={data.ventasPorDia} />
+            </CardContent>
+          </Card>
         </>
       )}
-    </TabsContent>
+    </section>
   );
 }

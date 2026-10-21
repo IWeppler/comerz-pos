@@ -6,7 +6,6 @@ import { TabsContent } from "@/shared/ui/tabs";
 import {
   Users,
   TrendingUp,
-  Clock,
   Activity,
   ShieldAlert,
   CreditCard,
@@ -19,6 +18,7 @@ import {
 } from "lucide-react";
 import { formatearMoneda } from "@/shared/utils/formatters";
 import { deudaDe } from "@/features/clients/lib/saldo-a-favor";
+import type { DeudaCcCrm } from "../actions/get-deuda-cc-crm";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -36,6 +36,9 @@ interface CrmTabProps {
   clientes: any[];
   plazoMora: number;
   diasInactivo: number;
+  /** Antigüedad y vencido desde la cuenta corriente (FIFO). Null si el rol no puede verlos. */
+  deudaCc: DeudaCcCrm | null;
+  deudaCcError: "SIN_PERMISO" | "ERROR" | null;
 }
 
 const ITEMS_POR_PAGINA = 10;
@@ -46,7 +49,7 @@ type SortConfig = {
     | "comprado"
     | "ganancia"
     | "saldo_actual"
-    | "promedioPago"
+    | "saldo_vencido"
     | "ultima_compra";
   direction: "asc" | "desc";
 };
@@ -57,6 +60,8 @@ export function CrmTab({
   clientes,
   plazoMora,
   diasInactivo,
+  deudaCc,
+  deudaCcError,
 }: Readonly<CrmTabProps>) {
   const [search, setSearch] = useState("");
   const [segmentFilter, setSegmentFilter] = useState("TODOS");
@@ -100,40 +105,23 @@ export function CrmTab({
       }
     });
 
-    // --- B. Antigüedad y Proyección (Histórico) ---
-    let saldoVencidoTotal = 0;
-    let deudaPonderadaDias = 0;
-
-    const antiguedad = { "0_15": 0, "16_30": 0, "31_60": 0, mas_60: 0 };
-    const proyeccion = { vencido: 0, prox_7: 0, prox_30: 0 };
-    const now = new Date();
-
-    ventas.forEach((v) => {
-      const pendiente = Number(v.monto_pendiente || 0);
-      if (pendiente > 0 && v.cliente_id) {
-        const fecha = new Date(v.fecha_venta);
-        const diffTime = Math.abs(now.getTime() - fecha.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-        deudaPonderadaDias += pendiente * diffDays;
-
-        // Agrupación de Antigüedad
-        if (diffDays <= 15) antiguedad["0_15"] += pendiente;
-        else if (diffDays <= 30) antiguedad["16_30"] += pendiente;
-        else if (diffDays <= 60) antiguedad["31_60"] += pendiente;
-        else antiguedad["mas_60"] += pendiente;
-
-        // Proyección (Asumimos términos de 30 días)
-        if (diffDays > 30) {
-          saldoVencidoTotal += pendiente;
-          proyeccion.vencido += pendiente;
-        } else if (diffDays >= 23) {
-          proyeccion.prox_7 += pendiente;
-        } else {
-          proyeccion.prox_30 += pendiente;
-        }
-      }
+    // --- B. Antigüedad y vencido: fuente ÚNICA = cuenta corriente (FIFO) ---
+    // Sale de `antiguedad_saldo_cc` y `deuda_cc_vencida` (ver get-deuda-cc-crm.ts).
+    // Antes se calculaba sobre ventas.monto_pendiente, un campo congelado que no
+    // baja con los cobros ni con los reintegros parciales.
+    const vencidoPorCliente = deudaCc?.vencidoPorCliente ?? {};
+    const antiguedad: Record<"0_30" | "31_60" | "61_90" | "MAS_90", number> = {
+      "0_30": 0,
+      "31_60": 0,
+      "61_90": 0,
+      MAS_90: 0,
+    };
+    deudaCc?.tramos.forEach((t) => {
+      antiguedad[t.tramo] = t.saldo;
     });
+    const saldoVencidoTotal = deudaCc?.vencidoTotal ?? 0;
+    const clientesConVencido = Object.keys(vencidoPorCliente).length;
+    const now = new Date();
 
     // DEUDA, no saldo crudo: con saldo con signo, sumar el crudo restaría los
     // saldos a favor de la deuda de los demás.
@@ -141,10 +129,6 @@ export function CrmTab({
       (acc, c) => acc + deudaDe(c.saldo_pendiente),
       0,
     );
-    const avgDays =
-      saldoPendienteTotal > 0
-        ? Math.round(deudaPonderadaDias / saldoPendienteTotal)
-        : 0;
 
     // --- C. Ranking de Calidad Comercial ---
     const clientsMap = new Map();
@@ -155,9 +139,8 @@ export function CrmTab({
         comprado: 0,
         ganancia: 0,
         saldo_actual: Number(c.saldo_pendiente || 0),
-        saldo_vencido: 0,
+        saldo_vencido: vencidoPorCliente[c.id] ?? 0,
         ultima_compra: null as Date | null,
-        dias_deuda_ponderada: 0,
       });
     });
 
@@ -182,7 +165,6 @@ export function CrmTab({
           costo = Number(v.precio_costo || 0);
         }
 
-        const pendiente = Number(v.monto_pendiente || 0);
         const fecha = new Date(v.fecha_venta);
 
         c.comprado += total;
@@ -191,18 +173,6 @@ export function CrmTab({
         if (!c.ultima_compra || fecha > c.ultima_compra) {
           c.ultima_compra = fecha;
         }
-
-        if (pendiente > 0) {
-          const diffDays = Math.floor(
-            (now.getTime() - fecha.getTime()) / (1000 * 60 * 60 * 24),
-          );
-          c.dias_deuda_ponderada += pendiente * diffDays;
-
-          // Si pasaron los días de crédito, esa deuda está vencida
-          if (diffDays > plazoMora) {
-            c.saldo_vencido += pendiente;
-          }
-        }
       }
     });
 
@@ -210,10 +180,6 @@ export function CrmTab({
       .filter((c) => c.comprado > 0 || c.saldo_actual > 0)
       .map((c) => {
         const margen = c.comprado > 0 ? (c.ganancia / c.comprado) * 100 : 0;
-        const promedioPago =
-          c.saldo_actual > 0
-            ? Math.round(c.dias_deuda_ponderada / c.saldo_actual)
-            : 0;
         const diasDesdeUltimaCompra = c.ultima_compra
           ? Math.floor(
               (now.getTime() - c.ultima_compra.getTime()) /
@@ -228,9 +194,6 @@ export function CrmTab({
         if (c.saldo_vencido > 0) {
           estado = "Riesgo Alto";
           colorClass = "bg-danger/10 text-danger border-danger/20";
-        } else if (c.saldo_actual > 0 && promedioPago > plazoMora) {
-          estado = "Valioso pero Lento";
-          colorClass = "bg-warning/10 text-warning border border-warning/20";
         } else if (
           diasDesdeUltimaCompra > diasInactivo &&
           c.saldo_actual === 0
@@ -252,7 +215,6 @@ export function CrmTab({
         return {
           ...c,
           margen,
-          promedioPago,
           estado,
           colorClass,
           diasDesdeUltimaCompra,
@@ -268,12 +230,12 @@ export function CrmTab({
       gananciaAClientes,
       saldoPendienteTotal,
       saldoVencidoTotal,
-      avgDays,
+      clientesConVencido,
       antiguedad,
-      proyeccion,
+      deudaDisponible: deudaCc !== null,
       clientList,
     };
-  }, [ventas, ventasDelPeriodo, clientes, plazoMora, diasInactivo]);
+  }, [ventas, ventasDelPeriodo, clientes, diasInactivo, deudaCc]);
 
   const { filteredAndSortedClients, totalPages } = useMemo(() => {
     let result = [...crmMetrics.clientList];
@@ -344,9 +306,18 @@ export function CrmTab({
       value="crm"
       className="space-y-6 outline-none animate-in fade-in-50 pt-2"
     >
-      {/* ── 1. KPIs CORE (La Salud de la Cartera) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <Card className="border-border shadow-none bg-card">
+      {!crmMetrics.deudaDisponible && (
+        <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          {deudaCcError === "SIN_PERMISO"
+            ? "Tu rol no puede ver la antigüedad ni el vencido de la deuda. Pedile a un administrador."
+            : "No pudimos calcular la antigüedad de la deuda. Recargá la página."}
+        </p>
+      )}
+
+      {/* ── KPIs (izquierda) y antigüedad (derecha) ── */}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Card className="sm:col-span-2 border-border shadow-none bg-card">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
               Ventas a Clientes
@@ -406,10 +377,12 @@ export function CrmTab({
           </CardHeader>
           <CardContent>
             <div className="text-xl font-semibold text-foreground">
-              {formatearMoneda(crmMetrics.saldoVencidoTotal)}
+              {crmMetrics.deudaDisponible
+                ? formatearMoneda(crmMetrics.saldoVencidoTotal)
+                : "—"}
             </div>
             <p className="text-xs text-muted-foreground font-medium mt-1">
-              Mayor a {plazoMora} días
+              Pasó el plazo de {plazoMora} días
             </p>
           </CardContent>
         </Card>
@@ -417,26 +390,21 @@ export function CrmTab({
         <Card className="border-border shadow-none bg-card">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Demora Media
+              Clientes con vencido
             </CardTitle>
-            <Clock className="w-4 h-4 text-warning" />
+            <Users className="w-4 h-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-xl font-semibold text-foreground">
-              {crmMetrics.avgDays}{" "}
-              <span className="text-sm font-medium text-muted-foreground">
-                días
-              </span>
+              {crmMetrics.deudaDisponible ? crmMetrics.clientesConVencido : "—"}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Tardanza promedio
+            <p className="text-xs text-muted-foreground font-medium mt-1">
+              Con deuda que pasó el plazo
             </p>
           </CardContent>
         </Card>
-      </div>
+        </div>
 
-      {/* ── 2. BLOQUES ANALÍTICOS (Antigüedad y Proyección) ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Antigüedad de Deuda */}
         <Card className="border-border shadow-none bg-card">
           <CardHeader className="border-b border-border/40 pb-4">
@@ -444,22 +412,25 @@ export function CrmTab({
               <Activity className="w-4 h-4 text-muted-foreground" /> Antigüedad
               de la Deuda
             </CardTitle>
+            <p className="text-xs font-normal text-muted-foreground">
+              Desde la fecha de cada deuda pendiente, cobrando primero la más vieja.
+            </p>
           </CardHeader>
           <CardContent className="pt-5 space-y-4">
             <div className="space-y-1.5">
               <div className="flex justify-between text-sm">
                 <span className="font-medium text-muted-foreground">
-                  0 - 15 días{" "}
+                  0 a 30 días{" "}
                   <span className="text-xs ml-1 opacity-70">(Sana)</span>
                 </span>
                 <span className="font-medium text-foreground">
-                  {formatearMoneda(crmMetrics.antiguedad["0_15"])}
+                  {formatearMoneda(crmMetrics.antiguedad["0_30"])}
                 </span>
               </div>
               <div className="w-full bg-muted rounded-full h-1.5">
                 <div
                   className="bg-success h-full rounded-full transition-all"
-                  style={{ width: getWidth(crmMetrics.antiguedad["0_15"]) }}
+                  style={{ width: getWidth(crmMetrics.antiguedad["0_30"]) }}
                 />
               </div>
             </div>
@@ -467,25 +438,7 @@ export function CrmTab({
             <div className="space-y-1.5">
               <div className="flex justify-between text-sm">
                 <span className="font-medium text-muted-foreground">
-                  16 - 30 días
-                </span>
-                <span className="font-medium text-foreground">
-                  {formatearMoneda(crmMetrics.antiguedad["16_30"])}
-                </span>
-              </div>
-              <div className="w-full bg-muted rounded-full h-1.5">
-                <div
-                  className="bg-amber-400 h-full rounded-full transition-all"
-                  style={{ width: getWidth(crmMetrics.antiguedad["16_30"]) }}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between text-sm">
-                <span className="font-medium text-muted-foreground">
-                  31 - 60 días{" "}
-                  <span className="text-xs ml-1 opacity-70">(Riesgo)</span>
+                  31 a 60 días
                 </span>
                 <span className="font-medium text-foreground">
                   {formatearMoneda(crmMetrics.antiguedad["31_60"])}
@@ -493,7 +446,7 @@ export function CrmTab({
               </div>
               <div className="w-full bg-muted rounded-full h-1.5">
                 <div
-                  className="bg-warning h-full rounded-full transition-all"
+                  className="bg-amber-400 h-full rounded-full transition-all"
                   style={{ width: getWidth(crmMetrics.antiguedad["31_60"]) }}
                 />
               </div>
@@ -501,78 +454,42 @@ export function CrmTab({
 
             <div className="space-y-1.5">
               <div className="flex justify-between text-sm">
+                <span className="font-medium text-muted-foreground">
+                  61 a 90 días{" "}
+                  <span className="text-xs ml-1 opacity-70">(Riesgo)</span>
+                </span>
+                <span className="font-medium text-foreground">
+                  {formatearMoneda(crmMetrics.antiguedad["61_90"])}
+                </span>
+              </div>
+              <div className="w-full bg-muted rounded-full h-1.5">
+                <div
+                  className="bg-warning h-full rounded-full transition-all"
+                  style={{ width: getWidth(crmMetrics.antiguedad["61_90"]) }}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-sm">
                 <span className="font-semibold text-danger">
-                  +60 días{" "}
+                  Más de 90 días{" "}
                   <span className="text-xs ml-1 opacity-70">(Mora)</span>
                 </span>
                 <span className="font-bold text-danger">
-                  {formatearMoneda(crmMetrics.antiguedad["mas_60"])}
+                  {formatearMoneda(crmMetrics.antiguedad["MAS_90"])}
                 </span>
               </div>
               <div className="w-full bg-muted rounded-full h-1.5">
                 <div
                   className="bg-danger h-full rounded-full transition-all"
-                  style={{ width: getWidth(crmMetrics.antiguedad["mas_60"]) }}
+                  style={{ width: getWidth(crmMetrics.antiguedad["MAS_90"]) }}
                 />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Proyección de Cobros */}
-        <Card className="border-border shadow-none bg-card">
-          <CardHeader className="border-b border-border/40 pb-4">
-            <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-muted-foreground" />{" "}
-              Proyección de Cobros
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="divide-y divide-border/60">
-              <div className="flex items-center justify-between py-5">
-                <div>
-                  <p className="text-sm font-semibold text-destructive">
-                    Vencido
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Gestión de cobro requerida
-                  </p>
-                </div>
-                <span className="text-lg font-bold text-destructive">
-                  {formatearMoneda(crmMetrics.proyeccion.vencido)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between py-5">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Próximos 7 días
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Vencimientos de la semana
-                  </p>
-                </div>
-                <span className="text-base font-semibold text-foreground">
-                  {formatearMoneda(crmMetrics.proyeccion.prox_7)}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between py-5">
-                <div>
-                  <p className="text-sm font-medium text-foreground">
-                    Próximos 30 días
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    A vencer en el mes corriente
-                  </p>
-                </div>
-                <span className="text-base font-semibold text-foreground">
-                  {formatearMoneda(crmMetrics.proyeccion.prox_30)}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* ── 3. RANKING DE CALIDAD COMERCIAL ── */}
@@ -613,9 +530,6 @@ export function CrmTab({
                   <SelectItem value="TODOS">Todos</SelectItem>
                   <SelectItem value="Excelente">Excelente</SelectItem>
                   <SelectItem value="Regular">Regular</SelectItem>
-                  <SelectItem value="Valioso pero Lento">
-                    Valioso pero lento
-                  </SelectItem>
                   <SelectItem value="Riesgo Alto">Riesgo Alto</SelectItem>
                   <SelectItem value="Poco Rentable">Poco Rentable</SelectItem>
                   <SelectItem value="Inactivo">Inactivo</SelectItem>
@@ -668,14 +582,6 @@ export function CrmTab({
                     </th>
                     <th
                       className="px-5 py-4 cursor-pointer hover:bg-muted/50 group text-center"
-                      onClick={() => handleSort("promedioPago")}
-                    >
-                      <div className="flex items-center justify-center">
-                        Prom. Pago {renderSortIcon("promedioPago")}
-                      </div>
-                    </th>
-                    <th
-                      className="px-5 py-4 cursor-pointer hover:bg-muted/50 group text-center"
                       onClick={() => handleSort("ultima_compra")}
                     >
                       <div className="flex items-center justify-center">
@@ -711,11 +617,6 @@ export function CrmTab({
                         {c.saldo_vencido > 0
                           ? formatearMoneda(c.saldo_vencido)
                           : "-"}
-                      </td>
-                      <td className="px-5 py-3 text-center">
-                        <div className="text-sm font-medium text-muted-foreground">
-                          {c.saldo_actual > 0 ? `${c.promedioPago} d` : "-"}
-                        </div>
                       </td>
                       <td className="px-5 py-3 text-center text-xs text-muted-foreground">
                         {c.ultima_compra

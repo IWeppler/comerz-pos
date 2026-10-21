@@ -29,6 +29,35 @@ import { formatearNumeroComprobante } from "@/shared/lib/facturacion";
 
 export type Fila = Record<string, string | number | null>;
 
+const ESTADO_CHEQUEO_EXPORT: Record<"CIERRA" | "NO_CIERRA" | "SIN_DATO", string> = {
+  CIERRA: "Cierra",
+  NO_CIERRA: "No cierra",
+  SIN_DATO: "Sin datos",
+};
+
+/** Una fila por control de conciliación. Los números van como número, no como texto. */
+export function filasConciliacion(
+  chequeos: readonly {
+    id: string;
+    titulo: string;
+    esperado: number | null;
+    observado: number | null;
+    diferencia: number | null;
+    estado: "CIERRA" | "NO_CIERRA" | "SIN_DATO";
+    explicacion: string;
+  }[],
+): Fila[] {
+  return chequeos.map((c) => ({
+    Control: c.id,
+    Descripción: c.titulo,
+    Esperado: c.esperado,
+    Observado: c.observado,
+    Diferencia: c.diferencia,
+    Estado: ESTADO_CHEQUEO_EXPORT[c.estado],
+    Explicación: c.explicacion,
+  }));
+}
+
 /** Fecha y hora local en formato no ambiguo. */
 export function formatearFechaHoraExport(valor: unknown): string {
   if (!valor) return "";
