@@ -190,7 +190,8 @@ Lo que propongo, en orden. No hace falta la API de WhatsApp (se sigue usando `wa
   (única fuente de tabla, filtro y detalle) y en el filtro de estado. Medido el
   22/10: Evens 5 clientas ($154 mil), Estilo Bonito 3 ($144 mil), Encanto 1 ($30 mil).
 - **Lista de cobro en modo días = vencidos + por vencer** (5 días, no 7), con envío
-  en tanda. Va primero.
+  en tanda. **Hecho el 22/10/2026** (código en el working tree, sin migración):
+  detalle en cuenta-corriente.md, "Modo días y Por vencer".
 - **Pagar con Mercado Pago desde el resumen (punto 3): anotado para después.** Ignacio
   lo prefiere al "Ya transferí" (punto 4), que baja de prioridad. Funciona solo en los
   comercios que conecten MP, y la comisión la paga el comercio.

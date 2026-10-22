@@ -1,4 +1,10 @@
-import { AlertTriangle, CheckCircle2, Clock, type LucideIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  type LucideIcon,
+} from "lucide-react";
 import type { EstadoCliente } from "@/features/clients/lib/clasificar-estado-cliente";
 
 export const ESTADO_CLIENTE_CONFIG: Record<
@@ -9,6 +15,11 @@ export const ESTADO_CLIENTE_CONFIG: Record<
     label: "Al día",
     icon: CheckCircle2,
     className: "text-success",
+  },
+  por_vencer: {
+    label: "Por vencer",
+    icon: CalendarClock,
+    className: "text-warning",
   },
   con_deuda: {
     label: "Con deuda",

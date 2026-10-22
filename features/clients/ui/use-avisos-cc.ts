@@ -9,6 +9,7 @@ import {
   getAvisosCcAction,
   marcarAvisoCcEnviadoAction,
 } from "../actions/avisos-cc";
+import type { TipoAvisoCc } from "../lib/avisos-cc";
 
 /** El ciclo cambia como mucho una vez por día y con cada marca (que
  * invalida): un minuto alcanza para no pedirlo en cada render de la tabla. */
@@ -20,12 +21,14 @@ function diaMes(iso: string): string {
 }
 
 /**
- * El ciclo de cobro del día (comercios con cierre mensual): quiénes tienen
- * que abonar y a quiénes ya se les mandó el resumen en este ciclo.
+ * La lista de cobro del día: con cierre mensual, el ciclo (quiénes tienen que
+ * abonar); en "días desde la compra", los vencidos y los que vencen en los
+ * próximos días. Y a quiénes ya se les mandó el resumen.
  *
- * Lo usa la tabla de clientes para dos cosas: el filtro "A abonar" y la marca
- * de "resumen enviado" en la columna de WhatsApp. Sin cierre mensual
- * `aviso` es null y la tabla queda como siempre.
+ * Lo usa la tabla de clientes para tres cosas: el filtro "A abonar" / "A
+ * cobrar", la marca de "resumen enviado" en la columna de WhatsApp y el envío
+ * en tanda. Sin nadie a quien cobrar `aviso` es null y la tabla queda como
+ * siempre.
  *
  * `marcar` registra el envío en `cc_avisos` SOLO si el cliente está en el
  * ciclo y todavía no estaba marcado: un resumen mandado a mitad de mes a
@@ -47,10 +50,15 @@ export function useAvisosCc() {
   const aviso = data?.aviso ?? null;
 
   const enCiclo = useMemo(() => {
-    const mapa = new Map<string, { monto: number; enviado: boolean }>();
+    const mapa = new Map<
+      string,
+      { monto: number; enviado: boolean; tipo: TipoAvisoCc; venceEl: string }
+    >();
     for (const c of aviso?.clientes ?? []) {
       mapa.set(c.clienteId, {
         monto: c.monto,
+        tipo: c.tipo,
+        venceEl: c.venceEl,
         enviado: c.enviado || marcados.has(c.clienteId),
       });
     }
@@ -63,8 +71,8 @@ export function useAvisosCc() {
       if (!aviso || !fila || fila.enviado) return;
       const { ok, error } = await marcarAvisoCcEnviadoAction({
         clienteId,
-        tipo: aviso.tipo,
-        venceEl: aviso.venceEl,
+        tipo: fila.tipo,
+        venceEl: fila.venceEl,
         monto: fila.monto,
       });
       if (!ok) {
@@ -77,13 +85,16 @@ export function useAvisosCc() {
     [aviso, enCiclo, queryClient, clave],
   );
 
-  // "A abonar 15/10" mientras se puede pagar; desde el día siguiente al
-  // vencimiento, los que quedaron debiendo.
-  const etiquetaFiltro = aviso
-    ? aviso.tipo === "MORA"
-      ? `Impagos ${diaMes(aviso.venceEl)}`
-      : `A abonar ${diaMes(aviso.venceEl)}`
-    : null;
+  // Con cierre: "A abonar 15/10" mientras se puede pagar; desde el día
+  // siguiente al vencimiento, los que quedaron debiendo. En modo días no hay
+  // una fecha: "A cobrar" (vencidos y por vencer).
+  const etiquetaFiltro = !aviso
+    ? null
+    : aviso.modo === "DIAS"
+      ? "A cobrar"
+      : aviso.tipo === "MORA"
+        ? `Impagos ${diaMes(aviso.venceEl)}`
+        : `A abonar ${diaMes(aviso.venceEl)}`;
 
   return { aviso, enCiclo, marcar, etiquetaFiltro };
 }

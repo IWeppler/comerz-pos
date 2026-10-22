@@ -14,6 +14,7 @@ export type ClientStatusFilter = "todos" | EstadoCliente;
 const OPTIONS: { value: ClientStatusFilter; label: string }[] = [
   { value: "todos", label: "Todos" },
   { value: "al_dia", label: "Al día" },
+  { value: "por_vencer", label: "Por vencer" },
   { value: "con_deuda", label: "Con deuda" },
   { value: "vencido", label: "Vencido" },
 ];

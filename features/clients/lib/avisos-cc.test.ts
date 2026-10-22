@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   avisoDelDia,
+  avisosModoDias,
   cicloVigente,
   tipoAvisoDelDia,
   type DeudaPorVencimiento,
@@ -143,5 +144,42 @@ describe("avisoDelDia", () => {
         deudas,
       ),
     ).toBeNull();
+  });
+});
+
+describe("avisosModoDias — hoy 22/10, ventana de 5 días", () => {
+  const hoy = "2026-10-22";
+
+  it("vencido = MORA con la última venta vencida; suma lo que vence en la ventana", () => {
+    expect(
+      avisosModoDias(hoy, [
+        { clienteId: "ana", venceEl: "2026-10-01", vivo: 10000 },
+        { clienteId: "ana", venceEl: "2026-10-20", vivo: 5000 },
+        { clienteId: "ana", venceEl: "2026-10-25", vivo: 2000 },
+        // Vence más adelante: todavía no se cobra.
+        { clienteId: "ana", venceEl: "2026-11-20", vivo: 90000 },
+      ]),
+    ).toEqual([{ clienteId: "ana", monto: 17000, tipo: "MORA", venceEl: "2026-10-20" }]);
+  });
+
+  it("por vencer = PREVIO con el próximo vencimiento; hoy y el día 5 entran", () => {
+    const lista = avisosModoDias(hoy, [
+      { clienteId: "hoy", venceEl: "2026-10-22", vivo: 100 },
+      { clienteId: "dia5", venceEl: "2026-10-27", vivo: 200 },
+      { clienteId: "dia6", venceEl: "2026-10-28", vivo: 300 },
+    ]);
+    expect(lista).toEqual([
+      { clienteId: "dia5", monto: 200, tipo: "PREVIO", venceEl: "2026-10-27" },
+      { clienteId: "hoy", monto: 100, tipo: "PREVIO", venceEl: "2026-10-22" },
+    ]);
+  });
+
+  it("vencidos primero aunque deban menos, y sin deuda viva no entra", () => {
+    const lista = avisosModoDias(hoy, [
+      { clienteId: "previo", venceEl: "2026-10-24", vivo: 500000 },
+      { clienteId: "mora", venceEl: "2026-10-21", vivo: 100 },
+      { clienteId: "pagado", venceEl: "2026-10-10", vivo: 0 },
+    ]);
+    expect(lista.map((c) => c.clienteId)).toEqual(["mora", "previo"]);
   });
 });

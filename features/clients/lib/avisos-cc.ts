@@ -142,3 +142,71 @@ export function avisoDelDia(
 
   return { tipo, cierre: ciclo.cierre, venceEl: ciclo.venceEl, clientes };
 }
+
+/**
+ * Días antes del vencimiento en que una deuda pasa a "por vencer" (estado del
+ * cliente y lista de cobro en modo días). Decidido con Ignacio el 22/10/2026.
+ */
+export const DIAS_POR_VENCER = 5;
+
+/** Un cliente en la lista de cobro de modo días. */
+export interface ClienteAvisoDias extends ClienteAviso {
+  /** MORA si tiene algo vencido; PREVIO si lo próximo vence en los próximos
+   * `DIAS_POR_VENCER` días. */
+  tipo: Extract<TipoAvisoCc, "PREVIO" | "MORA">;
+  /** Identifica el aviso junto con el tipo (`cc_avisos`): MORA = la última
+   * venta que venció (un vencimiento nuevo es un aviso nuevo, no uno por
+   * día); PREVIO = el próximo vencimiento. */
+  venceEl: string;
+}
+
+/**
+ * La lista de cobro de un comercio en "días desde la compra": cada ticket vence
+ * en su día, así que no hay ciclo. Entra quien tiene algo vencido o algo que
+ * vence en los próximos `DIAS_POR_VENCER` días (hoy incluido). El monto es eso:
+ * lo vencido más lo que vence en la ventana; lo que vence más adelante no se
+ * cobra todavía.
+ *
+ * Una vez por vencimiento, no una por día (la regla de la mora es la misma: hay
+ * mora nueva solo cuando vence una venta nueva). Lo ya mandado lo descuenta la
+ * pantalla con `cc_avisos`. Vencidos primero, y entre ellos el que más debe.
+ */
+export function avisosModoDias(
+  hoy: string,
+  deudas: DeudaPorVencimiento[],
+): ClienteAvisoDias[] {
+  const limite = sumarDias(hoy, DIAS_POR_VENCER);
+  const porCliente = new Map<
+    string,
+    { monto: number; ultimoVencido: string | null; proximo: string | null }
+  >();
+
+  for (const d of deudas) {
+    if (!(d.vivo > 0) || d.venceEl > limite) continue;
+    const c = porCliente.get(d.clienteId) ?? {
+      monto: 0,
+      ultimoVencido: null,
+      proximo: null,
+    };
+    c.monto = redondear(c.monto + d.vivo);
+    if (d.venceEl < hoy) {
+      if (!c.ultimoVencido || d.venceEl > c.ultimoVencido) c.ultimoVencido = d.venceEl;
+    } else if (!c.proximo || d.venceEl < c.proximo) {
+      c.proximo = d.venceEl;
+    }
+    porCliente.set(d.clienteId, c);
+  }
+
+  return [...porCliente]
+    .map(([clienteId, c]): ClienteAvisoDias =>
+      c.ultimoVencido
+        ? { clienteId, monto: c.monto, tipo: "MORA", venceEl: c.ultimoVencido }
+        : { clienteId, monto: c.monto, tipo: "PREVIO", venceEl: c.proximo! },
+    )
+    .sort(
+      (a, b) =>
+        (a.tipo === "MORA" ? 0 : 1) - (b.tipo === "MORA" ? 0 : 1) ||
+        b.monto - a.monto ||
+        a.clienteId.localeCompare(b.clienteId),
+    );
+}

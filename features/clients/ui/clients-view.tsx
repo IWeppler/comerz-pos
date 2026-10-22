@@ -24,6 +24,7 @@ import { CreateClientModal } from "./add-client-modal";
 import { ClientDetailSheet } from "./client-detail-sheet";
 import { useAvisosCc } from "./use-avisos-cc";
 import { FiltroCicloCobro } from "./filtro-ciclo-cobro";
+import { EnvioEnTanda, type ClienteTanda } from "./envio-en-tanda";
 import { useRecordatorioCc } from "./use-recordatorio-cc";
 import { FaWhatsapp } from "react-icons/fa";
 import {
@@ -32,6 +33,7 @@ import {
 } from "./client-status-filter";
 import { ImportClientsCsvModal } from "./import-clients-csv-modal";
 import { calcularDiasVencido } from "../lib/calcular-dias-vencido";
+import { DIAS_POR_VENCER } from "../lib/avisos-cc";
 import {
   clasificarEstadoCliente,
   type EstadoCliente,
@@ -322,8 +324,28 @@ export function ClientsView({
       monto: delCiclo.reduce((t, c) => t + (enCiclo.get(c.id)?.monto ?? 0), 0),
       mora: delCiclo.reduce((t, c) => t + c.montoRecargoMora, 0),
       avisados: delCiclo.filter((c) => enCiclo.get(c.id)?.enviado).length,
+      vencidas: delCiclo.filter((c) => enCiclo.get(c.id)?.tipo === "MORA").length,
     };
   }, [cicloActivo, clientesMapeados, enCiclo, filterStatus]);
+
+  // La cola del envío en tanda: los de la lista a los que todavía no se les
+  // mandó, en el orden de la lista (vencidos primero, el que más debe arriba).
+  const pendientesTanda = useMemo<ClienteTanda[]>(() => {
+    const porId = new Map(clientesMapeados.map((c) => [c.id, c]));
+    return (aviso?.clientes ?? []).flatMap((a) => {
+      const cliente = porId.get(a.clienteId);
+      if (!cliente || enCiclo.get(a.clienteId)?.enviado) return [];
+      return [
+        {
+          id: cliente.id,
+          nombre: cliente.nombre,
+          telefono: cliente.telefono,
+          monto: a.monto,
+          tipo: a.tipo,
+        },
+      ];
+    });
+  }, [aviso, clientesMapeados, enCiclo]);
 
   const fechaCorta = (iso: string) => {
     const [, mes, dia] = iso.split("-");
@@ -468,8 +490,9 @@ export function ClientsView({
                 {formatearMoneda(kpiCiclo.monto)}
               </div>
               <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
-                {aviso.tipo === "MORA" ? "Venció" : "Vence"} el{" "}
-                {fechaCorta(aviso.venceEl)}
+                {aviso.modo === "DIAS"
+                  ? `Vencido y lo que vence en ${DIAS_POR_VENCER} días`
+                  : `${aviso.tipo === "MORA" ? "Venció" : "Vence"} el ${fechaCorta(aviso.venceEl)}`}
               </p>
               {kpiCiclo.mora > 0 && (
                 <p className="text-xs font-mono uppercase text-danger mt-0.5">
@@ -492,7 +515,9 @@ export function ClientsView({
                 <span className="text-sm font-sans font-normal">clientes</span>
               </div>
               <p className="text-xs font-mono uppercase text-muted-foreground mt-1">
-                Cierre del {fechaCorta(aviso.cierre)}
+                {aviso.modo === "DIAS"
+                  ? `${kpiCiclo.vencidas} vencida${kpiCiclo.vencidas === 1 ? "" : "s"} · ${kpiCiclo.cuentas - kpiCiclo.vencidas} por vencer`
+                  : `Cierre del ${fechaCorta(aviso.cierre)}`}
               </p>
             </CardContent>
           </Card>
@@ -608,6 +633,15 @@ export function ClientsView({
               onCambiar={(activo) => {
                 setCicloPedido(activo);
                 setCurrentPage(1);
+              }}
+            />
+          )}
+          {aviso && (
+            <EnvioEnTanda
+              clientes={pendientesTanda}
+              onEnviar={async (id) => {
+                const cliente = clientesMapeados.find((c) => c.id === id);
+                if (cliente) await enviarResumen(cliente);
               }}
             />
           )}
@@ -785,6 +819,14 @@ export function ClientsView({
                               <span className="text-left text-[11px] text-foreground">
                                 {cliente.diasVencido} día
                                 {cliente.diasVencido === 1 ? "" : "s"}
+                              </span>
+                            )}
+                          {cliente.estado === "por_vencer" &&
+                            cliente.diasVencido !== null && (
+                              <span className="text-left text-[11px] text-foreground">
+                                {cliente.diasVencido === 0
+                                  ? "vence hoy"
+                                  : `en ${-cliente.diasVencido} día${cliente.diasVencido === -1 ? "" : "s"}`}
                               </span>
                             )}
                         </div>

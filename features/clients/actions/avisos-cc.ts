@@ -5,35 +5,47 @@ import { createClient } from "@/shared/config/supabase/server";
 import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
 import {
   avisoDelDia,
+  avisosModoDias,
   type DeudaPorVencimiento,
   type TipoAvisoCc,
 } from "../lib/avisos-cc";
 
 export interface ClienteAvisoCc {
   clienteId: string;
-  /** Lo que tiene que pagar hasta el vencimiento del ciclo. */
+  /** Lo que tiene que pagar hasta el vencimiento del ciclo (cierre mensual) o
+   * lo vencido más lo que vence en los próximos días (modo días). */
   monto: number;
-  /** Ya se marcó este aviso para este cliente en este ciclo. */
+  /** El aviso de ESTE cliente (`cc_avisos`). Con cierre es el del ciclo
+   * para todos; en modo días cada cliente tiene el suyo. */
+  tipo: TipoAvisoCc;
+  venceEl: string;
+  /** Ya se marcó este aviso para este cliente. */
   enviado: boolean;
 }
 
-export interface AvisosCcDelDia {
-  tipo: TipoAvisoCc;
-  cierre: string;
-  venceEl: string;
-  clientes: ClienteAvisoCc[];
-}
+export type AvisosCcDelDia =
+  | {
+      modo: "CIERRE_MENSUAL";
+      tipo: TipoAvisoCc;
+      cierre: string;
+      venceEl: string;
+      clientes: ClienteAvisoCc[];
+    }
+  | {
+      /** "Días desde la compra": vencidos y por vencer (22/10/2026). */
+      modo: "DIAS";
+      clientes: ClienteAvisoCc[];
+    };
 
 /**
- * El aviso de cuenta corriente que toca hoy, con cada cliente marcado si ya
- * se le mandó. null si el comercio no está en cierre mensual o no hay a quién
- * avisar (y la pantalla no muestra nada).
+ * A quién hay que cobrarle hoy, con cada cliente marcado si ya se le mandó.
+ * null si no hay a quién avisar (y la pantalla no muestra nada).
  *
- * Primero la configuración: en un comercio en "días desde la compra" (casi
- * todos) no se paga el viaje de la deuda. Después, en paralelo, la deuda por
- * vencimiento y lo ya avisado. La regla de qué toca es `avisoDelDia`, pura y
- * con tests; los montos salen de `cc_deuda_por_vencimiento` (la misma regla
- * que el cobro).
+ * Con cierre mensual es el aviso del ciclo (`avisoDelDia`); en "días desde la
+ * compra", desde el 22/10/2026, los vencidos y los que vencen en los próximos
+ * días (`avisosModoDias`): Evens, Estilo Bonito y ClickTostado tenían millones
+ * fiados y ninguna lista. Las dos reglas son puras y con tests; los montos
+ * salen de `cc_deuda_por_vencimiento` (la misma regla que el cobro).
  */
 export async function getAvisosCcAction(): Promise<{
   aviso: AvisosCcDelDia | null;
@@ -50,9 +62,8 @@ export async function getAvisosCcAction(): Promise<{
   if (errorConfig || !config) {
     return { aviso: null, error: null };
   }
-  if (config.cc_vencimiento_modo !== "CIERRE_MENSUAL" || !config.cc_dia_cierre) {
-    return { aviso: null, error: null };
-  }
+  const conCierre =
+    config.cc_vencimiento_modo === "CIERRE_MENSUAL" && !!config.cc_dia_cierre;
 
   const regla = {
     modo: config.cc_vencimiento_modo,
@@ -78,14 +89,28 @@ export async function getAvisosCcAction(): Promise<{
     vivo: Number(f.vivo) || 0,
   }));
 
-  const aviso = avisoDelDia(regla, hoy, deudas);
-  if (!aviso) return { aviso: null, error: null };
+  // Cada cliente con SU aviso (tipo + vencimiento): con cierre es el del
+  // ciclo para todos; en modo días, el de su deuda.
+  let base:
+    | { modo: "CIERRE_MENSUAL"; tipo: TipoAvisoCc; cierre: string; venceEl: string }
+    | { modo: "DIAS" };
+  let lista: { clienteId: string; monto: number; tipo: TipoAvisoCc; venceEl: string }[];
+  if (conCierre) {
+    const aviso = avisoDelDia(regla, hoy, deudas);
+    if (!aviso) return { aviso: null, error: null };
+    base = { modo: "CIERRE_MENSUAL", tipo: aviso.tipo, cierre: aviso.cierre, venceEl: aviso.venceEl };
+    lista = aviso.clientes.map((c) => ({ ...c, tipo: aviso.tipo, venceEl: aviso.venceEl }));
+  } else {
+    lista = avisosModoDias(hoy, deudas);
+    if (lista.length === 0) return { aviso: null, error: null };
+    base = { modo: "DIAS" };
+  }
 
+  const vencimientos = [...new Set(lista.map((c) => c.venceEl))];
   const { data: enviados, error: errorEnviados } = await supabase
     .from("cc_avisos")
-    .select("cliente_id")
-    .eq("tipo", aviso.tipo)
-    .eq("vence_el", aviso.venceEl);
+    .select("cliente_id, tipo, vence_el")
+    .in("vence_el", vencimientos);
 
   if (errorEnviados) {
     // Sin el registro no se sabe a quién ya se avisó: mejor no mostrar la
@@ -94,18 +119,19 @@ export async function getAvisosCcAction(): Promise<{
     return { aviso: null, error: "No se pudieron cargar los avisos." };
   }
 
-  const yaAvisados = new Set((enviados ?? []).map((e) => e.cliente_id as string));
+  const clave = (clienteId: string, tipo: string, venceEl: string) =>
+    `${clienteId}|${tipo}|${venceEl.slice(0, 10)}`;
+  const yaAvisados = new Set(
+    (enviados ?? []).map((e) =>
+      clave(e.cliente_id as string, e.tipo as string, String(e.vence_el)),
+    ),
+  );
+  const clientes = lista.map((c) => ({
+    ...c,
+    enviado: yaAvisados.has(clave(c.clienteId, c.tipo, c.venceEl)),
+  }));
 
-  return {
-    aviso: {
-      ...aviso,
-      clientes: aviso.clientes.map((c) => ({
-        ...c,
-        enviado: yaAvisados.has(c.clienteId),
-      })),
-    },
-    error: null,
-  };
+  return { aviso: { ...base, clientes }, error: null };
 }
 
 const TIPOS: readonly TipoAvisoCc[] = ["CIERRE", "PREVIO", "MORA"];
