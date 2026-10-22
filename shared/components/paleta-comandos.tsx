@@ -20,7 +20,6 @@ import {
   Store,
   Tag,
   Tags,
-  Truck,
   Users,
   Wallet,
 } from "lucide-react";
@@ -85,13 +84,6 @@ const DESTINOS: Destino[] = [
   { clave: "stock", etiqueta: "Inventario", href: "/stock", Icono: Package },
   { clave: "ventas", etiqueta: "Ventas", href: "/ventas", Icono: ShoppingCart },
   { clave: "clientes", etiqueta: "Clientes", href: "/clientes", Icono: Users },
-  {
-    clave: "compras",
-    etiqueta: "Compras y proveedores",
-    href: "/compras",
-    Icono: Truck,
-    soloAdmin: true,
-  },
   {
     clave: "reportes",
     etiqueta: "Reportes",

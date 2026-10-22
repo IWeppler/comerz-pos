@@ -126,8 +126,7 @@ describe("getAdvisorInsights — remitos pendientes (nueva regla)", () => {
     const insight = r.find((i) => i.id === "remitos_pendientes");
     expect(insight?.type).toBe("warning");
     expect(insight?.priority).toBe(58);
-    // Compras, donde se ingresa o se descarta (C1); no el remito más viejo.
-    expect(insight?.href).toBe("/compras");
+    expect(insight?.href).toBe("/compras/merge/orden-123");
     expect(insight?.message).toContain("2 remitos");
     expect(insight?.message).toContain("5 días");
   });
@@ -155,7 +154,7 @@ describe("getAdvisorInsights — remitos a pagar", () => {
     const insight = getAdvisorInsights(
       baseMetrics({ remitosAPagar: { cantidad: 3, total: 450000 } }),
     ).find((i) => i.id === "remitos_a_pagar");
-    expect(insight?.href).toBe("/compras");
+    expect(insight?.href).toBe("/caja");
     expect(insight?.impacto).toBe(450000);
     expect(insight?.message).toContain("3 remitos");
     expect(insight?.message).toMatch(/450\.000/);

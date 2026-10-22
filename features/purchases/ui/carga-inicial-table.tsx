@@ -527,6 +527,7 @@ export function CargaInicialTable({
     <div className="flex flex-col gap-4 p-2 md:p-4">
       <PagoRemitoDialog
         ordenId={pagoOrdenId}
+        esCargaInicial
         onClose={() => {
           setPagoOrdenId(null);
           router.push("/stock");

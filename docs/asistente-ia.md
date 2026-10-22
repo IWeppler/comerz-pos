@@ -316,11 +316,14 @@ remito** (`egresos.orden_compra_id` está en null en todas las filas).
   visible en el historial. Mismo trato para los 3 de Estilo Bonito.
 
 **Hecho el 22/10/2026** (migraciones `20261022150000`, `160000`, `170000`,
-aplicadas; código en el working tree, sin deploy): proveedores, `pago_modo`,
-DESCARTADA, "¿Lo pagaste?" al aprobar, selector de proveedor y "Nombre del ingreso"
-al subir el remito, `/compras` (a pagar por proveedor, sin responder, sin ingresar
-con Descartar, historial), "Pagar" que abre el gasto armado y la alerta partida en
-dos. Detalle en stock-y-catalogo.md. Falta: editar proveedores (teléfono, plazo),
+aplicadas): proveedores, `pago_modo`, DESCARTADA, selector de proveedor y "Nombre
+del ingreso" al subir el remito y la alerta partida en dos. **Rehecho el mismo día a
+pedido de Ignacio**: la pantalla `/compras` se sacó ("muy cruda, solo muestra los
+remitos; lo que buscaba no eran más cosas sino que al ingresar mercadería se
+entienda que se hizo un gasto"), y "¿Lo pagaste?" pasó a ser el gasto ya armado en
+una pantalla (monto = costo de lo que entró, caja, "Registrar gasto"; "Lo pago
+después" y "No registrar gasto" discretas; en carga inicial "Es stock que ya
+tenía"). Descartar quedó en la página del remito. Detalle en stock-y-catalogo.md. Falta: editar proveedores (teléfono, plazo),
 la campana (`REMITO_PENDIENTES` sigue diciendo "sin conciliar") y borrar
 `resumen_remitos_financiero`.
 

@@ -55,7 +55,7 @@ interface EgresoModalProps {
   triggerClassName?: string;
   triggerVariant?: "ghost" | "outline" | "secondary";
   /** Pagar un remito: el modal abre con el tipo, el remito, el saldo y el
-   * concepto ya puestos (Compras › Pagar y "¿Lo pagaste? Sí, ahora"). La
+   * concepto ya puestos ("¿Lo pagaste? Sí, ahora"). La
    * caja se elige igual: no hay default de dónde sale la plata. */
   remito?: OrdenParaEgreso | null;
   /** Después de guardar el gasto con éxito. */

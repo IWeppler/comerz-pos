@@ -408,21 +408,30 @@ docs/asistente-ia.md (C1).
   después", no cambia de modo con pagos cargados): `authenticated` tiene
   INSERT/UPDATE de `ordenes_compra` **por columna**, sin las de pago ni descarte.
   Una columna nueva que la app tenga que escribir necesita su GRANT.
-- **"¿Lo pagaste?"** (`PagoRemitoDialog`) se abre al aprobar, en conciliación y en
-  carga inicial. *Sí, ahora* declara `EN_COMERZ` y abre el modal de gasto con el
-  remito, el saldo y el concepto puestos; el gasto es otra transacción: si la caja
-  está cerrada o no alcanza, el remito queda a pagar. La aprobación nunca depende del
-  pago.
+- **Al aprobar, el gasto ya armado** (`PagoRemitoDialog`, rediseñado el 22/10/2026 a
+  pedido de Ignacio: "que al ingresar mercadería se entienda que se hizo un gasto",
+  sin preguntar "¿lo pagaste?"). Una pantalla, en conciliación y en carga inicial:
+  monto = costo de lo que entró (editable por descuento o flete), "¿De dónde salió la
+  plata?" (mismas opciones y reglas que el modal de gasto, sin default) y proveedor
+  opcional → "Registrar gasto" declara `EN_COMERZ` y crea el egreso
+  `COMPRA_MERCADERIA` con `registrarEgresoAction`. Es otra transacción: si la caja
+  está cerrada o no alcanza, el remito queda a pagar. La aprobación nunca depende
+  del pago. Salidas: "Lo pago después" (pide proveedor) y, discreta, "No registrar
+  gasto" (`FUERA_DE_COMERZ`). En carga inicial además "Es stock que ya tenía, no fue
+  una compra" (sin marcar de antemano; también `FUERA_DE_COMERZ`).
+- **No hay pantalla de Compras** (se sacó el 22/10/2026: "muy cruda"). Lo que se debe
+  se paga desde Caja › Anotar gasto › Compra de mercadería, que lista primero los
+  remitos a pagar; un remito pendiente se descarta desde su propia página.
 - **"A pagar" se decide en SQL**, `resumen_pagos_remitos()` (INVOKER): valor =
   Σ cantidad RECIBIDA × costo (lo que no vino no se paga), saldo = valor − Σ gastos
   del remito, y `situacion` (A_PAGAR, SIN_RESPONDER, PAGADO, ANTERIOR, SIN_INGRESAR,
   DESCARTADO). Sin `pago_modo` pero con un gasto atado cuenta como `EN_COMERZ`. La
-  leen Compras (`/compras`), el modal de gasto y la alerta del panel; TS solo agrupa
+  leen el modal de gasto, el diálogo de arriba y la alerta del panel; TS solo agrupa
   (`features/purchases/lib/pago-remito.ts`). `resumen_remitos_financiero` (saldo de
   todos como si se debieran) queda sin lectores: borrarla cuando este código esté en
   producción.
 - **La alerta del panel es dos**: "Mercadería sin ingresar" (PENDIENTE) y "Remitos a
-  pagar" (A_PAGAR, con el monto), las dos a `/compras`. La campana
+  pagar" (A_PAGAR, con el monto): la primera al remito más viejo, la segunda a Caja. La campana
   (`_estados_notificaciones`, `REMITO_PENDIENTES`) todavía dice "sin conciliar" y
   linkea al remito más viejo.
 

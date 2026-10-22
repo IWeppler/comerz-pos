@@ -9,6 +9,7 @@ import {
 } from "@/features/purchases/ui/conciliacion-client";
 import type { CategoriaReal } from "@/features/purchases/lib/resolve-import-categoria";
 import { bloquearVendedor } from "@/shared/config/supabase/guard-rol";
+import { DescartarRemitoBoton } from "@/features/purchases/ui/descartar-remito-boton";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,9 @@ export default async function MergePage({ params }: Readonly<PageProps>) {
 
   return (
     <div className="w-full mx-auto pb-12">
+      <div className="flex justify-end px-2 pt-2 md:px-4">
+        <DescartarRemitoBoton ordenId={orden.id} nombre={orden.proveedor} />
+      </div>
       <ConciliacionClient
         orden={orden}
         items={items as ItemResuelto[]}

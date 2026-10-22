@@ -522,9 +522,9 @@ export function getAdvisorInsights(
 
   // 7b. Mercadería sin ingresar (prioridad media: no es plata perdida como la
   // deuda o las bajas, pero el stock y el costo de esos productos no están al
-  // día). Lleva a Compras, donde se ingresa o se descarta: antes llevaba al
-  // remito más viejo y la alerta de Evens vivió tres meses con borradores
-  // abandonados (docs/asistente-ia.md, C1).
+  // día). Lleva al remito más viejo, que se ingresa o se descarta desde ahí
+  // (la alerta de Evens vivió tres meses con borradores abandonados que no se
+  // podían descartar, docs/asistente-ia.md C1).
   if (metrics.remitosPendientes && metrics.remitosPendientes.cantidad > 0) {
     insights.push({
       id: "remitos_pendientes",
@@ -533,7 +533,7 @@ export function getAdvisorInsights(
       title: "Mercadería sin Ingresar",
       message: `Tenés ${metrics.remitosPendientes.cantidad} remito${metrics.remitosPendientes.cantidad === 1 ? "" : "s"} sin ingresar al stock — el más antiguo hace ${metrics.remitosPendientes.diasMasAntiguo} día${metrics.remitosPendientes.diasMasAntiguo === 1 ? "" : "s"}. Ingresalos, o descartalos si la mercadería no vino.`,
       actionLabel: "Revisar",
-      href: "/compras",
+      href: `/compras/merge/${metrics.remitosPendientes.idMasAntiguo}`,
     });
   }
 
@@ -546,9 +546,9 @@ export function getAdvisorInsights(
       priority: 60,
       impacto: total,
       title: "Remitos a Pagar",
-      message: `Le debés ${formatter.format(total)} a proveedores por ${cantidad} remito${cantidad === 1 ? "" : "s"}.`,
-      actionLabel: "Ver compras",
-      href: "/compras",
+      message: `Le debés ${formatter.format(total)} a proveedores por ${cantidad} remito${cantidad === 1 ? "" : "s"}. Pagalos desde Caja › Anotar gasto › Compra de mercadería.`,
+      actionLabel: "Ir a caja",
+      href: "/caja",
     });
   }
 
