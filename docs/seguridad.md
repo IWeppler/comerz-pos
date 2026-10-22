@@ -113,6 +113,13 @@ muestre no es control de acceso.
   GRANT, solo service_role (patrón `arca_credenciales`; tokens cifrados en la app).
   `negocios.pagos_online_habilitado` no está concedida a `anon`. Test:
   `supabase/tests/pagos_rls.sql`.
+- Tablas de la reorganización de variantes (`20261022120000`, señaladas por el
+  advisor como críticas: sin RLS y con GRANT ALL a `authenticated`).
+  `variantes_fusionadas` está viva (la escribe `fusionar_productos`, INVOKER):
+  aislamiento RESTRICTIVE por negocio y solo INSERT (append-only, la app no la lee).
+  `variantes_remapeo` y `variantes_remapeo_aplicado`: RLS sin policies ni GRANT
+  (patrón `backfill_variante_id_20260903`). La migración aborta si queda **cualquier**
+  tabla de `public` sin RLS.
   Órdenes (`20261012162746`): `crear_orden_tienda` y `liberar_ordenes_tienda_vencidas`
   son SOLO de service_role (las llama la server action después de recalcular precios;
   con anon cualquiera mandaría su total por curl). `anon` solo ejecuta
