@@ -6,6 +6,7 @@ import {
   getOrdenesParaEgresoAction,
   type OrdenParaEgreso,
 } from "@/features/purchases/actions/get-ordenes-para-egreso";
+import { conceptoPagoRemito } from "@/features/purchases/lib/pago-remito";
 import { toast } from "@/shared/ui/toast";
 import {
   Dialog,
@@ -53,6 +54,12 @@ interface EgresoModalProps {
    * suelta de una barra o como botón ancho del panel en mobile. */
   triggerClassName?: string;
   triggerVariant?: "ghost" | "outline" | "secondary";
+  /** Pagar un remito: el modal abre con el tipo, el remito, el saldo y el
+   * concepto ya puestos (Compras › Pagar y "¿Lo pagaste? Sí, ahora"). La
+   * caja se elige igual: no hay default de dónde sale la plata. */
+  remito?: OrdenParaEgreso | null;
+  /** Después de guardar el gasto con éxito. */
+  onRegistrado?: () => void;
 }
 
 const SIN_REMITO = "sin-remito";
@@ -70,6 +77,8 @@ export function EgresoModal({
   mostrarTrigger = true,
   triggerClassName,
   triggerVariant = "ghost",
+  remito = null,
+  onRegistrado,
 }: Readonly<EgresoModalProps> = {}) {
   const [isOpenInterno, setIsOpenInterno] = useState(false);
   const [paso, setPaso] = useState<1 | 2>(1);
@@ -80,6 +89,8 @@ export function EgresoModal({
   const [cuentas, setCuentas] = useState<CuentaFinanciera[] | null>(null);
   const [categoriaId, setCategoriaId] = useState("");
   const [monto, setMonto] = useState("");
+  const [concepto, setConcepto] = useState("");
+  const [remitoPrecargado, setRemitoPrecargado] = useState<string | null>(null);
 
   const isCajaAbierta = useCajaStatusStore((state) => state.isCajaAbierta);
   const turno = useCajaStatusStore((state) => state.turno);
@@ -94,6 +105,8 @@ export function EgresoModal({
     setOrdenId(SIN_REMITO);
     setCategoriaId("");
     setMonto("");
+    setConcepto("");
+    setRemitoPrecargado(null);
   };
 
   const setIsOpen = (valor: boolean) => {
@@ -112,6 +125,17 @@ export function EgresoModal({
       cancelado = true;
     };
   }, [isOpen, cuentas]);
+
+  // Pagar un remito: se precarga una vez por apertura (estado ajustado en el
+  // render, no en un efecto). El paso 1 (de qué caja sale) sigue siendo
+  // obligatorio.
+  if (isOpen && remito && remitoPrecargado !== remito.id) {
+    setRemitoPrecargado(remito.id);
+    setTipo("COMPRA_MERCADERIA");
+    setOrdenId(remito.id);
+    setMonto(remito.saldo_pendiente > 0 ? String(remito.saldo_pendiente) : "");
+    setConcepto(conceptoPagoRemito(remito));
+  }
 
   // Los remitos se piden recién cuando hacen falta: la mayoría de los egresos
   // son gastos operativos y no necesitan la lista.
@@ -144,6 +168,7 @@ export function EgresoModal({
       if (result.success) {
         toast.success("Gasto registrado");
         useCajaStatusStore.getState().notifyCajaChanged();
+        onRegistrado?.();
         setIsOpen(false);
       } else {
         toast.error(result.error || "Ocurrió un error");
@@ -156,6 +181,12 @@ export function EgresoModal({
   const definicion = tipo ? DEFINICION_TIPO_EGRESO[tipo] : null;
   const montoNumero = Number(monto);
   const excedeCajon = superaCajaChica(origen, montoNumero);
+  // El remito que se está pagando puede no estar en la lista que trae el
+  // server (o la lista no llegó todavía): se suma para que el select lo muestre.
+  const opcionesRemito =
+    remito && !(ordenes ?? []).some((o) => o.id === remito.id)
+      ? [remito, ...(ordenes ?? [])]
+      : (ordenes ?? []);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -326,17 +357,20 @@ export function EgresoModal({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={SIN_REMITO}>Sin remito asociado</SelectItem>
-                    {(ordenes ?? []).map((o) => (
+                    {opcionesRemito.map((o) => (
                       <SelectItem key={o.id} value={o.id}>
-                        {o.proveedor} · {formatearFecha(o.fecha_remito ?? o.creado_en)} · $
-                        {Math.round(Number(o.saldo_pendiente)).toLocaleString("es-AR")} pendiente
+                        {o.proveedor_nombre ? `${o.proveedor_nombre} · ` : ""}
+                        {o.nombre} · {formatearFecha(o.fecha_remito ?? o.creado_en)}
+                        {o.situacion === "SIN_INGRESAR"
+                          ? " · sin ingresar"
+                          : ` · ${formatearMoneda(o.saldo_pendiente)} pendiente`}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-                {ordenes !== null && ordenes.length === 0 && (
+                {ordenes !== null && opcionesRemito.length === 0 && (
                   <p className="text-[11px] text-muted-foreground">
-                    No hay remitos cargados. El gasto se guarda igual.
+                    No hay remitos a pagar. El gasto se guarda igual.
                   </p>
                 )}
               </div>
@@ -347,6 +381,8 @@ export function EgresoModal({
               <Input
                 id="concepto"
                 name="concepto"
+                value={concepto}
+                onChange={(e) => setConcepto(e.target.value)}
                 placeholder={
                   tipo === "RETIRO_SOCIO"
                     ? "Ej: Retiro semanal"

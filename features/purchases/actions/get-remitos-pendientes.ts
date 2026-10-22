@@ -1,49 +1,43 @@
 "use server";
 
-import { createClient } from "@/shared/config/supabase/server";
-import { cookies } from "next/headers";
+import { diasSinIngresar } from "../lib/pago-remito";
+import { getResumenPagosRemitosAction } from "./pago-remito";
 
 export type RemitosPendientesResumen = {
+  /** Remitos subidos cuya mercadería no ingresó (PENDIENTE). */
   cantidad: number;
   diasMasAntiguo: number;
-  /** id de la orden más antigua sin conciliar — no existe una lista
-   * general de remitos (solo /compras/merge/[id] por orden puntual), así
-   * que el CTA del Advisor apunta directo a esa. */
   idMasAntiguo: string;
+  /** Remitos aprobados que se deben (A_PAGAR) y sin responder si se pagaron. */
+  aPagarCantidad: number;
+  aPagarTotal: number;
+  sinResponder: number;
 };
 
 /**
- * Resumen de remitos sin conciliar, para el Advisor del dashboard.
- * `estado='PENDIENTE'` es el mismo valor que merge-purchase.ts cambia a
- * 'APROBADA' al terminar la conciliación — no hay un estado intermedio.
+ * Resumen de remitos para el Advisor del panel: mercadería sin ingresar por un
+ * lado, deuda con proveedores por el otro (antes era una sola alerta, "sin
+ * conciliar", que solo hablaba de lo primero). Sale de
+ * `resumen_pagos_remitos`, el mismo criterio que Compras.
  * `creado_en` (momento de subida) es la antigüedad relevante, no
- * `fecha_remito` (fecha del papel, puede ser vieja aunque se suba al toque).
+ * `fecha_remito` (fecha del papel).
  */
 export async function getRemitosPendientesAction(): Promise<RemitosPendientesResumen | null> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
+  const remitos = await getResumenPagosRemitosAction();
 
-  const { data, error } = await supabase
-    .from("ordenes_compra")
-    .select("id, creado_en")
-    .eq("estado", "PENDIENTE");
-
-  if (error) {
-    console.error("[getRemitosPendientesAction] Error:", error);
-    return null;
-  }
-
-  if (!data || data.length === 0) {
-    return { cantidad: 0, diasMasAntiguo: 0, idMasAntiguo: "" };
-  }
-
-  const ahora = Date.now();
-  const masAntiguo = data.reduce((min, o) =>
-    new Date(o.creado_en) < new Date(min.creado_en) ? o : min,
-  );
-  const diasMasAntiguo = Math.floor(
-    (ahora - new Date(masAntiguo.creado_en).getTime()) / 86400000,
+  const sinIngresar = remitos.filter((r) => r.situacion === "SIN_INGRESAR");
+  const aPagar = remitos.filter((r) => r.situacion === "A_PAGAR");
+  const masAntiguo = sinIngresar.reduce<(typeof sinIngresar)[number] | null>(
+    (min, r) => (!min || r.creado_en < min.creado_en ? r : min),
+    null,
   );
 
-  return { cantidad: data.length, diasMasAntiguo, idMasAntiguo: masAntiguo.id };
+  return {
+    cantidad: sinIngresar.length,
+    diasMasAntiguo: masAntiguo ? diasSinIngresar(masAntiguo.creado_en) : 0,
+    idMasAntiguo: masAntiguo?.id ?? "",
+    aPagarCantidad: aPagar.length,
+    aPagarTotal: aPagar.reduce((s, r) => s + r.saldo_pendiente, 0),
+    sinResponder: remitos.filter((r) => r.situacion === "SIN_RESPONDER").length,
+  };
 }

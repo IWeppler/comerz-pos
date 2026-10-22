@@ -117,7 +117,7 @@ describe("getAdvisorInsights — remitos pendientes (nueva regla)", () => {
     expect(r.some((i) => i.id === "remitos_pendientes")).toBe(false);
   });
 
-  it("con remitos pendientes, agrega warning de prioridad media con link al más antiguo", () => {
+  it("con remitos pendientes, agrega warning de prioridad media que lleva a Compras", () => {
     const r = getAdvisorInsights(
       baseMetrics({
         remitosPendientes: { cantidad: 2, diasMasAntiguo: 5, idMasAntiguo: "orden-123" },
@@ -126,7 +126,8 @@ describe("getAdvisorInsights — remitos pendientes (nueva regla)", () => {
     const insight = r.find((i) => i.id === "remitos_pendientes");
     expect(insight?.type).toBe("warning");
     expect(insight?.priority).toBe(58);
-    expect(insight?.href).toBe("/compras/merge/orden-123");
+    // Compras, donde se ingresa o se descarta (C1); no el remito más viejo.
+    expect(insight?.href).toBe("/compras");
     expect(insight?.message).toContain("2 remitos");
     expect(insight?.message).toContain("5 días");
   });
@@ -139,6 +140,25 @@ describe("getAdvisorInsights — remitos pendientes (nueva regla)", () => {
     ).find((i) => i.id === "remitos_pendientes");
     expect(insight?.message).toContain("1 remito ");
     expect(insight?.message).toContain("1 día.");
+  });
+});
+
+describe("getAdvisorInsights — remitos a pagar", () => {
+  it("sin deuda con proveedores, no agrega insight", () => {
+    const r = getAdvisorInsights(
+      baseMetrics({ remitosAPagar: { cantidad: 0, total: 0 } }),
+    );
+    expect(r.some((i) => i.id === "remitos_a_pagar")).toBe(false);
+  });
+
+  it("con deuda, dice cuánto y por cuántos remitos, y lleva a Compras", () => {
+    const insight = getAdvisorInsights(
+      baseMetrics({ remitosAPagar: { cantidad: 3, total: 450000 } }),
+    ).find((i) => i.id === "remitos_a_pagar");
+    expect(insight?.href).toBe("/compras");
+    expect(insight?.impacto).toBe(450000);
+    expect(insight?.message).toContain("3 remitos");
+    expect(insight?.message).toMatch(/450\.000/);
   });
 });
 

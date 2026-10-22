@@ -25,6 +25,7 @@ import {
   ChevronsUpDown,
   LifeBuoy,
   Rocket,
+  Truck,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import {
@@ -76,6 +77,8 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { name: "Inventario", href: "/stock", icon: Package, adminOnly: false },
       { name: "Ventas", href: "/ventas", icon: ShoppingCart, adminOnly: false },
       { name: "Clientes", href: "/clientes", icon: Users, adminOnly: false },
+      // Deuda con proveedores y remitos sin ingresar (docs/asistente-ia.md, C1).
+      { name: "Compras", href: "/compras", icon: Truck, adminOnly: true },
       // Solo con `negocios.modulo_presupuestos` prendido: al revés que
       // Reportes, esto NO se muestra con candado. No es un módulo de plan que
       // se vende en la pantalla: es crédito propio del comercio, y en un

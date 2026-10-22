@@ -49,6 +49,15 @@ export default async function MergePage({ params }: Readonly<PageProps>) {
     );
   }
 
+  if (orden.estado === "DESCARTADA") {
+    return (
+      <div className="m-2 rounded-xl bg-muted p-8 text-center font-semibold text-muted-foreground md:m-4">
+        Este remito se descartó: su mercadería no ingresó al stock y no se puede
+        retomar. Si la mercadería llegó, subí el archivo de nuevo.
+      </div>
+    );
+  }
+
   if (orden.estado === "APROBADA") {
     return (
       <div className="p-8 text-center bg-success/10 text-success rounded-xl font-bold m-2 md:m-4">

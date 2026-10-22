@@ -54,6 +54,11 @@ export function DashboardNavbar({
         title: "Reportes",
         description: "Análisis comercial, financiero e inventario del negocio.",
       };
+    if (pathname === "/compras")
+      return {
+        title: "Compras",
+        description: "Lo que le debés a cada proveedor y los remitos sin ingresar.",
+      };
     if (pathname.startsWith("/caja"))
       return {
         title: "Caja y Movimientos",

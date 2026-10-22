@@ -57,6 +57,9 @@ export async function procesarPedidoAction(
    * planilla, resuelto sin columna nueva.
    */
   forzar = false,
+  /** A quién se le compró (`proveedores`). `proveedor` es el nombre del
+   * ingreso, no el proveedor. La FK compuesta impide uno de otro negocio. */
+  proveedorId: string | null = null,
 ) {
   console.log(">>> [SERVER ACTION] 1. Iniciando procesarPedidoAction...");
   console.log(
@@ -119,6 +122,7 @@ export async function procesarPedidoAction(
           : total_presupuestado,
         estado: "PENDIENTE",
         hash_planilla: hashPlanilla,
+        proveedor_id: proveedorId,
       })
       .select("id")
       .single();

@@ -173,7 +173,11 @@ Bitácora append-only de todo lo que mueve plata, escrita por triggers sobre
   ingresos). Criterio en `features/caja/lib/tipo-egreso.ts` (modal, action y panel);
   espejo SQL `egreso_impacto_resultado(tipo, monto)`.
 - `orden_compra_id` linkea el pago al remito (solo COMPRA_MERCADERIA, ON DELETE SET
-  NULL: borrar el remito no borra el egreso).
+  NULL: borrar el remito no borra el egreso). Desde el 22/10/2026 el saldo de cada
+  remito y si se debe salen de `resumen_pagos_remitos()` (ver stock-y-catalogo.md,
+  "Proveedores, pago del remito"); el modal de gasto acepta un `remito` precargado
+  (Compras › Pagar, "¿Lo pagaste? Sí, ahora") y la caja se sigue eligiendo sin
+  default.
 - **Un gasto dice de dónde sale la plata, sin default** (28/9/2026): modal de dos
   pasos, primero la caja (`features/caja/lib/origen-egreso.ts`), después el tipo. El
   `turno_caja_id` se anota SOLO si la cuenta es arqueada. El default a la caja chica

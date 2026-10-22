@@ -11,6 +11,13 @@ Leé esto antes de tocar `productos`, `producto_variantes`, `productos_stock`,
   `producto_variante_valores`). **`productos_stock` es espejo legacy**: se mantiene
   sincronizado en cada escritura y NUNCA se normaliza su texto. Se mueve con
   `ajustar_stock_legacy` (delta en un statement), nunca leyendo y escribiendo.
+  **Lo que vuelve al stock (anulación, devolución) va al nombre ACTUAL de la
+  variante** (`nombreEspejoLegacy`, resuelto por `variante_id`), no al texto
+  congelado en `ventas_items.variante`: `ajustar_stock_legacy` hace upsert y, con
+  un talle renombrado, creaba una fila fantasma y dejaba el talle real abajo
+  (Evens, REMERA CARE en -1). Auditado el 22/10/2026: 5 desfasadas y 17 fantasmas
+  sobre 9.455 variantes, resincronizadas
+  (`supabase/reversals/20261022_resincronizar_espejo_productos_stock.sql`).
 - **El stock se descuenta con UPDATE atómico condicional** vía
   `ajustar_stock_variante`, por `variante_id`, nunca por nombre. Toma `p_origen` /
   `p_referencia_id` para `movimientos_stock`. **OJO**: es plpgsql y sus OUT params
@@ -374,6 +381,50 @@ código local para revisión, sin commit/deploy ni smoke de venta en producción
   no funciona sobre `<input>`).
 - **La foto no está en el camino del alta**: se cuenta el pendiente (banner +
   `/stock/fotos-pendientes`).
+
+## Proveedores, pago del remito y remitos descartados (22/10/2026)
+
+Migraciones `20261022150000`, `160000` y `170000`. El plan y la auditoría están en
+docs/asistente-ia.md (C1).
+- **`ordenes_compra.proveedor` NO es el proveedor: es el nombre del ingreso**
+  ("INGRESO", "VERANO23", "Parte 5"). La columna conserva el nombre por los
+  lectores; la UI dice "Nombre del ingreso". El proveedor es `proveedor_id` →
+  `proveedores` (nombre único por negocio sin importar mayúsculas, sin DELETE, se
+  da de baja con `activo`), con FK compuesta `(negocio_id, proveedor_id)`: un
+  remito no puede apuntar al proveedor de otro negocio. Alta al vuelo:
+  `SelectorProveedor` / `crearProveedorAction` (si el nombre ya existe, lo elige).
+- **Estados: PENDIENTE → APROBADA | DESCARTADA** (CHECK). Trigger
+  `validar_estado_remito`: solo se descarta desde PENDIENTE, un descartado no vuelve
+  (`REMITO_DESCARTADO`, también dentro de `aprobar_orden_compra`), y descartar libera
+  `hash_planilla` (un descartado no protege contra una nueva subida). Descartar no
+  mueve stock ni crea gastos. Los 30 pendientes de Evens y Estilo Bonito (julio a
+  septiembre, 20 de ellos subidas repetidas de remitos aprobados) se descartaron en
+  la migración.
+- **`pago_modo`** (solo con APROBADA): `EN_COMERZ` (se paga con gastos
+  `COMPRA_MERCADERIA` atados al remito), `FUERA_DE_COMERZ`, `ANTERIOR_AL_REGISTRO`
+  (los 152 aprobados antes del 22/10; Evens los consideraba pagados) o null (nadie
+  respondió "¿Lo pagaste?"). **Solo lo escribe `definir_pago_remito`**
+  (SECURITY DEFINER, permiso `stock.ingresar_remito`, exige proveedor para "Lo pago
+  después", no cambia de modo con pagos cargados): `authenticated` tiene
+  INSERT/UPDATE de `ordenes_compra` **por columna**, sin las de pago ni descarte.
+  Una columna nueva que la app tenga que escribir necesita su GRANT.
+- **"¿Lo pagaste?"** (`PagoRemitoDialog`) se abre al aprobar, en conciliación y en
+  carga inicial. *Sí, ahora* declara `EN_COMERZ` y abre el modal de gasto con el
+  remito, el saldo y el concepto puestos; el gasto es otra transacción: si la caja
+  está cerrada o no alcanza, el remito queda a pagar. La aprobación nunca depende del
+  pago.
+- **"A pagar" se decide en SQL**, `resumen_pagos_remitos()` (INVOKER): valor =
+  Σ cantidad RECIBIDA × costo (lo que no vino no se paga), saldo = valor − Σ gastos
+  del remito, y `situacion` (A_PAGAR, SIN_RESPONDER, PAGADO, ANTERIOR, SIN_INGRESAR,
+  DESCARTADO). Sin `pago_modo` pero con un gasto atado cuenta como `EN_COMERZ`. La
+  leen Compras (`/compras`), el modal de gasto y la alerta del panel; TS solo agrupa
+  (`features/purchases/lib/pago-remito.ts`). `resumen_remitos_financiero` (saldo de
+  todos como si se debieran) queda sin lectores: borrarla cuando este código esté en
+  producción.
+- **La alerta del panel es dos**: "Mercadería sin ingresar" (PENDIENTE) y "Remitos a
+  pagar" (A_PAGAR, con el monto), las dos a `/compras`. La campana
+  (`_estados_notificaciones`, `REMITO_PENDIENTES`) todavía dice "sin conciliar" y
+  linkea al remito más viejo.
 
 ## Plantilla por rubro
 

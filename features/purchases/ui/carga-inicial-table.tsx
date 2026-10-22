@@ -31,6 +31,7 @@ import {
 } from "../actions/carga-inicial";
 import { aprobarOrdenAction } from "../actions/merge-purchase";
 import { ProgresoOverlay } from "./progreso-overlay";
+import { PagoRemitoDialog } from "./pago-remito-dialog";
 import {
   AlertaImeisFaltantes,
   ImeisRemitoPanel,
@@ -144,6 +145,8 @@ export function CargaInicialTable({
   const [marcaEnLote, setMarcaEnLote] = useState("");
   const [markupEnLote, setMarkupEnLote] = useState<number | "">("");
   const [confirmando, setConfirmando] = useState(false);
+  /** Remito recién ingresado: se pregunta "¿Lo pagaste?" antes de salir. */
+  const [pagoOrdenId, setPagoOrdenId] = useState<string | null>(null);
   const [guardado, setGuardado] = useState<"limpio" | "guardando" | "guardado">(
     "limpio",
   );
@@ -507,6 +510,8 @@ export function CargaInicialTable({
             },
           });
         }
+        setPagoOrdenId(orden.id);
+        return;
       }
 
       router.push("/stock");
@@ -520,6 +525,14 @@ export function CargaInicialTable({
 
   return (
     <div className="flex flex-col gap-4 p-2 md:p-4">
+      <PagoRemitoDialog
+        ordenId={pagoOrdenId}
+        onClose={() => {
+          setPagoOrdenId(null);
+          router.push("/stock");
+          router.refresh();
+        }}
+      />
       <ProgresoOverlay
         abierto={confirmando}
         titulo="Cargando la mercadería"

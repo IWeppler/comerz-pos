@@ -1,41 +1,25 @@
 "use server";
 
-import { createClient } from "@/shared/config/supabase/server";
-import { cookies } from "next/headers";
+import type { RemitoResumenPago } from "../lib/pago-remito";
+import { getResumenPagosRemitosAction } from "./pago-remito";
 
-export interface OrdenParaEgreso {
-  id: string;
-  proveedor: string;
-  fecha_remito: string | null;
-  valor_historico: number;
-  total_pagado: number;
-  saldo_pendiente: number;
-  estado: string | null;
-  creado_en: string;
-}
+export type OrdenParaEgreso = RemitoResumenPago;
 
 /**
- * Remitos recientes, para asociar un egreso de tipo COMPRA_MERCADERIA al
- * remito que lo originó.
+ * Remitos que se pueden pagar con un gasto COMPRA_MERCADERIA: los que se
+ * deben (A_PAGAR), los aprobados sin respuesta a "¿Lo pagaste?" y los que
+ * todavía no ingresaron (un adelanto al proveedor). Los anteriores al
+ * registro, los pagados y los descartados no tienen nada que pagar.
  *
- * Trae también los ya aprobados: el pago al proveedor suele ser posterior a
- * la conciliación de la mercadería, así que filtrar por PENDIENTE dejaría
- * afuera justo los que se están por pagar.
- *
- * El límite es a propósito. Es un selector de "el remito de esta semana", no
- * un buscador histórico; RLS ya acota al negocio activo.
+ * Antes salían los 30 más recientes con el saldo calculado como si todo se
+ * debiera (`resumen_remitos_financiero`). El criterio vive ahora en
+ * `resumen_pagos_remitos`. Los que se deben van primero.
  */
 export async function getOrdenesParaEgresoAction(): Promise<OrdenParaEgreso[]> {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-
-  const { data, error } = await supabase
-    .rpc("resumen_remitos_financiero");
-
-  if (error) {
-    console.error("[getOrdenesParaEgresoAction] Error:", error);
-    return [];
-  }
-
-  return (data ?? []).slice(0, 30) as OrdenParaEgreso[];
+  const remitos = await getResumenPagosRemitosAction();
+  const orden: Record<string, number> = { A_PAGAR: 0, SIN_RESPONDER: 1, SIN_INGRESAR: 2 };
+  return remitos
+    .filter((r) => r.situacion in orden)
+    .sort((a, b) => orden[a.situacion] - orden[b.situacion])
+    .slice(0, 50);
 }

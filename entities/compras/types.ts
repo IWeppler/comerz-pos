@@ -3,8 +3,10 @@ export interface OrdenCompra {
   proveedor: string;
   fecha_remito: string;
   total_presupuestado: number;
-  estado: "PENDIENTE" | "APROBADA";
+  estado: "PENDIENTE" | "APROBADA" | "DESCARTADA";
   creado_en: string;
+  /** A quién se le compró (`proveedores`). `proveedor` es el nombre del ingreso. */
+  proveedor_id?: string | null;
 }
 
 export interface SugerenciaSimilitud {

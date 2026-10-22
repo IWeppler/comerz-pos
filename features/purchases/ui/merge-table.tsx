@@ -78,6 +78,7 @@ import { createClient } from "@/shared/config/supabase/client";
 import { parseAttributeSegment } from "@/entities/productos/lib/parse-variant-attributes";
 import { ProductMediaSection } from "@/features/stock/ui/create-product/product-media-section";
 import { ProgresoOverlay } from "./progreso-overlay";
+import { PagoRemitoDialog } from "./pago-remito-dialog";
 import {
   ImagenError,
   optimizarImagenesProducto,
@@ -349,6 +350,8 @@ export function MergeTable({
   const [crearLoading, setCrearLoading] = useState(false);
   const [crearError, setCrearError] = useState<string | null>(null);
   const [aprobarLoading, setAprobarLoading] = useState(false);
+  /** Remito recién ingresado: se pregunta "¿Lo pagaste?" antes de salir. */
+  const [pagoOrdenId, setPagoOrdenId] = useState<string | null>(null);
   /**
    * Ya se avisó de los productos compartidos y la persona decidió seguir.
    *
@@ -1469,7 +1472,11 @@ export function MergeTable({
         // Guardado real confirmado contra el server: el borrador local ya
         // no tiene sentido, no debe quedar un borrador fantasma.
         await deleteMergeDraft(orden.id).catch(() => {});
-        router.push("/stock");
+        if (res.yaAprobada) {
+          router.push("/stock");
+        } else {
+          setPagoOrdenId(orden.id);
+        }
       } else {
         setAprobarError(res.error || "Ocurrió un error.");
       }
@@ -1490,12 +1497,19 @@ export function MergeTable({
 
   return (
     <div className="space-y-6 px-4 py-2">
+      <PagoRemitoDialog
+        ordenId={pagoOrdenId}
+        onClose={() => {
+          setPagoOrdenId(null);
+          router.push("/stock");
+        }}
+      />
       {/* Overlay de la aprobación: una sola RPC, no hay progreso parcial que
           mostrar — el cronómetro es lo que demuestra que sigue viva. */}
       <ProgresoOverlay
         abierto={aprobarLoading}
         titulo="Impactando stock y precios"
-        descripcion={`Actualizando ${items.length} ${items.length === 1 ? "renglón" : "renglones"} del remito de ${orden.proveedor}.`}
+        descripcion={`Actualizando ${items.length} ${items.length === 1 ? "renglón" : "renglones"} del remito ${orden.proveedor}.`}
       />
 
       {/* Overlay de la creación masiva: acá sí se puede contar. */}

@@ -59,6 +59,8 @@ export interface AdvisorMetrics {
    * simplemente no se disparan (guardadas con `metrics.x &&`). */
   deudaVencida?: { monto: number; clientes: number };
   remitosPendientes?: { cantidad: number; diasMasAntiguo: number; idMasAntiguo: string };
+  /** Remitos ingresados que se deben al proveedor (situación A_PAGAR). */
+  remitosAPagar?: { cantidad: number; total: number };
   categoriaEnRiesgo?: {
     categoria: string;
     unidadesVendidas: number;
@@ -518,18 +520,35 @@ export function getAdvisorInsights(
     });
   }
 
-  // 7b. Remitos Pendientes de Conciliar (prioridad media: no es plata
-  // perdida como la deuda o las bajas, pero mientras no se concilien el
-  // costo/stock de esos productos puede estar desactualizado).
+  // 7b. Mercadería sin ingresar (prioridad media: no es plata perdida como la
+  // deuda o las bajas, pero el stock y el costo de esos productos no están al
+  // día). Lleva a Compras, donde se ingresa o se descarta: antes llevaba al
+  // remito más viejo y la alerta de Evens vivió tres meses con borradores
+  // abandonados (docs/asistente-ia.md, C1).
   if (metrics.remitosPendientes && metrics.remitosPendientes.cantidad > 0) {
     insights.push({
       id: "remitos_pendientes",
       type: "warning",
       priority: 58,
-      title: "Remitos sin Conciliar",
-      message: `Tenés ${metrics.remitosPendientes.cantidad} remito${metrics.remitosPendientes.cantidad === 1 ? "" : "s"} sin conciliar — el más antiguo hace ${metrics.remitosPendientes.diasMasAntiguo} día${metrics.remitosPendientes.diasMasAntiguo === 1 ? "" : "s"}. El costo y stock real de esos productos puede no estar actualizado hasta que los revisés.`,
-      actionLabel: "Conciliar",
-      href: `/compras/merge/${metrics.remitosPendientes.idMasAntiguo}`,
+      title: "Mercadería sin Ingresar",
+      message: `Tenés ${metrics.remitosPendientes.cantidad} remito${metrics.remitosPendientes.cantidad === 1 ? "" : "s"} sin ingresar al stock — el más antiguo hace ${metrics.remitosPendientes.diasMasAntiguo} día${metrics.remitosPendientes.diasMasAntiguo === 1 ? "" : "s"}. Ingresalos, o descartalos si la mercadería no vino.`,
+      actionLabel: "Revisar",
+      href: "/compras",
+    });
+  }
+
+  // 7b'. Deuda con proveedores: remitos ingresados que se dejaron "a pagar".
+  if (metrics.remitosAPagar && metrics.remitosAPagar.cantidad > 0) {
+    const { cantidad, total } = metrics.remitosAPagar;
+    insights.push({
+      id: "remitos_a_pagar",
+      type: "warning",
+      priority: 60,
+      impacto: total,
+      title: "Remitos a Pagar",
+      message: `Le debés ${formatter.format(total)} a proveedores por ${cantidad} remito${cantidad === 1 ? "" : "s"}.`,
+      actionLabel: "Ver compras",
+      href: "/compras",
     });
   }
 

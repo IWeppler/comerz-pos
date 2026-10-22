@@ -484,6 +484,13 @@ export default async function DashboardPage({
         remitosPendientes && remitosPendientes.cantidad > 0
           ? remitosPendientes
           : undefined,
+      remitosAPagar:
+        remitosPendientes && remitosPendientes.aPagarCantidad > 0
+          ? {
+              cantidad: remitosPendientes.aPagarCantidad,
+              total: remitosPendientes.aPagarTotal,
+            }
+          : undefined,
       categoriaEnRiesgo:
         categoriaEnRiesgo && categoriaEnRiesgoLabel
           ? {

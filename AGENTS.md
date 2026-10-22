@@ -27,7 +27,7 @@ ventas, caja o stock es plata real.**
 | [docs/ventas.md](docs/ventas.md) | `create-sale.ts`, `cancel-sale.ts`, `registrar-devolucion.ts`, `registrar_venta` / `anular_venta` / `registrar_devolucion`, `ventas`, `ventas_items`, `venta_pagos`, `devoluciones`, el POS, venta libre, recargo por método, promociones |
 | [docs/caja-y-dinero.md](docs/caja-y-dinero.md) | `features/caja/`, `turnos_caja`, `egresos`, `ingresos_financieros`, `movimientos_financieros`, `cuentas_financieras`, transferencias, `metodos_pago.cuenta_destino_id`, arqueo, cualquier consulta que sume efectivo/cobros/saldos, las pestañas de /caja |
 | [docs/cuenta-corriente.md](docs/cuenta-corriente.md) | `clientes.saldo_pendiente`, `cuenta_corriente_movimientos`, `registrar_cobro_cc`, vencimiento, mora, saldo a favor, `features/clients/` |
-| [docs/stock-y-catalogo.md](docs/stock-y-catalogo.md) | `productos`, `producto_variantes`, `productos_stock`, `movimientos_stock`, precios, remitos (`aprobar_orden_compra`, conciliación), importación, carga rápida, categorías, catálogo público, venta por peso, rubros |
+| [docs/stock-y-catalogo.md](docs/stock-y-catalogo.md) | `productos`, `producto_variantes`, `productos_stock`, `movimientos_stock`, precios, remitos (`aprobar_orden_compra`, conciliación, `proveedores`, pago del remito, /compras), importación, carga rápida, categorías, catálogo público, venta por peso, rubros |
 | [docs/facturacion.md](docs/facturacion.md) | ARCA, `comprobantes`, `emitir-comprobante.ts`, `determinar-comprobante.ts`, IVA del producto, cliente fiscal, exportaciones al contador |
 | [docs/seguridad.md](docs/seguridad.md) | Una tabla nueva, una policy, un GRANT, una función SECURITY DEFINER, un permiso, lo que lee `anon` |
 | [docs/alta-y-sesion.md](docs/alta-y-sesion.md) | `/auth`, callback, onboarding, middleware, token/claim, invitaciones, /admincomerz, embudo de alta, planes |
@@ -37,6 +37,7 @@ ventas, caja o stock es plata real.**
 | [docs/activacion-autonoma.md](docs/activacion-autonoma.md) | La guía de inicio (`features/onboarding/`), la barra de prueba, el wizard de primeros pasos, el festejo de la primera venta, `hitos_activacion`, el embudo de activación (plan V1 por tareas) |
 | [docs/notificaciones.md](docs/notificaciones.md) | La campana: `notificaciones` (hechos), avisos derivados, `novedades`, leídas, configuración por rol (épica N1–N6) |
 | [docs/suscripciones.md](docs/suscripciones.md) | El cobro de Comerz a sus comercios: planes, `precio_acordado`, `pagos_suscripcion`, MRR, suscripciones de Mercado Pago (épica S1–S5) |
+| [docs/asistente-ia.md](docs/asistente-ia.md) | Cualquier cosa con IA para el dueño: bandeja de tareas, venta libre → productos, cobranza armada, mercadería quieta, recompra, reposición (auditoría 21/10/2026 y plan A1–A7, no empezado) |
 | [docs/tienda-online.md](docs/tienda-online.md) | El carrito público (`features/store/`), pedidos u órdenes del catálogo, `registrar_pedido_catalogo`, notificación de venta, push, Mercado Pago. Pagos del checkout (`ordenes_tienda`, `eventos_pago`, `mercadopago_conexiones`): además [docs/pagos-auditoria.md](docs/pagos-auditoria.md) y [docs/pagos-stopgaps.md](docs/pagos-stopgaps.md) |
 
 **Mapa rápido de carpetas**: `features/<módulo>/{actions,lib,ui}` (la lógica pura con
@@ -123,6 +124,10 @@ Lee: stock-y-catalogo + caja-y-dinero.
   `actualizaciones_precio` (lote REMITO).
 - El pago al proveedor es un egreso `COMPRA_MERCADERIA` con `orden_compra_id`: sale
   del cajón pero NO resta ganancia (ya está en el costo de lo vendido).
+- "Cuánto se debe" es `resumen_pagos_remitos()` y el modo de pago lo escribe solo
+  `definir_pago_remito` (columnas cerradas por GRANT). El pago va en otra
+  transacción que la aprobación: la caja nunca voltea el ingreso de mercadería.
+  `ordenes_compra.proveedor` es el nombre del ingreso; el proveedor es `proveedor_id`.
 
 ### Abrir, operar o cerrar un turno de caja
 Lee: caja-y-dinero (+ ventas si toca el POS).

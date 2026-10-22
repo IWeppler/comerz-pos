@@ -23,6 +23,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
+import { SelectorProveedor } from "./selector-proveedor";
 import {
   FileSpreadsheet,
   Loader2,
@@ -48,7 +49,9 @@ export function ImportarPedidoModal({
 }: Readonly<ImportarPedidoModalProps>) {
   const [internalOpen, setInternalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  /** Nombre del ingreso (columna histórica `ordenes_compra.proveedor`). */
   const [proveedor, setProveedor] = useState("");
+  const [proveedorId, setProveedorId] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
   /** El remito que ya existe con este mismo contenido, si lo hay. */
@@ -109,7 +112,7 @@ export function ImportarPedidoModal({
       return;
     }
     if (!proveedor.trim()) {
-      toast.error("Por favor, ingresa el nombre del proveedor.");
+      toast.error("Poné un nombre para reconocer este ingreso.");
       return;
     }
 
@@ -150,6 +153,7 @@ export function ImportarPedidoModal({
         proveedor,
         preview.filas,
         forzarSubida,
+        proveedorId,
       );
 
       if (result.success) {
@@ -157,6 +161,7 @@ export function ImportarPedidoModal({
         setOpen(false);
         setFile(null);
         setProveedor("");
+        setProveedorId(null);
         setPreview(null);
         setForzarSubida(false);
         router.push(`/compras/merge/${result.ordenId}`);
@@ -380,20 +385,42 @@ export function ImportarPedidoModal({
 
           <div className="space-y-2">
             <Label
+              htmlFor="proveedor-remito"
+              className="text-xs font-bold uppercase tracking-widest text-muted-foreground"
+            >
+              Proveedor (opcional)
+            </Label>
+            <SelectorProveedor
+              id="proveedor-remito"
+              valor={proveedorId}
+              onChange={(p) => setProveedorId(p?.id ?? null)}
+              disabled={isLoading}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              A quién le compraste. Sirve para saber cuánto le debés a cada uno.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label
               htmlFor="proveedor"
               className="text-xs font-bold uppercase tracking-widest text-muted-foreground"
             >
-              Nombre del Proveedor
+              Nombre del ingreso
             </Label>
             <Input
               id="proveedor"
               value={proveedor}
               onChange={(e) => setProveedor(e.target.value)}
-              placeholder="Ej: Mayorista"
+              placeholder="Ej: Camperas invierno, factura 0012-4589"
               disabled={isLoading}
               required
               className="h-11 shadow-none bg-muted/20"
             />
+            <p className="text-[11px] text-muted-foreground">
+              Lo que te ayude a reconocerlo después: qué mercadería es o el número
+              de factura o remito. La fecha se guarda sola.
+            </p>
           </div>
 
           <div className="space-y-2">
