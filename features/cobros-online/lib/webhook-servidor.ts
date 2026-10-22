@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/shared/config/supabase/admin";
 import { tokenDelComercio } from "./checkout-mp-servidor";
 import { aplicarPagoMp, conciliarPagosNegocio } from "./conciliar-servidor";
+import { aplicarPagoMpCobroCc } from "./cobro-cc-mp-servidor";
 import { procesarAvisoSuscripcion, TIPOS_SUSCRIPCION } from "@/features/suscripciones/lib/webhook-suscripciones";
 import { destinoDelPago, esAvisoDePago, type AvisoMp, type PagoMpCompleto, type VeredictoFirma } from "./webhook-mp";
 
@@ -109,6 +110,18 @@ export async function procesarAvisoMp(aviso: AvisoMp, firma: VeredictoFirma): Pr
         .maybeSingle();
       if (!orden) continue;
       const r = await aplicarPagoMp(admin, negocioId, destino.ordenId, pago, "MP_WEBHOOK");
+      if (!r.ok) codigo = 500;
+    } else if (destino.tipo === "COBRO_CC") {
+      // El pago de una cuenta corriente desde el resumen. El intento tiene que
+      // ser de ESTE negocio: la RPC lo vuelve a filtrar.
+      const { data: cobro } = await admin
+        .from("cobros_cc_online")
+        .select("id")
+        .eq("id", destino.cobroId)
+        .eq("negocio_id", negocioId)
+        .maybeSingle();
+      if (!cobro) continue;
+      const r = await aplicarPagoMpCobroCc(admin, negocioId, destino.cobroId, pago, "MP_WEBHOOK");
       if (!r.ok) codigo = 500;
     }
   }

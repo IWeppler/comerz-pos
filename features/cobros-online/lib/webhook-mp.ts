@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { PagoCheckout } from "./preferencia-mp";
+import { PREFIJO_COBRO_CC, type PagoCheckout } from "./preferencia-mp";
 
 /**
  * El webhook de Mercado Pago, la parte PURA (docs/pagos-auditoria.md §4.4 y §16).
@@ -110,10 +110,36 @@ export interface PagoMpCompleto extends PagoCheckout {
   operation_type?: string;
 }
 
-/** Lo que mueve plata: la comisión REAL que cobró MP, de `fee_details`. */
+const centavos = (n: number) => Math.round(n * 100) / 100;
+
+/** La comisión de Mercado Pago que paga el COMERCIO (`fee_payer` collector). */
+export function comisionMpDelComercio(pago: PagoCheckout): number {
+  return centavos(
+    (pago.fee_details ?? [])
+      .filter((f) => f.fee_payer !== "payer")
+      .reduce((suma, f) => suma + (Number(f.amount) || 0), 0),
+  );
+}
+
+/**
+ * Lo que el comercio NO recibe de un pago: `transaction_amount` menos
+ * `net_received_amount` (comisión de Mercado Pago + impuestos y retenciones que
+ * le descuentan). Es lo que se guarda como comisión del cobro: la plata que
+ * entra a la cuenta es el neto. Sin el neto, la comisión del comercio.
+ *
+ * NUNCA la suma de todos los `fee_details` (así estaba hasta el 22/10/2026,
+ * sin pagos reales todavía): el interés de las cuotas (`financing_fee`,
+ * `fee_payer: payer`) lo paga la clienta encima del precio y no es costo del
+ * comercio. Ejemplo oficial de Mercado Pago: $5 en 9 cuotas, financing_fee
+ * $2,13 (payer), mercadopago_fee $0,30 (collector), neto $4,70.
+ */
 export function comisionDelPago(pago: PagoCheckout): number {
-  const total = (pago.fee_details ?? []).reduce((suma, f) => suma + (Number(f.amount) || 0), 0);
-  return Math.round(total * 100) / 100;
+  const monto = Number(pago.transaction_amount);
+  const neto = pago.transaction_details?.net_received_amount;
+  if (neto != null && Number.isFinite(Number(neto)) && Number.isFinite(monto) && Number(neto) <= monto) {
+    return centavos(Math.max(0, monto - Number(neto)));
+  }
+  return comisionMpDelComercio(pago);
 }
 
 /** `p_pago` de `aplicar_pago_mp_orden`. Solo la forma del pago: nada de quién pagó. */
@@ -129,6 +155,19 @@ export function pagoParaLaBase(pago: PagoCheckout) {
       payment_type_id: pago.payment_type_id ?? null,
       status_detail: pago.status_detail ?? null,
       date_approved: pago.date_approved ?? null,
+      // Desglose de lo descontado: comisión de MP y el resto (impuestos y
+      // retenciones), para auditar el número guardado como comisión.
+      ...(pago.status === "approved"
+        ? {
+            comision_mp: comisionMpDelComercio(pago),
+            neto_recibido: pago.transaction_details?.net_received_amount ?? null,
+            cuotas_a_cargo_cliente: centavos(
+              (pago.fee_details ?? [])
+                .filter((f) => f.fee_payer === "payer")
+                .reduce((suma, f) => suma + (Number(f.amount) || 0), 0),
+            ),
+          }
+        : {}),
     },
   };
 }
@@ -137,19 +176,26 @@ export function pagoParaLaBase(pago: PagoCheckout) {
 
 export type DestinoPago =
   | { tipo: "ORDEN"; ordenId: string }
+  | { tipo: "COBRO_CC"; cobroId: string }
   | { tipo: "TRANSFERENCIA" }
   | { tipo: "AJENO"; motivo: "COLLECTOR" }
   | { tipo: "IGNORAR" };
 
 /**
  * Un pago leído con el token del comercio. Si lo cobró otra cuenta, no se
- * toca nada. Con `external_reference` de una orden, a la orden. Sin
+ * toca nada. Con `external_reference` de una orden, a la orden; con `cc:<id>`,
+ * al cobro de cuenta corriente. Sin
  * referencia y entrante (transferencia al alias), a la conciliación por monto.
  */
 export function destinoDelPago(pago: PagoMpCompleto, mpUserId: string): DestinoPago {
   if (String(pago.collector_id ?? "") !== mpUserId) return { tipo: "AJENO", motivo: "COLLECTOR" };
   const ref = pago.external_reference ?? null;
   if (ref && UUID.test(ref)) return { tipo: "ORDEN", ordenId: ref.toLowerCase() };
+  // El pago de una cuenta corriente desde el resumen (`cc:<intento>`).
+  if (ref?.startsWith(PREFIJO_COBRO_CC)) {
+    const id = ref.slice(PREFIJO_COBRO_CC.length);
+    return UUID.test(id) ? { tipo: "COBRO_CC", cobroId: id.toLowerCase() } : { tipo: "IGNORAR" };
+  }
   if (!ref && (pago.operation_type === "money_transfer" || pago.operation_type === "account_fund")) {
     return { tipo: "TRANSFERENCIA" };
   }

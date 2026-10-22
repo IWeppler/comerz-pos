@@ -12,6 +12,7 @@ import {
   RecargoMoraConfig,
 } from "@/features/clients/lib/calcular-saldo-con-recargo";
 import { validarPerdonDeuda } from "@/features/clients/lib/validar-perdon-deuda";
+import { descripcionMora } from "@/features/clients/lib/pago-online-cc";
 import { mensajeCobroSuperaDeuda } from "@/features/clients/lib/tope-cobro-cc";
 import { deudaDe } from "@/features/clients/lib/saldo-a-favor";
 import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
@@ -523,14 +524,8 @@ export async function registrarPagoDeudaAction(
   // (`debito_origen_id`): capital y mora del mismo ticket se imputan como una
   // unidad. Se DECLARA acá —no se deduce después— porque este es el único
   // momento en que se sabe con certeza cuál era la deuda más vieja viva.
-  // La leyenda dice sobre qué se calculó: con SALDO_COMPLETO decía "sobre la
-  // deuda vencida" y el número era sobre toda la cuenta.
-  const detalleMora =
-    recargoConfig.recargo_mora_tipo === "PORCENTAJE"
-      ? recargoConfig.recargo_mora_base === "PORCION_VENCIDA"
-        ? `${recargoConfig.recargo_mora_valor}% sobre la deuda vencida`
-        : `${recargoConfig.recargo_mora_valor}% sobre el saldo adeudado`
-      : "monto fijo por venta vencida";
+  // La leyenda dice sobre qué se calculó (`descripcionMora`, la misma que el
+  // pago con Mercado Pago).
 
   // El crédito va por la BASE, no por el bruto: el recargo por método es
   // plata del cobro, no capital amortizado.
@@ -574,7 +569,7 @@ export async function registrarPagoDeudaAction(
         montoRecargo > 0
           ? {
               monto: montoRecargo,
-              descripcion: `Recargo por mora (${detalleMora})`,
+              descripcion: descripcionMora(recargoConfig),
               debito_origen_id:
                 (
                   deudaVencida as {

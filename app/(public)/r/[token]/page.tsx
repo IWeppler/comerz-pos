@@ -20,6 +20,8 @@ import {
   type MovimientoResumenCc,
 } from "@/features/clients/lib/resumen-ciclo";
 import type { CcVencimientoModo } from "@/features/clients/lib/calcular-fecha-vencimiento";
+import { pagoOnlineDelResumen } from "@/features/cobros-online/lib/cobro-cc-mp-servidor";
+import { PagarConMercadoPago } from "@/features/clients/ui/pagar-con-mercadopago";
 
 export const dynamic = "force-dynamic";
 
@@ -88,9 +90,19 @@ function saldoCuenta(saldo: number): string {
  */
 export default async function ResumenCuentaPage({
   params,
-}: Readonly<{ params: Promise<{ token: string }> }>) {
+  searchParams,
+}: Readonly<{
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ pago?: string }>;
+}>) {
   const { token } = await params;
+  const { pago } = await searchParams;
   const supabase = await createPublicClient();
+
+  // Pagar con Mercado Pago (solo si el comercio lo conectó). Si vuelve de
+  // pagar (`?pago=`), esto concilia ANTES de leer el resumen: así el saldo
+  // que ve ya incluye su pago aunque el aviso de Mercado Pago no haya llegado.
+  const pagoOnline = await pagoOnlineDelResumen(token, pago ?? null);
 
   const { data } = await supabase.rpc("resumen_cuenta_por_token", {
     p_token: token,
@@ -310,6 +322,28 @@ export default async function ResumenCuentaPage({
             )
           )}
         </div>
+
+        {/* MERCADO PAGO — el resultado del pago con el que volvió, y los
+            botones si todavía debe. Solo con Mercado Pago conectado. */}
+        {pagoOnline?.intento && (
+          <div
+            role="status"
+            className={`p-5 border-t border-border text-sm ${
+              pagoOnline.intento.estado === "PAGADO" ? "bg-success/10 text-success" : "bg-muted/40 text-foreground"
+            }`}
+          >
+            {pagoOnline.intento.estado === "PAGADO"
+              ? `¡Recibimos tu pago de ${formatearMoneda(pagoOnline.intento.total)}! Ya está registrado en tu cuenta.`
+              : pagoOnline.intento.estado === "REVISAR"
+                ? `Recibimos tu pago. ${comercio.nombre ?? "El comercio"} lo va a revisar y registrar.`
+                : "Estamos confirmando tu pago con Mercado Pago. Recargá la página en unos minutos."}
+          </div>
+        )}
+        {pagoOnline && pagoOnline.opciones.length > 0 && pagoOnline.intento?.estado !== "EN_PROCESO" && (
+          <div className="p-5 border-t border-border">
+            <PagarConMercadoPago token={token} opciones={pagoOnline.opciones} />
+          </div>
+        )}
 
         {/* TRANSFERENCIA — alias y monto para copiar y pegar en su app. No
             hay forma estándar de abrir la transferencia ya cargada sin una

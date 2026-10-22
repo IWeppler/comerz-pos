@@ -395,7 +395,55 @@ Botón "Recordar" del detalle del cliente; arma el texto `construirMensajeDeuda`
   "vence el" (el vencimiento más viejo) para todo el saldo: EESO 405 en Colores leía
   $276.450 "vence el 10/10" cuando ese día vencían $98.850. Sin botón "Escribirle al
   comercio" ni pie de emisión (pedido del 5/10/2026).
-- **En stand by: "Pagar cuenta" desde el resumen** (charlado el 8/10/2026).
+- **"Pagar con Mercado Pago" desde el resumen: decidido con Ignacio el 22/10/2026**
+  (no empezado). El botón aparece SOLO si el comercio tiene Mercado Pago conectado
+  (`mercadopago_conexiones` ACTIVA). Montos: "Pagar lo vencido $X" y "Pagar todo
+  $Y" (con cierre mensual, lo del ciclo), mora incluida y calculada al tocar el
+  botón; sin monto libre. Si al llegar el pago la deuda ya bajó (pagó en el local
+  entre medio), se registra igual y el excedente queda a favor, con aviso al
+  comercio. La comisión la absorbe el comercio (se registra la real, de
+  `fee_details`). La plata entra a la cuenta de Mercado Pago del comercio, la misma
+  "Mercado Pago (tienda online)", sin turno. Aviso "María pagó $X con Mercado Pago"
+  en la campana (y por push cuando exista). Hace falta: tabla de intentos (cliente,
+  monto, mora congelada, preference, vence ~1 h), un cobro de CC llamable sin sesión
+  (service_role, como `_registrar_venta_orden_tienda`), `external_reference` con
+  prefijo `cc:` para que el webhook distinga deuda de orden. Antes: probar de punta a
+  punta en producción el checkout de la tienda con un pago real chico (nunca se
+  procesó un pago de MP en producción; `MP_WEBHOOK_SECRET` está cargado en Vercel
+  según Ignacio) y que un comercio que fía conecte MP (Evens).
+  **Construido el 22/10/2026** (migración `20261022180000`, código en el working
+  tree, sin prueba real):
+  - `cobros_cc_online`: un intento por botón tocado (capital + mora congelada,
+    vence en 1 h, tope 10 por clienta y hora). Su id es el id del cobro en
+    `venta_pagos`. Lectura con `clientes.ver_modulo`; escriben solo el server y la RPC.
+  - `aplicar_pago_mp_cobro_cc` (solo service_role) es la única puerta, desde el
+    webhook (`external_reference = cc:<intento>`, `destinoDelPago`) y desde la
+    conciliación (`conciliarCobrosCc`, dentro de `conciliarPagosNegocio` y al volver
+    al resumen con `?pago=`). Aprobado y exacto → `registrar_cobro_cc` sin turno, al
+    método MP_CHECKOUT de la tienda, con la comisión real; si la deuda bajó entre
+    medio la mora no se materializa y el excedente queda a favor. Monto distinto →
+    REVISAR sin cobro. Mismo pago dos veces → DUPLICADO; otro pago aprobado →
+    PAGO_DUPLICADO con aviso. Aviso `COBRO_CC_ONLINE` (categoría PLATA).
+  - **El cobro sin sesión**: `registrar_cobro_cc`, `registrar_recibo_cobro_cc` y
+    `recibo_cobro_cc` leen `coalesce(security.current_negocio_id(),
+    _negocio_de_sistema())`. `_negocio_de_sistema()` solo devuelve algo con rol
+    service_role y la variable `comerz.negocio_sistema` de la transacción; con
+    una sesión normal la sesión gana. Probado en seco contra producción.
+  - Montos (`opcionesPagoCc`, con tests): "Pagar lo vencido" / "lo del mes" y
+    "Pagar todo", mora de hoy en los dos. La leyenda de la mora es
+    `descripcionMora`, compartida con el cobro del mostrador.
+  - La página `/r/<token>` muestra los botones solo con Mercado Pago conectado y
+    deuda, y al volver dice "recibimos tu pago" / "lo estamos confirmando".
+  - **La comisión que se guarda** (`comisionDelPago`, vale también para la
+    tienda): `transaction_amount − net_received_amount`, o sea todo lo que
+    Mercado Pago le descuenta al comercio (comisión + impuestos y retenciones);
+    sin el neto, solo los `fee_details` con `fee_payer` collector. Hasta el
+    22/10/2026 sumaba TODOS los `fee_details`, incluido el interés de las cuotas
+    que paga la clienta (`financing_fee`, payer): habría inflado la comisión de
+    cualquier pago en cuotas (no hubo pagos reales). El desglose (comisión de MP,
+    neto, interés a cargo de la clienta) queda en `eventos_pago.payload`.
+  - Pendiente: la prueba real (un pago chico en un comercio con MP conectado).
+- Lo charlado el 8/10/2026, que lo de arriba completa:
   Decidido hasta acá: el pago entra a la cuenta de Mercado Pago del comercio
   por default (sin turno de caja), con la cuenta destino CONFIGURABLE; el monto
   se recalcula al pagar (la mora pudo cambiar desde que se mandó el link).
@@ -470,6 +518,25 @@ persona toca Enviar y se abre WhatsApp. Sin API de Meta.
   lugares). Clave de query `clientes.avisos` cuelga de `clientes.listado`: un
   cobro invalida los dos.
 - Pendiente: fase 4 (smoke en Colores).
+- **Modo días y "Por vencer" (22/10/2026, docs/asistente-ia.md A2)**. La regla de
+  arriba ("en modo días no, sería ruidosa") se revirtió: Evens, Estilo Bonito y
+  ClickTostado tenían millones fiados y ninguna lista. Se resolvió agrupando:
+  - **Estado "Por vencer"** en `clasificarEstadoCliente`: saldo > 0 y la deuda más
+    vieja vence hoy o en los próximos `DIAS_POR_VENCER` (5) días. Sale de
+    `fecha_vencimiento_deuda`, que es el vencimiento de la deuda viva más vieja
+    (verificado: 152 de 152 iguales a `cc_deudas_vivas` en Evens y Estilo Bonito).
+  - **Lista "A cobrar"** (`avisosModoDias`, pura, con tests): vencidos (MORA) y
+    por vencer (PREVIO), un renglón por cliente, monto = lo vencido + lo que vence
+    en la ventana. Clave en `cc_avisos`: MORA con la ÚLTIMA venta vencida (un
+    vencimiento nuevo es un aviso nuevo; no uno por día, misma idea que la mora),
+    PREVIO con el próximo vencimiento. Sin migración: reusa tipos y UNIQUE.
+  - `getAvisosCcAction` devuelve `modo` y cada cliente con SU tipo y vencimiento
+    (con cierre son los del ciclo para todos); `marcar` usa los del cliente.
+  - **Envío en tanda** (`envio-en-tanda.tsx`), para los dos modos: "Enviar a N"
+    abre una cola con los de la lista sin enviar; Enviar abre WhatsApp con el mismo
+    mensaje y registro que la columna, y pasa a la siguiente. La cola se congela al
+    abrir. Sin API de WhatsApp (decisión del 22/10: riesgo de bloqueo del número y
+    costo por mensaje; se reconsidera si la tanda muestra decenas por semana).
 
 ## Recargo de CC en la venta (`20260823180630`)
 

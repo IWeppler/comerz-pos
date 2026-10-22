@@ -86,13 +86,49 @@ const pago = (over: Partial<PagoCheckout & { operation_type?: string }> = {}) =>
 });
 
 describe("el pago para la base", () => {
-  it("comisión real = suma de fee_details, al centavo", () => {
-    expect(comisionDelPago(pago())).toBe(2700.75);
+  it("comisión = lo que no le llega al comercio (monto − neto)", () => {
+    // Ejemplo oficial de MP: $5 en 9 cuotas, el interés lo paga la clienta.
+    const cuotas = pago({
+      transaction_amount: 5,
+      transaction_details: { net_received_amount: 4.7 },
+      fee_details: [
+        { type: "financing_fee", fee_payer: "payer", amount: 2.13 },
+        { type: "mercadopago_fee", fee_payer: "collector", amount: 0.3 },
+      ],
+    });
+    expect(comisionDelPago(cuotas)).toBe(0.3);
+    // Con retenciones el neto baja más que la comisión: cuenta todo lo descontado.
+    expect(
+      comisionDelPago(
+        pago({
+          transaction_amount: 10000,
+          transaction_details: { net_received_amount: 9200 },
+          fee_details: [{ type: "mercadopago_fee", fee_payer: "collector", amount: 700 }],
+        }),
+      ),
+    ).toBe(800);
+  });
+
+  it("sin el neto: solo los fee_details que paga el comercio", () => {
+    expect(
+      comisionDelPago(
+        pago({
+          fee_details: [
+            { type: "mercadopago_fee", fee_payer: "collector", amount: 2700.5 },
+            { type: "financing_fee", fee_payer: "payer", amount: 900 },
+          ],
+        }),
+      ),
+    ).toBe(2700.5);
     expect(comisionDelPago(pago({ fee_details: undefined }))).toBe(0);
   });
 
   it("aprobado lleva la comisión; los demás no (no la inventan)", () => {
     expect(pagoParaLaBase(pago())).toMatchObject({ mp_payment_id: "1", estado_mp: "approved", monto: 45300, moneda: "ARS", comision_monto: 2700.75 });
+    expect(pagoParaLaBase(pago({ transaction_details: { net_received_amount: 43000 } })).resumen).toMatchObject({
+      comision_mp: 2700.75,
+      neto_recibido: 43000,
+    });
     expect(pagoParaLaBase(pago({ status: "pending" }))).not.toHaveProperty("comision_monto");
   });
 
@@ -108,6 +144,10 @@ describe("a dónde va un pago leído de la API", () => {
   });
   it("con la orden como referencia: a la orden", () => {
     expect(destinoDelPago(pago({ external_reference: ORDEN.toUpperCase() }), "999")).toEqual({ tipo: "ORDEN", ordenId: ORDEN });
+  });
+  it("con cc:<id>: al cobro de cuenta corriente; un cc: roto se ignora", () => {
+    expect(destinoDelPago(pago({ external_reference: `cc:${ORDEN.toUpperCase()}` }), "999")).toEqual({ tipo: "COBRO_CC", cobroId: ORDEN });
+    expect(destinoDelPago(pago({ external_reference: "cc:no-es-un-id" }), "999")).toEqual({ tipo: "IGNORAR" });
   });
   it("transferencia entrante sin referencia: a la conciliación por monto", () => {
     expect(destinoDelPago(pago({ external_reference: null, operation_type: "money_transfer" }), "999")).toEqual({ tipo: "TRANSFERENCIA" });

@@ -148,6 +148,8 @@ export function RentabilidadTab({
         </CardContent>
       </Card>
 
+      <ComisionesPorMedio medios={metrics.ventasPorMetodo} total={metrics.totalComisiones} />
+
       <MargenPorCategoria
         ganancias={metrics.rentabilidadPorCategoria}
         ventasPorCategoria={metrics.ventasPorCategoria}
@@ -298,6 +300,73 @@ function MargenPorCategoria({
               );
             })}
           </ol>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * El renglón "Comisiones" de la cascada, abierto por medio de cobro: cuánto se
+ * quedó cada procesador y qué parte de lo cobrado es. Con Mercado Pago online
+ * el mismo medio cobra la tienda y las cuentas corrientes desde el resumen:
+ * se separan las dos partes. La comisión es la REAL de cada cobro (la que
+ * informa Mercado Pago, o el % configurado en el método para tarjetas y QR).
+ */
+function ComisionesPorMedio({
+  medios,
+  total,
+}: Readonly<{
+  medios: { label: string; bruto: number; comision: number; comisionCuentaCorriente: number }[];
+  total: number;
+}>) {
+  const filas = medios.filter((m) => m.comision > 0.005).sort((a, b) => b.comision - a.comision);
+
+  return (
+    <Card className="border-border shadow-none">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <CreditCard className="w-5 h-5 text-muted-foreground" aria-hidden="true" />
+          Comisiones por medio de cobro
+        </CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Lo que se quedaron las tarjetas, los QR y Mercado Pago de lo que cobraste, ventas y cuentas corrientes.
+        </p>
+      </CardHeader>
+      <CardContent className="p-0">
+        {filas.length === 0 ? (
+          <p className="p-8 text-center text-sm text-muted-foreground">No hubo comisiones en este período.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {filas.map((m) => {
+              const porcentaje = m.bruto > 0 ? (m.comision / m.bruto) * 100 : 0;
+              const deVentas = m.comision - m.comisionCuentaCorriente;
+              return (
+                <li key={m.label} className="flex items-start justify-between gap-3 px-6 py-3">
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-medium text-foreground">{m.label}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {porcentaje.toLocaleString("es-AR", { maximumFractionDigits: 1 })}% de{" "}
+                      {formatearMoneda(m.bruto)} cobrados
+                    </p>
+                    {m.comisionCuentaCorriente > 0.005 && (
+                      <p className="text-xs text-muted-foreground">
+                        {deVentas > 0.005 ? `${formatearMoneda(deVentas)} de ventas · ` : ""}
+                        {formatearMoneda(m.comisionCuentaCorriente)} de cobros de cuenta corriente
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                    {formatearMoneda(m.comision)}
+                  </span>
+                </li>
+              );
+            })}
+            <li className="flex items-center justify-between gap-3 px-6 py-3">
+              <span className="text-sm font-semibold text-foreground">Total</span>
+              <span className="text-sm font-semibold tabular-nums text-foreground">{formatearMoneda(total)}</span>
+            </li>
+          </ul>
         )}
       </CardContent>
     </Card>

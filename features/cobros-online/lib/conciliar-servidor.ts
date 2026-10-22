@@ -4,6 +4,7 @@ import { tokenDelComercio } from "./checkout-mp-servidor";
 import { conciliarTransferencias, type PagoMp } from "./conciliar-transferencias";
 import type { PagoCheckout } from "./preferencia-mp";
 import { pagoParaLaBase, pagoQueDecideLaOrden } from "./webhook-mp";
+import { conciliarCobrosCc } from "./cobro-cc-mp-servidor";
 
 /**
  * Concilia los pagos de UN negocio contra su Mercado Pago y registra la venta
@@ -183,6 +184,9 @@ export async function conciliarPagosNegocio(negocioId: string): Promise<number> 
         }
       }
     }
+
+    // ─── 2b. Pagos de cuenta corriente desde el resumen (`cc:<intento>`) ───
+    registradas += await conciliarCobrosCc(admin, negocioId);
 
     // ─── 3. Recién ahora, vencer ───
     await admin.rpc("liberar_ordenes_tienda_vencidas", { p_negocio: negocioId });

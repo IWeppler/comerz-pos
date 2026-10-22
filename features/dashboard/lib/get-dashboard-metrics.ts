@@ -196,9 +196,12 @@ export function getDashboardMetrics(
   >();
   const rentabilidadCatMap = new Map<string, number>();
 
+  // `comisionCc`: la parte de la comisión que vino de cobrar cuentas
+  // corrientes (el resto es de ventas). Con Mercado Pago online el mismo medio
+  // cobra la tienda y las deudas: Rentabilidad muestra las dos partes.
   const metodoPagoMap = new Map<
     string,
-    { bruto: number; comision: number; neto: number }
+    { bruto: number; comision: number; neto: number; comisionCc: number }
   >();
 
   const diasSemana = [
@@ -337,11 +340,13 @@ export function getDashboardMetrics(
           bruto: 0,
           comision: 0,
           neto: 0,
+          comisionCc: 0,
         };
         metodoPagoMap.set(metodo, {
           bruto: current.bruto + bruto,
           comision: current.comision + comision,
           neto: current.neto + neto,
+          comisionCc: current.comisionCc,
         });
 
         totalComisiones += comision;
@@ -353,11 +358,13 @@ export function getDashboardMetrics(
         bruto: 0,
         comision: 0,
         neto: 0,
+        comisionCc: 0,
       };
       metodoPagoMap.set(metodo, {
         bruto: current.bruto + totalTicket,
         comision: current.comision + 0,
         neto: current.neto + totalTicket,
+        comisionCc: current.comisionCc,
       });
     }
 
@@ -488,11 +495,13 @@ export function getDashboardMetrics(
       bruto: 0,
       comision: 0,
       neto: 0,
+      comisionCc: 0,
     };
     metodoPagoMap.set(metodo, {
       bruto: current.bruto + bruto,
       comision: current.comision + comision,
       neto: current.neto + neto,
+      comisionCc: current.comisionCc + comision,
     });
 
     totalComisiones += comision;
@@ -705,6 +714,8 @@ export function getDashboardMetrics(
       bruto: data.bruto,
       comision: data.comision,
       neto: data.neto,
+      /** De `comision`, lo que vino de cobrar cuentas corrientes. */
+      comisionCuentaCorriente: data.comisionCc,
     }))
     .sort((a, b) => b.bruto - a.bruto);
 

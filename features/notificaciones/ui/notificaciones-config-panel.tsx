@@ -21,7 +21,7 @@ const CATEGORIAS: { id: CategoriaNotificacion; titulo: string; ejemplos: string;
     ejemplos: "Ventas pagadas, transferencias por confirmar, órdenes para revisar",
     icono: ShoppingBag,
   },
-  { id: "PLATA", titulo: "Caja", ejemplos: "Caja abierta desde otro día", icono: Wallet },
+  { id: "PLATA", titulo: "Caja y cobros", ejemplos: "Caja abierta desde otro día, pagos de cuenta corriente con Mercado Pago", icono: Wallet },
   { id: "PLAN", titulo: "Plan de Comerz", ejemplos: "Vencimiento, prueba, débito cobrado", icono: CreditCard },
 ];
 

@@ -125,7 +125,14 @@ describe("cobros de cuenta corriente", () => {
     const m = metricas([], [cobroConTarjeta]);
     const tarjeta = m.ventasPorMetodo.find((x) => x.label === "Tarjeta");
 
-    expect(tarjeta).toEqual({ label: "Tarjeta", bruto: 11500, comision: 690, neto: 10810 });
+    expect(tarjeta).toEqual({
+      label: "Tarjeta",
+      bruto: 11500,
+      comision: 690,
+      neto: 10810,
+      // Toda la comisión vino de cobrar la deuda: Rentabilidad la separa.
+      comisionCuentaCorriente: 690,
+    });
   });
 
   it("ignora los cobros anulados", () => {

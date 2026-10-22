@@ -161,7 +161,7 @@ su significado, revisá TODOS los lectores.
 
 | Tabla / columna | La escriben | La leen (y qué suponen) |
 |---|---|---|
-| `venta_pagos` | `registrar_venta`, `registrar_cobro_cc`, `anular_venta`, correcciones de medio | Ledger (trigger), arqueo (`flujo_caja_turno`, `efectivo_actual_turnos`), `posicion_dinero`, acreditación, `resumen_gerencial_caja`, `resumen_financiero_periodo`, `rentabilidad_por_metodo`, panel, exportaciones, historial. **Suponen: es plata que entró; sin `venta_id` = cobro de CC.** |
+| `venta_pagos` | `registrar_venta`, `registrar_cobro_cc` (también sin sesión desde `aplicar_pago_mp_cobro_cc`: sin turno), `_registrar_venta_orden_tienda`, `anular_venta`, correcciones de medio | Ledger (trigger), arqueo (`flujo_caja_turno`, `efectivo_actual_turnos`), `posicion_dinero`, acreditación, `resumen_gerencial_caja`, `resumen_financiero_periodo`, `rentabilidad_por_metodo`, panel, exportaciones, historial. **Suponen: es plata que entró; sin `venta_id` = cobro de CC.** |
 | `venta_pagos.estado_pago_operacion` | `anular_venta` (siempre ANULADO), correcciones | Ventas/rentabilidad excluyen anulados; **el arqueo NO** (efectivo anulado sigue contando, lo resta el egreso). |
 | `ventas.monto_pendiente` / `estado_pago = PARCIAL` | `registrar_venta` (congelado) | Antigüedad, CRM, detalle del cliente, mora, tickets. **Suponen: pendiente = fiado.** |
 | `ventas.metodo_pago` | `registrar_venta`, `corregir_metodo_pago_venta` | Nadie debería agruparla: miente (usar `venta_pagos`). |

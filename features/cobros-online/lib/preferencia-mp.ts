@@ -93,5 +93,70 @@ export interface PagoCheckout {
   payment_method_id?: string;
   payment_type_id?: string;
   date_approved?: string | null;
-  fee_details?: { type?: string; amount?: number }[];
+  /** `fee_payer`: "collector" lo paga el comercio; "payer" lo paga la clienta
+   * (el interés de las cuotas, `financing_fee`). */
+  fee_details?: { type?: string; amount?: number; fee_payer?: string }[];
+  /** `net_received_amount`: lo que le queda al comercio después de comisión e
+   * impuestos que le descuenta Mercado Pago. */
+  transaction_details?: { net_received_amount?: number | null } | null;
+}
+
+// ─── El pago de la cuenta corriente desde el resumen ─────────────────────
+
+/** `external_reference` de un cobro de cuenta corriente: el prefijo separa la
+ * deuda de las órdenes de la tienda (que usan el id pelado). */
+export const PREFIJO_COBRO_CC = "cc:";
+
+export function referenciaCobroCc(cobroId: string): string {
+  return `${PREFIJO_COBRO_CC}${cobroId}`;
+}
+
+export interface DatosPreferenciaCobroCc {
+  cobroId: string;
+  negocioId: string;
+  total: number;
+  nombreComercio: string | null;
+  clienteNombre: string;
+  venceEn: Date;
+  /** El resumen de la clienta: a donde vuelve. */
+  urlRetorno: string;
+  urlNotificacion: string | null;
+}
+
+/**
+ * La preference de un pago de cuenta corriente (docs/cuenta-corriente.md,
+ * 22/10/2026). Mismas reglas que la de una orden: un ítem con el total exacto
+ * (el webhook lo compara contra el intento), vence con el intento y sin
+ * Rapipago/Pago Fácil (un pago que llega días después ya no es esta deuda).
+ */
+export function armarPreferenciaCobroCc(datos: DatosPreferenciaCobroCc, ahora: Date = new Date()) {
+  const https = datos.urlRetorno.startsWith("https://");
+  const titulo = `Cuenta corriente${datos.nombreComercio ? ` · ${datos.nombreComercio}` : ""}`;
+  return {
+    items: [
+      {
+        id: datos.cobroId,
+        title: titulo.slice(0, 250),
+        quantity: 1,
+        unit_price: Number(datos.total),
+        currency_id: "ARS",
+      },
+    ],
+    payer: { name: datos.clienteNombre.slice(0, 120) },
+    external_reference: referenciaCobroCc(datos.cobroId),
+    ...(datos.urlNotificacion ? { notification_url: datos.urlNotificacion } : {}),
+    back_urls: {
+      success: datos.urlRetorno,
+      pending: datos.urlRetorno,
+      failure: datos.urlRetorno,
+    },
+    ...(https ? { auto_return: "approved" } : {}),
+    expires: true,
+    expiration_date_from: fechaParaMp(ahora),
+    expiration_date_to: fechaParaMp(datos.venceEn),
+    payment_methods: {
+      excluded_payment_types: [{ id: "ticket" }, { id: "atm" }],
+    },
+    metadata: { cobro_cc_id: datos.cobroId, negocio_id: datos.negocioId },
+  };
 }

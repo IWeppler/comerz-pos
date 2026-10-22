@@ -34,6 +34,13 @@ cualquier señal (`rentabilidad_por_metodo`, `margen_realizado`,
   corriente va aparte (no es una forma de cobrar sino de no cobrar todavía); la
   comisión de cobrar una deuda con tarjeta se le imputa a la CC.
   `sin_dato_recargo` avisa cuando el total está subestimado.
+- **Comisiones por medio de cobro** (/reportes › Rentabilidad, 22/10/2026): el
+  renglón "Comisiones" de la cascada abierto por medio, con el % de lo cobrado y,
+  donde hay cobros de cuenta corriente, la parte de ventas y la de CC (con Mercado
+  Pago online el mismo medio cobra la tienda y las deudas). Sale de
+  `ventasPorMetodo.comisionCuentaCorriente` en `get-dashboard-metrics.ts`; la
+  comisión es la guardada en cada cobro (`venta_pagos.comision_monto`). Decidido
+  con Ignacio: estos números van en Reportes, no en Configuración.
 - `margen_realizado`: desde `ventas_items.precio_costo` congelado. Recargos afuera.
   `p_min_unidades` es el piso del ranking y los que no llegan se cuentan en
   `base_insuficiente`. Costo cero queda fuera de todo ranking (es un costo que nadie
