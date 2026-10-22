@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
+import { nombreEspejoLegacy } from "@/features/sales/lib/nombre-espejo-legacy";
 import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 
 /**
@@ -268,13 +269,30 @@ async function moverStock(
 
   if (!renglones?.length) return avisos;
 
-  const { data: items } = await supabase
-    .from("ventas_items")
-    .select("id, producto_id, variante, unidad_serie_id")
-    .eq("venta_id", ventaId);
+  // El nombre ACTUAL de cada variante va al espejo legacy, no el texto
+  // congelado en el ticket (ver `nombreEspejoLegacy`). En paralelo: no suma
+  // viajes.
+  const varianteIds = renglones
+    .map((r) => r.variante_id as string | null)
+    .filter((id): id is string => !!id);
+  const [{ data: items }, { data: variantes }] = await Promise.all([
+    supabase
+      .from("ventas_items")
+      .select("id, producto_id, variante, unidad_serie_id")
+      .eq("venta_id", ventaId),
+    varianteIds.length > 0
+      ? supabase
+          .from("producto_variantes")
+          .select("id, nombre_display")
+          .in("id", varianteIds)
+      : Promise.resolve({ data: [] as { id: string; nombre_display: string }[] }),
+  ]);
 
   const porItem = new Map(
     (items ?? []).map((item) => [item.id as string, item]),
+  );
+  const nombrePorVariante = new Map(
+    (variantes ?? []).map((v) => [v.id as string, v.nombre_display as string]),
   );
 
   const sinRestaurar: string[] = [];
@@ -340,11 +358,24 @@ async function moverStock(
     }
 
     if (item?.producto_id) {
-      await supabase.rpc("ajustar_stock_legacy", {
-        p_producto_id: item.producto_id,
-        p_variante: item.variante,
-        p_delta: renglon.cantidad,
-      });
+      const { error: espejoError } = await supabase.rpc(
+        "ajustar_stock_legacy",
+        {
+          p_producto_id: item.producto_id,
+          p_variante: nombreEspejoLegacy(
+            nombrePorVariante.get(renglon.variante_id as string),
+            item.variante as string,
+          ),
+          p_delta: renglon.cantidad,
+        },
+      );
+      if (espejoError) {
+        console.error("[DEVOLUCION] No se pudo devolver el espejo legacy:", {
+          devolucionId,
+          variante: nombre,
+          error: espejoError,
+        });
+      }
     }
   }
 

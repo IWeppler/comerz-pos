@@ -7,6 +7,7 @@ import { resolverTurnoActivo } from "@/entities/caja/lib/resolve-turno-activo";
 import { MENSAJE_TURNO_DE_OTRO_DIA } from "@/entities/caja/lib/turno-de-otro-dia";
 import { requiereNotaCredito } from "@/shared/lib/facturacion";
 import { normalizarMotivoAnulacion } from "@/features/sales/lib/motivo-anulacion";
+import { nombreEspejoLegacy } from "@/features/sales/lib/nombre-espejo-legacy";
 import { PERMISOS, tienePermiso } from "@/shared/lib/permisos";
 import { mensajeSaldoInsuficienteCaja } from "@/features/caja/lib/saldo-insuficiente-caja";
 import type { VentaComprobante } from "@/entities/ventas/types";
@@ -314,6 +315,23 @@ export async function anularVentaAction(
      * llegar a la pantalla: es inventario que quedó sin contar. */
     const itemsSinRestaurar: string[] = [];
 
+    // Nombre ACTUAL de cada variante, para devolver el espejo legacy a su fila
+    // y no al texto congelado en el ticket (ver `nombreEspejoLegacy`). Un solo
+    // viaje para todos los renglones.
+    const nombrePorVariante = new Map<string, string>();
+    const varianteIdsVenta = items
+      .map((i) => i.variante_id)
+      .filter((id): id is string => !!id);
+    if (motivoDevolucion === "RESTAURAR_STOCK" && varianteIdsVenta.length > 0) {
+      const { data: variantesVenta } = await supabase
+        .from("producto_variantes")
+        .select("id, nombre_display")
+        .in("id", varianteIdsVenta);
+      for (const v of variantesVenta ?? []) {
+        nombrePorVariante.set(v.id as string, v.nombre_display as string);
+      }
+    }
+
     for (const item of items) {
       if (!item.producto_id) continue;
 
@@ -373,11 +391,23 @@ export async function anularVentaAction(
         // Espejo legacy, también como delta y con la misma RPC de siempre no
         // disponible acá: se resuelve con un update condicional por la clave
         // única (producto_id, variante), que es atómico a nivel de fila.
-        await supabase.rpc("ajustar_stock_legacy", {
-          p_producto_id: item.producto_id,
-          p_variante: item.variante,
-          p_delta: item.cantidad,
-        });
+        const { error: espejoError } = await supabase.rpc(
+          "ajustar_stock_legacy",
+          {
+            p_producto_id: item.producto_id,
+            p_variante: nombreEspejoLegacy(
+              varianteId ? nombrePorVariante.get(varianteId) : null,
+              item.variante,
+            ),
+            p_delta: item.cantidad,
+          },
+        );
+        if (espejoError) {
+          console.error(
+            `[ANULACION] No se pudo devolver el espejo legacy de "${item.variante}" (venta ${ventaId}):`,
+            espejoError,
+          );
+        }
       } else if (motivoDevolucion === "BAJA") {
         // La planta volvió rota o seca
         await supabase.from("bajas").insert({
