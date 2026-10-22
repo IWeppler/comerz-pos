@@ -142,6 +142,10 @@ export interface Venta {
    * esa plata entró antes (20260928240000). */
   saldo_a_favor_aplicado?: number | null;
   estado_pago?: EstadoPagoVenta | null;
+  /** Recargo por fiar congelado en la venta (con plan, el interés). */
+  recargo_cc_monto?: number | null;
+  recargo_cc_porcentaje?: number | null;
+  fecha_vencimiento?: string | null;
 
   perfiles?: {
     nombre: string;
@@ -218,6 +222,13 @@ export interface TicketData {
   recargoMetodoMonto?: number;
   /** Ej. "Recargo Tarjeta (15%)". */
   recargoMetodoEtiqueta?: string;
+  /** Recargo por fiar (o interés del plan en cuotas). Ya está sumado en
+   * `total`: sin este renglón los ítems no cierran contra el total. Ver
+   * features/sales/lib/cuenta-corriente-ticket.ts. */
+  recargoCcMonto?: number;
+  recargoCcPorcentaje?: number | null;
+  /** Vencimiento de lo fiado, "YYYY-MM-DD". */
+  venceEl?: string | null;
   /**
    * Lista de precios con la que se cobró, si no fue el precio base.
    *

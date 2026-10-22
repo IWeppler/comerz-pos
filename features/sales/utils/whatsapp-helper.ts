@@ -9,6 +9,10 @@ import {
   numeroComprobanteFiscal,
   tituloComprobante,
 } from "@/shared/lib/comprobante-fiscal-ticket";
+import {
+  etiquetaRecargoCuentaCorriente,
+  lineasCuentaCorriente,
+} from "../lib/cuenta-corriente-ticket";
 
 export function buildWhatsappMessage(
   ticket: TicketData,
@@ -38,15 +42,31 @@ export function buildWhatsappMessage(
 
   ticket.items.forEach((item) => {
     const precioUnitario = item.precioUnitario || item.precio || 0;
-    mensaje += `${item.cantidad}x ${item.nombre} (${item.variante})\n`;
+    // La venta libre llega con variante vacía: sin paréntesis vacíos.
+    mensaje += item.variante
+      ? `${item.cantidad}x ${item.nombre} (${item.variante})\n`
+      : `${item.cantidad}x ${item.nombre}\n`;
     if (item.imei) mensaje += `   IMEI: ${item.imei}\n`;
     mensaje += `   ${formatTicketMoney(precioUnitario * item.cantidad)}\n`;
   });
 
-  if (ticket.descuentoMonto && ticket.descuentoMonto > 0) {
+  // Todo lo que separa la suma de los renglones del total va como renglón
+  // propio: si no, los números no cierran (ver cuenta-corriente-ticket.ts).
+  const hayDescuento = (ticket.descuentoMonto ?? 0) > 0;
+  const hayRecargoMetodo = (ticket.recargoMetodoMonto ?? 0) > 0;
+  const hayRecargoCc = (ticket.recargoCcMonto ?? 0) > 0;
+  if (hayDescuento || hayRecargoMetodo || hayRecargoCc) {
     mensaje += `--------------------------------\n`;
     mensaje += `Subtotal: ${formatTicketMoney(subtotal)}\n`;
+  }
+  if (hayDescuento) {
     mensaje += `Descuento (${ticket.promocionNombre}): -${formatTicketMoney(ticket.descuentoMonto)}\n`;
+  }
+  if (hayRecargoMetodo) {
+    mensaje += `${ticket.recargoMetodoEtiqueta || "Recargo método de pago"}: +${formatTicketMoney(ticket.recargoMetodoMonto)}\n`;
+  }
+  if (hayRecargoCc) {
+    mensaje += `${etiquetaRecargoCuentaCorriente(ticket)}: +${formatTicketMoney(ticket.recargoCcMonto)}\n`;
   }
 
   mensaje += `--------------------------------\n`;
@@ -58,8 +78,15 @@ export function buildWhatsappMessage(
   mensaje += `*TOTAL COMPROBANTE: ${formatTicketMoney(ticket.total)}*\n`;
 
   if (esFiado) {
-    mensaje += `*Anticipo cobrado:* ${formatTicketMoney(montoCobrado)}\n`;
-    mensaje += `*Saldo pendiente:* ${formatTicketMoney(montoPendiente)}\n`;
+    mensaje += `\n`;
+    lineasCuentaCorriente({
+      montoCobrado,
+      montoPendiente,
+      venceEl: ticket.venceEl,
+      tienePlanCuotas: !!ticket.planCuotas,
+    }).forEach((l) => {
+      mensaje += `${l.etiqueta}: ${formatTicketMoney(l.monto)}${l.detalle ? ` (${l.detalle})` : ""}\n`;
+    });
     if (ticket.planCuotas) {
       mensaje += `\n*${ticket.planCuotas.cuotas} cuotas* (incluye ${ticket.planCuotas.pct}% de financiación):\n`;
       ticket.planCuotas.detalle.forEach((c) => {

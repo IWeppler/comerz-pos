@@ -651,6 +651,9 @@ export function VentasTable({
       // no del % que el método tenga HOY.
       recargoMetodoMonto: recargoMetodoMonto || undefined,
       recargoMetodoEtiqueta: recargoMetodoEtiqueta || undefined,
+      recargoCcMonto: Number(venta.recargo_cc_monto || 0) || undefined,
+      recargoCcPorcentaje: venta.recargo_cc_porcentaje ?? null,
+      venceEl: venta.fecha_vencimiento ?? null,
       // El nombre CONGELADO en la venta, no el de la lista tal como se llama
       // hoy: reimprimir un ticket tiene que dar el mismo papel que salió.
       listaPrecioNombre: venta.lista_precio_nombre ?? null,

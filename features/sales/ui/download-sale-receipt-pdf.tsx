@@ -22,6 +22,10 @@ import {
 import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import { getTicketFinancialSummary, getTicketSubtotal } from "./ticket-utils";
 import { entregarArchivo } from "../lib/entregar-archivo";
+import {
+  etiquetaRecargoCuentaCorriente,
+  lineasCuentaCorriente,
+} from "../lib/cuenta-corriente-ticket";
 
 // Estilos específicos para el PDF
 const styles = StyleSheet.create({
@@ -329,6 +333,30 @@ const ReceiptDocument = ({
             </View>
           )}
 
+          {/* Los recargos ya están en el total: sin su renglón, el subtotal
+              y el total no cierran (ver cuenta-corriente-ticket.ts). */}
+          {(ticket.recargoMetodoMonto ?? 0) > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>
+                {ticket.recargoMetodoEtiqueta || "Recargo método de pago"}:
+              </Text>
+              <Text style={styles.totalValue}>
+                +${Math.round(ticket.recargoMetodoMonto ?? 0).toLocaleString("es-AR")}
+              </Text>
+            </View>
+          )}
+
+          {(ticket.recargoCcMonto ?? 0) > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>
+                {etiquetaRecargoCuentaCorriente(ticket)}:
+              </Text>
+              <Text style={styles.totalValue}>
+                +${Math.round(ticket.recargoCcMonto ?? 0).toLocaleString("es-AR")}
+              </Text>
+            </View>
+          )}
+
           {ticket.listaPrecioNombre && (
             <View style={styles.totalRow}>
               <Text style={styles.totalLabel}>Lista:</Text>
@@ -414,30 +442,25 @@ const ReceiptDocument = ({
                   ))}
                 </View>
               )}
-              <View style={[styles.totalRow, { marginTop: 10 }]}>
-                <Text style={styles.totalLabel}>Anticipo Pagado:</Text>
-                <Text style={styles.totalValue}>
-                  ${Math.round(montoCobrado).toLocaleString("es-AR")}
-                </Text>
-              </View>
-              <View style={styles.totalRow}>
-                <Text
-                  style={[
-                    styles.totalLabel,
-                    { color: "#b45309", fontWeight: "bold" },
-                  ]}
+              {lineasCuentaCorriente({
+                montoCobrado,
+                montoPendiente,
+                venceEl: ticket.venceEl,
+                tienePlanCuotas: !!ticket.planCuotas,
+              }).map((l, idx) => (
+                <View
+                  key={l.etiqueta}
+                  style={[styles.totalRow, idx === 0 ? { marginTop: 10 } : {}]}
                 >
-                  Saldo Pendiente:
-                </Text>
-                <Text
-                  style={[
-                    styles.totalValue,
-                    { color: "#b45309", fontWeight: "bold" },
-                  ]}
-                >
-                  ${Math.round(montoPendiente).toLocaleString("es-AR")}
-                </Text>
-              </View>
+                  <Text style={styles.totalLabel}>
+                    {l.etiqueta}
+                    {l.detalle ? ` (${l.detalle})` : ""}:
+                  </Text>
+                  <Text style={styles.totalValue}>
+                    ${Math.round(l.monto).toLocaleString("es-AR")}
+                  </Text>
+                </View>
+              ))}
             </>
           )}
         </View>

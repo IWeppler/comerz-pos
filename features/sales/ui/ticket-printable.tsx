@@ -5,6 +5,10 @@ import {
   getTicketFinancialSummary,
   getTicketSubtotal,
 } from "./ticket-utils";
+import {
+  etiquetaRecargoCuentaCorriente,
+  lineasCuentaCorriente,
+} from "../lib/cuenta-corriente-ticket";
 import { esFraccionable, formatearCantidad } from "@/shared/lib/unidad-venta";
 import {
   ABREVIATURA_UNIDAD,
@@ -193,6 +197,15 @@ export function TicketPrintable({
             </div>
           )}
 
+          {(ticket?.recargoCcMonto ?? 0) > 0 && (
+            <div className="flex justify-between items-center text-gray-700">
+              <span className="truncate pr-2">
+                {etiquetaRecargoCuentaCorriente(ticket!)}
+              </span>
+              <span>+{formatTicketMoney(ticket?.recargoCcMonto)}</span>
+            </div>
+          )}
+
           {/* Solo la A discrimina: neto, IVA por alícuota y exento. En B y
               C el total ya lleva el IVA adentro y el papel no lo abre. */}
           {fiscal && discriminaIvaEnPapel(fiscal.tipo) && (
@@ -255,14 +268,22 @@ export function TicketPrintable({
             </p>
             {esFiado ? (
               <>
-                <div className="flex justify-between text-xs font-bold uppercase">
-                  <span>Anticipo</span>
-                  <span>{formatTicketMoney(montoCobrado)}</span>
-                </div>
-                <div className="flex justify-between text-xs font-bold uppercase">
-                  <span>Saldo</span>
-                  <span>{formatTicketMoney(montoPendiente)}</span>
-                </div>
+                {lineasCuentaCorriente({
+                  montoCobrado,
+                  montoPendiente,
+                  venceEl: ticket?.venceEl,
+                  tienePlanCuotas: !!ticket?.planCuotas,
+                }).map((l) => (
+                  <div key={l.etiqueta} className="text-xs font-bold">
+                    <div className="flex justify-between uppercase">
+                      <span>{l.etiqueta}</span>
+                      <span>{formatTicketMoney(l.monto)}</span>
+                    </div>
+                    {l.detalle && (
+                      <p className="text-right font-normal">{l.detalle}</p>
+                    )}
+                  </div>
+                ))}
                 {/* Venta en cuotas: el papel es lo que la clienta guarda para
                     saber cuánto y cuándo paga cada mes. */}
                 {ticket?.planCuotas ? (

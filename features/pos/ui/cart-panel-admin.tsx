@@ -2073,6 +2073,15 @@ export function CartPanelAdmin({
             recargoSubmit.pagos,
             metodosPagoDB,
           ),
+          // Lo mismo que se mandó como `recargo_cc` (el server lo recalcula
+          // y lo congela en la venta).
+          recargoCcMonto: planSubmit ? planSubmit.interes : recargoCuentaCorriente,
+          recargoCcPorcentaje: planSubmit
+            ? planSubmit.pct
+            : ccSinRecargo
+              ? 0
+              : Number(branding?.cc_recargo_default || 0),
+          venceEl: result.fechaVencimiento ?? null,
           // Null sin lista, que es cuando el ticket no lo imprime.
           listaPrecioNombre: listaActiva?.nombre ?? null,
           vendedor: vendedorNombre || "Tú",

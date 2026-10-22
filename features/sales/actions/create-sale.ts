@@ -2211,6 +2211,8 @@ export async function registrarVentaAction(
       error: null,
       success: true,
       ventaId: nuevaVenta.venta_id,
+      // Para que el ticket diga cuándo vence lo fiado.
+      fechaVencimiento: nuevaVenta.fecha_vencimiento,
       comprobante: {
         tipo: factura.tipo,
         puntoVenta: factura.puntoVenta,
@@ -2277,6 +2279,8 @@ export async function registrarVentaAction(
     error: null,
     success: true,
     ventaId: nuevaVenta.venta_id,
+    // Para que el ticket diga cuándo vence lo fiado.
+    fechaVencimiento: nuevaVenta.fecha_vencimiento,
     // Viaja al POS para imprimirlo en el ticket sin una consulta extra. Va
     // null si la emisión falló: el ticket cae al identificador de la venta,
     // que es lo que mostraba antes de que existieran los comprobantes.
