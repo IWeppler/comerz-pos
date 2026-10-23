@@ -90,6 +90,16 @@ export default async function AdminPlanesPage() {
                     {plan.reglas.max_sucursales === 1 ? "" : "es"}
                   </span>
                   <span>
+                    {plan.reglas.max_ventas_mensuales
+                      ? `${plan.reglas.max_ventas_mensuales} ventas/mes (aviso)`
+                      : "ventas sin tope"}
+                  </span>
+                  <span>
+                    {plan.reglas.max_productos
+                      ? `${plan.reglas.max_productos} productos`
+                      : "productos sin tope"}
+                  </span>
+                  <span>
                     CC:{" "}
                     {plan.reglas.max_clientes_cuenta_corriente
                       ? `${plan.reglas.max_clientes_cuenta_corriente} clientes`

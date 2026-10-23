@@ -18,12 +18,17 @@ export interface ReglasPlan {
    * sigue vendiendo y editando aunque el comercio esté por encima (los que
    * venían de antes conservan "sin límite" por `negocios.reglas_override`). */
   max_productos?: number | null;
+  /** Ventas por mes calendario comercial (sin anuladas). Es un TOPE BLANDO:
+   * avisa y ofrece subir de plan, pero nunca frena una venta (plata real en
+   * el mostrador). Por eso no hay trigger en la base ni chequeo en
+   * `registrar_venta`: es solo lectura de uso. `null` = sin tope. */
+  max_ventas_mensuales?: number | null;
   features?: string[];
 }
 
 /**
  * Precio mensual efectivo. El semestral no es un precio distinto guardado en
- * otra fila: es el mismo plan con 15% off, así un cambio de lista no deja dos
+ * otra fila: es el mismo plan con 20% off, así un cambio de lista no deja dos
  * verdades conviviendo.
  */
 export function precioMensualEfectivo(

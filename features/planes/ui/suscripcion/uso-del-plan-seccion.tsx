@@ -91,7 +91,7 @@ function FilaLimite({ limite }: { limite: UsoLimite }) {
       {nivel === "lleno" && (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-danger">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Límite alcanzado
+          {limite.blando ? "Llegaste al tope del plan" : "Límite alcanzado"}
         </p>
       )}
       {nivel === "cerca" && (

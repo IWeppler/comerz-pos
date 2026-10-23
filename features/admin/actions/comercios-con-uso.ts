@@ -10,6 +10,7 @@ import {
   estadoAcceso,
   type EstadoAcceso,
 } from "@/features/admin/lib/estado-acceso";
+import type { Modalidad } from "@/shared/lib/planes";
 
 export interface ComercioConUso {
   id: string;
@@ -33,6 +34,11 @@ export interface ComercioConUso {
   maxUsuarios: number | null;
   maxClientesCuentaCorriente: number | null;
   maxProductos: number | null;
+  /** Ventas del mes comercial argentino (sin anuladas) y su tope blando
+   * (`max_ventas_mensuales`, efectivo: plan + override). Es lo mismo que ve el
+   * comerciante en Perfil › Suscripción y lo que dispara el aviso de la campana. */
+  ventasMes: number;
+  maxVentasMes: number | null;
   /** 'indumentaria' | 'electro' | … Null si el negocio no tiene config. */
   rubro: string | null;
   /** Actividad de los últimos 7 días, sin contar anuladas. Es la señal de si
@@ -58,6 +64,9 @@ export interface ComercioConUso {
   pagosOnline: boolean;
   /** `negocios.cuenta_en_mrr`: suma al MRR si además está activo. */
   cuentaEnMrr: boolean;
+  /** Cada cuánto paga: mensual o semestral (20% menos, de una vez cada 6
+   * meses). Lo necesita la previsión de cobros. */
+  modalidad: Modalidad;
 }
 
 /**
@@ -79,11 +88,14 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
   // Los módulos van en una consulta aparte y no dentro de la RPC: sumarle una
   // columna a `comercios_con_uso` obliga a dropearla y recrearla entera (cambia
   // el tipo de retorno) por un booleano que ya se lee directo de `negocios`.
-  const [{ data, error }, { data: modulos }] = await Promise.all([
+  const [{ data, error }, { data: modulos }, { data: ventasDelMes }] = await Promise.all([
     supabase.rpc("comercios_con_uso"),
     supabase
       .from("negocios")
-      .select("id, modulo_presupuestos, pagos_online_habilitado, cuenta_en_mrr, precio_acordado"),
+      .select("id, modulo_presupuestos, pagos_online_habilitado, cuenta_en_mrr, precio_acordado, modalidad"),
+    // Aparte de la RPC grande por la misma razón que los módulos: sumarle una
+    // columna a `comercios_con_uso` obliga a recrearla entera.
+    supabase.rpc("ventas_del_mes_por_comercio"),
   ]);
 
   if (error) {
@@ -110,10 +122,24 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
       .map((m) => m.id as string),
   );
 
+  // Sin dato, mensual: es el default de la columna.
+  const semestrales = new Set(
+    (modulos ?? [])
+      .filter((m) => m.modalidad === "semestral")
+      .map((m) => m.id as string),
+  );
+
   const acordados = new Map(
     (modulos ?? [])
       .filter((m) => m.precio_acordado !== null && m.precio_acordado !== undefined)
       .map((m) => [m.id as string, Number(m.precio_acordado)]),
+  );
+
+  // Sin dato, 0 y sin tope: no se inventa un aviso.
+  const usoDelMes = new Map(
+    ((ventasDelMes ?? []) as { id: string; ventas_mes: number; max_ventas: number | null }[]).map(
+      (f) => [f.id, f],
+    ),
   );
 
   const ahora = Date.now();
@@ -141,6 +167,8 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
         fila.max_clientes_cc === null ? null : Number(fila.max_clientes_cc),
       maxProductos:
         fila.max_productos === null ? null : Number(fila.max_productos),
+      ventasMes: Number(usoDelMes.get(fila.id as string)?.ventas_mes ?? 0),
+      maxVentasMes: usoDelMes.get(fila.id as string)?.max_ventas ?? null,
       rubro: (fila.rubro as string | null) ?? null,
       ventas7d: Number(fila.ventas_7d ?? 0),
       monto7d: Number(fila.monto_7d ?? 0),
@@ -169,6 +197,7 @@ export async function getComerciosConUsoAction(): Promise<ComercioConUso[]> {
       moduloPresupuestos: conPresupuestos.has(fila.id as string),
       pagosOnline: conPagosOnline.has(fila.id as string),
       cuentaEnMrr: !fueraDelMrr.has(fila.id as string),
+      modalidad: semestrales.has(fila.id as string) ? "semestral" : "mensual",
     };
   });
 }

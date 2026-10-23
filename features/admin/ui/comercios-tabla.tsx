@@ -7,6 +7,7 @@ import {
   type PlanOpcion,
 } from "./acciones-comercio-menu";
 import { formatearMoneda } from "@/shared/utils/formatters";
+import { nivelDeUso } from "@/shared/lib/suscripcion";
 import type { ComercioConUso } from "@/features/admin/actions/comercios-con-uso";
 import {
   Select,
@@ -66,6 +67,37 @@ function Actividad({
       <p className="font-mono text-[11px] tabular-nums text-white/35">
         {formatearMoneda(monto)}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Ventas del mes contra el tope del plan. Usa el MISMO criterio que ve el
+ * comerciante (`nivelDeUso`, tope blando): no hay "cerca", se marca al llegar.
+ */
+function VentasDelMes({
+  ventas,
+  tope,
+}: Readonly<{ ventas: number; tope: number | null }>) {
+  const nivel = nivelDeUso({
+    clave: "ventas_mensuales",
+    nombre: "Ventas del mes",
+    usado: ventas,
+    limite: tope,
+    blando: true,
+  });
+  return (
+    <div>
+      <span className="font-mono text-xs tabular-nums text-white/70">
+        {ventas}
+        {tope !== null && <span className="text-white/40"> / {tope}</span>}
+      </span>
+      {nivel === "lleno" && (
+        <p className="text-[11px] font-medium text-amber-400">tope del plan</p>
+      )}
+      {nivel === "sin-limite" && (
+        <p className="text-[11px] text-white/35">sin tope</p>
+      )}
     </div>
   );
 }
@@ -385,6 +417,7 @@ export function ComerciosTabla({
               <span className="ml-auto flex items-center gap-3">
                 <CeldaOnboarding onboarding={c.onboarding} />
                 <Actividad ventas={c.ventas7d} monto={c.monto7d} />
+                <VentasDelMes ventas={c.ventasMes} tope={c.maxVentasMes} />
               </span>
             </div>
           </div>
@@ -408,6 +441,7 @@ export function ComerciosTabla({
                 <th className="px-4 py-3 font-semibold">Acceso</th>
                 <th className="px-4 py-3 font-semibold">Onboarding</th>
                 <th className="px-4 py-3 font-semibold">7 días</th>
+                <th className="px-4 py-3 font-semibold">Ventas del mes</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -500,6 +534,10 @@ export function ComerciosTabla({
                     <Actividad ventas={c.ventas7d} monto={c.monto7d} />
                   </td>
 
+                  <td className="px-4 py-3">
+                    <VentasDelMes ventas={c.ventasMes} tope={c.maxVentasMes} />
+                  </td>
+
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1.5">
                       <BotonWhatsapp whatsapp={c.whatsapp} nombre={c.nombre} />
@@ -523,7 +561,7 @@ export function ComerciosTabla({
 
               {filtrados.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center">
+                  <td colSpan={9} className="px-4 py-10 text-center">
                     <Vacio
                       hayFiltros={hayFiltros}
                       verDescartados={verDescartados}

@@ -216,7 +216,7 @@ export function SuscripcionPanel({
         </h3>
         <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted-foreground">
           Para cambiar de plan, renovar o dar de baja tu suscripción,
-          escribinos. Te respondemos y lo resolvemos con vos. Si das de baja,
+          escribinos.  Si das de baja,
           seguís teniendo acceso hasta el final del período que ya pagaste y tus
           datos no se borran.
         </p>
@@ -287,6 +287,18 @@ function construirLimites(
       usado: uso?.clientesConCuentaCorriente ?? null,
       limite: reglas.max_clientes_cuenta_corriente ?? null,
       detalle: "Se cuentan sólo los clientes que hoy tienen deuda.",
+    });
+  }
+
+  if (reglas.max_ventas_mensuales !== undefined) {
+    limites.push({
+      clave: "ventas_mensuales",
+      nombre: "Ventas del mes",
+      usado: uso?.ventasDelMes ?? null,
+      limite: reglas.max_ventas_mensuales ?? null,
+      blando: true,
+      detalle:
+        "Es un aviso: si lo superás seguís vendiendo igual, sin cortes. Cuenta las ventas del mes, sin las anuladas.",
     });
   }
 

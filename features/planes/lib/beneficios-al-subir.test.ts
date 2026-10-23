@@ -10,6 +10,7 @@ const EMPRENDEDOR: ReglasPlan = {
   max_sucursales: 1,
   max_clientes_cuenta_corriente: 50,
   max_productos: 1000,
+  max_ventas_mensuales: 500,
   features: [
     "pos",
     "caja",
@@ -29,7 +30,8 @@ const GESTION: ReglasPlan = {
   max_usuarios: 5,
   max_sucursales: 1,
   max_clientes_cuenta_corriente: 250,
-  max_productos: null,
+  max_productos: 5000,
+  max_ventas_mensuales: 5000,
   features: [
     ...(EMPRENDEDOR.features ?? []),
     "reportes",
@@ -47,6 +49,7 @@ const EMPRESA: ReglasPlan = {
   max_sucursales: 10,
   max_clientes_cuenta_corriente: null,
   max_productos: null,
+  max_ventas_mensuales: null,
   features: [...(GESTION.features ?? []), "cuenta_corriente_ilimitada", "api"],
 };
 
@@ -59,16 +62,20 @@ describe("beneficiosAlSubir", () => {
     expect(titulos).not.toContain("Clientes con cuenta corriente sin límite");
   });
 
-  it("el tope de productos sí es ilimitado en Gestión, y se dice así", () => {
-    // Es el caso inverso del anterior en el MISMO salto de plan: un límite que
-    // desaparece de verdad. Que convivan es lo que obliga a que el texto salga
-    // de las reglas y no de una redacción única para todo.
-    const productos = beneficiosAlSubir(GESTION, EMPRENDEDOR).find((b) =>
-      b.titulo.includes("roductos"),
+  it("el tope de productos sube en Gestión y desaparece en Empresa, y se dice así", () => {
+    // Un límite que sube y otro que desaparece de verdad: que convivan es lo que
+    // obliga a que el texto salga de las reglas y no de una redacción única.
+    const aGestion = beneficiosAlSubir(GESTION, EMPRENDEDOR).find((x) =>
+      x.titulo.includes("roductos"),
     );
+    expect(aGestion?.titulo).toBe("Hasta 5000 productos");
+    expect(aGestion?.detalle).toBe("Hoy tu plan permite 1000.");
 
-    expect(productos?.titulo).toBe("Productos sin límite");
-    expect(productos?.detalle).toBe("Hoy tenés hasta 1000.");
+    const aEmpresa = beneficiosAlSubir(EMPRESA, GESTION).find((x) =>
+      x.titulo.includes("roductos"),
+    );
+    expect(aEmpresa?.titulo).toBe("Productos sin límite");
+    expect(aEmpresa?.detalle).toBe("Hoy tenés hasta 5000.");
   });
 
   it("compara contra el plan de hoy", () => {
@@ -173,5 +180,23 @@ describe("planQueSubeElLimite", () => {
 
   it("sin contexto no inventa un plan", () => {
     expect(planQueSubeElLimite(null, "max_usuarios", 1)).toBeNull();
+  });
+});
+
+describe("ventas por mes (tope blando)", () => {
+  it("al subir de Emprendedor a Gestión se dice con el número", () => {
+    const b = beneficiosAlSubir(GESTION, EMPRENDEDOR);
+    expect(b).toContainEqual({
+      titulo: "Hasta 5000 ventas por mes",
+      detalle: "Hoy tu plan permite 500.",
+    });
+  });
+
+  it("de Gestión a Empresa pasa a sin tope", () => {
+    const b = beneficiosAlSubir(EMPRESA, GESTION);
+    expect(b).toContainEqual({
+      titulo: "Ventas por mes sin límite",
+      detalle: "Hoy tenés hasta 5000.",
+    });
   });
 });
