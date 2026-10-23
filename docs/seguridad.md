@@ -68,6 +68,22 @@ AGENTS.md porque aplican a toda migración.
     (`SIN_PERMISO_FIAR_SIN_RECARGO` si el comercio tiene recargo > 0 y la venta
     fiada llega con porcentaje o monto en 0). Sin permiso, el ticket sigue
     mostrando "Aplicar" para deshacer un pedido que llegó a la caja sin recargo.
+  - **Ampliado el 23/10/2026** (`20261023150000`): `fiar_sin_recargo` ya no es solo
+    "anular": cualquier apartarse del porcentaje del comercio en el ticket —bajar, subir
+    o dejar en 0— lo exige, en `create-sale.ts` y en `registrar_venta` (el guard
+    compara `recargo_cc_porcentaje` contra el default, no solo mira el 0). Antes la base
+    no protegía un 5% donde rige 15%.
+  - `ventas.recargo_libre` (nuevo, 23/10/2026, `20261023160000`): el "+ Recargo" de una
+    venta de contado. Asignado a los roles que ya tenían `fiar_sin_recargo` (los 18
+    ADMIN). Lo exigen `create-sale.ts` y `registrar_venta` (`SIN_PERMISO_RECARGO_LIBRE`).
+    Ver [ventas.md](ventas.md).
+  - **`tiene_permiso` devuelve true para cualquier ADMIN** (`is_admin() OR ...`), así
+    que probar un guard de permiso con un administrador no prueba nada: hay que usar
+    un VENDEDOR real (o ENCARGADO) en una transacción que se revierte.
+  - Observado el 23/10/2026: `anon` tiene EXECUTE sobre `registrar_venta` (de antes).
+    Es inocua —exige un negocio activo y a `anon` le falla con `SIN_NEGOCIO_ACTIVO`—
+    pero el criterio de AGENTS es que una RPC de escritura no sea ejecutable por
+    `anon`. Pendiente de decidir.
   - `clientes.cargar_saldo` (nuevo): "Cargar saldo" de la ficha y la deuda de la
     importación CSV. RESTRICTIVE de INSERT `cc_debito_manual_requiere_permiso`
     sobre `cuenta_corriente_movimientos`: el DÉBITO sin `venta_id` ni `pago_id`

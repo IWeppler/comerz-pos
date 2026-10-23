@@ -1,9 +1,6 @@
 "use client";
 
-import type {
-  MetricaConMotivo,
-  ResumenCostos,
-} from "@/features/admin/lib/metricas-saas";
+import type { MetricaConMotivo } from "@/features/admin/lib/metricas-saas";
 import { formatearMoneda } from "@/shared/utils/formatters";
 
 /**
@@ -53,17 +50,15 @@ export function MetricasSaasPanel({
   arpu,
   churn,
   ltv,
-  costos,
 }: Readonly<{
   arpu: MetricaConMotivo;
   churn: MetricaConMotivo;
   ltv: MetricaConMotivo;
-  costos: ResumenCostos;
 }>) {
-  // Solo las cuatro métricas. Los gastos tienen su propio bloque, con su
-  // lista editable: ver GastosDelMes.
+  // Solo ARPU, churn y LTV. Lo ganado del mes está arriba (PanelFinanzas) y los
+  // gastos tienen su propio bloque, con su lista editable: ver GastosDelMes.
   return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Metrica
           titulo="ARPU"
           metrica={arpu}
@@ -79,18 +74,6 @@ export function MetricasSaasPanel({
           titulo="LTV"
           metrica={ltv}
           detalle="Lo que deja un comercio en toda su vida"
-        />
-        <Metrica
-          titulo="Margen del mes"
-          metrica={{
-            valor: costos.margen,
-            motivo: undefined,
-          }}
-          detalle={
-            costos.margenPorcentaje !== null
-              ? `${costos.margenPorcentaje.toFixed(0)}% de lo cobrado`
-              : "Todavía no entró plata este mes"
-          }
         />
       </div>
   );

@@ -1,5 +1,6 @@
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { TicketData } from "@/entities/ventas/types";
+import { etiquetaRecargoLibre } from "@/features/sales/lib/recargo-libre-ticket";
 import {
   formatTicketMoney,
   getTicketFinancialSummary,
@@ -55,7 +56,8 @@ export function buildWhatsappMessage(
   const hayDescuento = (ticket.descuentoMonto ?? 0) > 0;
   const hayRecargoMetodo = (ticket.recargoMetodoMonto ?? 0) > 0;
   const hayRecargoCc = (ticket.recargoCcMonto ?? 0) > 0;
-  if (hayDescuento || hayRecargoMetodo || hayRecargoCc) {
+  const hayRecargoLibre = (ticket.recargoLibreMonto ?? 0) > 0;
+  if (hayDescuento || hayRecargoMetodo || hayRecargoCc || hayRecargoLibre) {
     mensaje += `--------------------------------\n`;
     mensaje += `Subtotal: ${formatTicketMoney(subtotal)}\n`;
   }
@@ -67,6 +69,9 @@ export function buildWhatsappMessage(
   }
   if (hayRecargoCc) {
     mensaje += `${etiquetaRecargoCuentaCorriente(ticket)}: +${formatTicketMoney(ticket.recargoCcMonto)}\n`;
+  }
+  if (hayRecargoLibre) {
+    mensaje += `${etiquetaRecargoLibre(ticket)}: +${formatTicketMoney(ticket.recargoLibreMonto)}\n`;
   }
 
   mensaje += `--------------------------------\n`;

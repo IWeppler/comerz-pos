@@ -196,6 +196,10 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       { source: "/onboarding", destination: "/empezar", permanent: true },
+      // El login se llamaba /auth hasta el 23/10/2026. Solo la ruta exacta:
+      // /auth/callback, /confirm, /salir y /actualizar-password siguen donde
+      // están (templates de mail de Supabase, retorno de Google).
+      { source: "/auth", destination: "/ingresar", permanent: false },
     ];
   },
 };

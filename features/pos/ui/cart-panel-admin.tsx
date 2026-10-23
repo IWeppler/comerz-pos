@@ -96,6 +96,10 @@ import {
   saldoAFavorAplicable,
 } from "@/features/sales/lib/saldo-a-favor-venta";
 import { useVentaLibreStore } from "@/shared/store/venta-libre-store";
+import {
+  calcularRecargoLibre,
+  pctRecargoEfectivo,
+} from "@/shared/lib/recargo-ticket";
 import { VentaLibreInline } from "./venta-libre-inline";
 import { ClipboardList, Plus, X } from "lucide-react";
 import {
@@ -116,8 +120,13 @@ export function CartPanelAdmin({
   puedeElegirComprobante = false,
   puedeCobrar = true,
   puedeFiarSinRecargo = false,
+  puedeRecargoLibre = false,
 }: Readonly<{
   numeroWhatsApp?: string;
+  /** Permiso `ventas.recargo_libre`. Sin él no aparece "+ Recargo" en una
+   * venta de contado (ni para modificar uno que ya viniera puesto). El server y
+   * `registrar_venta` lo vuelven a exigir. */
+  puedeRecargoLibre?: boolean;
   /** Permiso `ventas.fiar_sin_recargo`. Sin él no aparece "Anular" en la
    * línea RECARGO CC; "Aplicar" sí, para deshacer un pedido que llegó a la
    * caja sin recargo. El server vuelve a chequearlo. */
@@ -413,11 +422,16 @@ export function CartPanelAdmin({
   const [facturarElegido, setFacturarElegido] = useState<boolean | null>(null);
   const facturacionActiva = branding?.modo_facturacion === "ARCA";
   const facturar = facturarElegido ?? branding?.facturar_por_defecto ?? true;
-  /** La vendedora anuló el recargo CC para ESTE ticket. No persiste entre
-   * ventas: se resetea al cerrar la venta y al apagar Cuenta Corriente. */
-  const [ccSinRecargo, setCcSinRecargo] = useState(false);
+  /** El porcentaje de recargo CC que la vendedora eligió para ESTE ticket
+   * ("Modificar"). Null = rige el del comercio; 0 = sin recargo. No persiste
+   * entre ventas: se resetea al cerrar la venta y al apagar Cuenta Corriente. */
+  const [ccRecargoPct, setCcRecargoPct] = useState<number | null>(null);
+  /** El recargo LIBRE de ESTA venta de contado, en % (0 = sin recargo). Es
+   * del ticket: se resetea al cobrar y al pasar a cuenta corriente, donde manda
+   * el recargo de fiar. */
+  const [recargoLibrePct, setRecargoLibrePct] = useState(0);
   /** Venta en cuotas: cuántas eligió la vendedora (null = fiado común). Como
-   * `ccSinRecargo`, es de ESTE ticket y se resetea con él. */
+   * `ccRecargoPct`, es de ESTE ticket y se resetea con él. */
   const [cuotasCc, setCuotasCc] = useState<number | null>(null);
   const [isReserva, setIsReserva] = useState(false);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
@@ -917,20 +931,30 @@ export function CartPanelAdmin({
   // o no: es lo que el footer necesita para poder ofrecer "restaurar". La
   // base excluye lo pagado con saldo a favor. Con plan no hay recargo de
   // fiar: lo reemplaza el interés del plan (más abajo, después de los pagos).
-  const recargoCuentaCorrientePotencial =
+  const pctDefaultCc = Number(branding?.cc_recargo_default || 0);
+  const baseRecargoCc =
     isCuentaCorriente && !tasaPlanCc
-      ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorAplicado) *
-          (branding?.cc_recargo_default || 0)) /
-        100
+      ? baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorAplicado)
       : 0;
-  const recargoCuentaCorriente = ccSinRecargo
-    ? 0
-    : recargoCuentaCorrientePotencial;
+  const recargoCuentaCorrientePotencial = (baseRecargoCc * pctDefaultCc) / 100;
+  // Con el porcentaje que rige para ESTE ticket: el del comercio, o el que la
+  // vendedora eligió (0 incluido). El server lo recalcula y exige permiso para
+  // cualquier apartarse del default.
+  const recargoCuentaCorriente =
+    (baseRecargoCc * pctRecargoEfectivo(ccRecargoPct, pctDefaultCc)) / 100;
 
   // El ticket SIN el interés de un plan. Con plan, `totalFinal` y
   // `totalACubrir` se arman después de los pagos: el interés va sobre lo que
   // queda después de la entrega.
-  const totalSinPlan = subtotalConDescuento + recargoCuentaCorriente;
+  // Recargo libre: solo en una venta de CONTADO (en cuenta corriente manda el
+  // de fiar) y sobre lo que queda después del descuento, al peso. Es plata de
+  // la venta: entra en el total y se cobra con los pagos.
+  const recargoLibre =
+    isCuentaCorriente || isReserva
+      ? 0
+      : calcularRecargoLibre(subtotalConDescuento, recargoLibrePct);
+  const totalSinPlan =
+    subtotalConDescuento + recargoCuentaCorriente + recargoLibre;
   const totalACubrirSinPlan = Math.max(0, totalSinPlan - saldoAFavorAplicado);
   const clienteExceptuadoEntregaMinima =
     clienteSeleccionado?.exceptuado_entrega_minima ?? false;
@@ -1014,7 +1038,8 @@ export function CartPanelAdmin({
     pagos,
     modoMixto,
     cuentaCorriente: isCuentaCorriente,
-    ccSinRecargo,
+    ccRecargoPct,
+    recargoLibrePct,
     cuotasCc,
     reserva: isReserva,
     promocionId,
@@ -1034,7 +1059,9 @@ export function CartPanelAdmin({
     setPagos(venta.pagos);
     setModoMixto(venta.modoMixto);
     setIsCuentaCorriente(venta.cuentaCorriente);
-    setCcSinRecargo(venta.ccSinRecargo);
+    // Las ventas guardadas antes de "Modificar" traen el booleano viejo: vale 0.
+    setCcRecargoPct(venta.ccRecargoPct ?? (venta.ccSinRecargo ? 0 : null));
+    setRecargoLibrePct(venta.recargoLibrePct ?? 0);
     setCuotasCc(venta.cuotasCc ?? null);
     setIsReserva(venta.reserva);
     setPromocionId(venta.promocionId);
@@ -1212,7 +1239,8 @@ export function CartPanelAdmin({
     pagos,
     modoMixto,
     isCuentaCorriente,
-    ccSinRecargo,
+    ccRecargoPct,
+    recargoLibrePct,
     cuotasCc,
     isReserva,
     promocionId,
@@ -1383,13 +1411,15 @@ export function CartPanelAdmin({
 
   const handleCuentaCorrienteChange = (value: boolean) => {
     setIsCuentaCorriente(value);
-    // Apagar CC descarta la exención: si se vuelve a prender, arranca con el
-    // recargo puesto. Anularlo tiene que ser siempre un acto explícito. Lo
-    // mismo el plan de cuotas: vuelve a fiado común.
+    // Apagar CC descarta lo elegido: si se vuelve a prender, arranca con el
+    // recargo del comercio. Cambiarlo tiene que ser siempre un acto explícito.
+    // Lo mismo el plan de cuotas: vuelve a fiado común.
     if (!value) {
-      setCcSinRecargo(false);
+      setCcRecargoPct(null);
       setCuotasCc(null);
     }
+    // En cuenta corriente manda el recargo de fiar: un ticket tiene UN recargo.
+    if (value) setRecargoLibrePct(0);
     if (value) {
       setIsReserva(false);
       setPromocionId("ninguna");
@@ -1516,7 +1546,8 @@ export function CartPanelAdmin({
         // caja no vuelve a preguntar nada, solo cobra.
         contexto: {
           isCuentaCorriente,
-          ccSinRecargo,
+          ccRecargoPct: isCuentaCorriente ? ccRecargoPct : null,
+          recargoLibrePct: isCuentaCorriente ? 0 : recargoLibrePct,
           cliente: clienteSeleccionado
             ? {
                 id: clienteSeleccionado.id,
@@ -1611,7 +1642,13 @@ export function CartPanelAdmin({
           : null),
     );
     setIsCuentaCorriente(Boolean(ctx.isCuentaCorriente));
-    setCcSinRecargo(Boolean(ctx.isCuentaCorriente && ctx.ccSinRecargo));
+    // Un pedido viejo trae el booleano `ccSinRecargo`: vale 0.
+    setCcRecargoPct(
+      ctx.isCuentaCorriente
+        ? (ctx.ccRecargoPct ?? (ctx.ccSinRecargo ? 0 : null))
+        : null,
+    );
+    setRecargoLibrePct(ctx.isCuentaCorriente ? 0 : (ctx.recargoLibrePct ?? 0));
     // El pedido no trae plan: las cuotas se eligen en la caja que cobra.
     setCuotasCc(null);
     setIsReserva(false);
@@ -1796,7 +1833,16 @@ export function CartPanelAdmin({
           "recargo_cc",
           String(planSubmit ? planSubmit.interes : recargoCuentaCorriente),
         );
-        formData.append("cc_sin_recargo", String(ccSinRecargo));
+        // Solo el PORCENTAJE elegido; el monto lo recalcula el server. Sin
+        // elección no se manda nada y rige el del comercio.
+        if (isCuentaCorriente && ccRecargoPct !== null && !planSubmit) {
+          formData.append("cc_recargo_pct", String(ccRecargoPct));
+        }
+        // Recargo libre de una venta de contado: solo el porcentaje; el server
+        // calcula el monto y pide el permiso.
+        if (!isCuentaCorriente && recargoLibrePct > 0) {
+          formData.append("recargo_libre_pct", String(recargoLibrePct));
+        }
         if (planSubmit) {
           formData.append("cuotas_cc", String(planSubmit.cuotas));
         }
@@ -2078,9 +2124,11 @@ export function CartPanelAdmin({
           recargoCcMonto: planSubmit ? planSubmit.interes : recargoCuentaCorriente,
           recargoCcPorcentaje: planSubmit
             ? planSubmit.pct
-            : ccSinRecargo
-              ? 0
-              : Number(branding?.cc_recargo_default || 0),
+            : pctRecargoEfectivo(ccRecargoPct, pctDefaultCc),
+          // El recargo libre, para el ticket que se imprime ahora: el mismo que
+          // se mandó (el server lo recalcula y lo congela en la venta).
+          recargoLibreMonto: recargoLibre > 0 ? recargoLibre : undefined,
+          recargoLibrePorcentaje: recargoLibre > 0 ? recargoLibrePct : null,
           venceEl: result.fechaVencimiento ?? null,
           // Null sin lista, que es cuando el ticket no lo imprime.
           listaPrecioNombre: listaActiva?.nombre ?? null,
@@ -2136,7 +2184,8 @@ export function CartPanelAdmin({
         olvidarEleccionDeLista();
         setModoMixto(false);
         setIsCuentaCorriente(false);
-        setCcSinRecargo(false);
+        setCcRecargoPct(null);
+        setRecargoLibrePct(0);
         setCuotasCc(null);
         setClienteSeleccionado(null);
         // La pestaña cobrada desaparece. Si había otra venta estacionada se
@@ -2470,10 +2519,18 @@ export function CartPanelAdmin({
                   recargoCuentaCorrientePotencial={
                     recargoCuentaCorrientePotencial
                   }
-                  ccSinRecargo={ccSinRecargo}
-                  onCcSinRecargoChange={
-                    puedeFiarSinRecargo || ccSinRecargo
-                      ? setCcSinRecargo
+                  recargoLibrePct={recargoLibrePct}
+                  recargoLibreMonto={recargoLibre}
+                  onRecargoLibrePctChange={
+                    puedeRecargoLibre || recargoLibrePct > 0
+                      ? setRecargoLibrePct
+                      : undefined
+                  }
+                  ccRecargoPct={ccRecargoPct}
+                  ccRecargoPctDefault={pctDefaultCc}
+                  onCcRecargoPctChange={
+                    puedeFiarSinRecargo || ccRecargoPct !== null
+                      ? setCcRecargoPct
                       : undefined
                   }
                   recargoMetodoMonto={recargoMetodo.totalRecargo}

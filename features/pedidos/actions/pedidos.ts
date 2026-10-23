@@ -45,7 +45,12 @@ export interface PedidoItem {
  */
 export interface PedidoContexto {
   isCuentaCorriente?: boolean;
+  /** Recargo CC elegido (null = el del comercio, 0 = sin recargo). */
+  ccRecargoPct?: number | null;
+  /** Campo viejo: los pedidos anteriores a "Modificar" lo traen. Vale 0. */
   ccSinRecargo?: boolean;
+  /** Recargo libre elegido para una venta de contado (%). Ausente = sin. */
+  recargoLibrePct?: number;
   cliente?: {
     id: string;
     nombre: string;

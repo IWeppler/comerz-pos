@@ -46,6 +46,7 @@ export const SLUGS_RESERVADOS = new Set([
   "assets",
   "auth",
   "login",
+  "ingresar",
 ]);
 
 export type ResultadoSlug =

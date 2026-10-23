@@ -21,7 +21,7 @@ const volverACobros = (request: NextRequest, codigo: CodigoResultadoOAuth) =>
 export async function GET(request: NextRequest) {
   const ctx = await contextoCobros();
   if (!ctx.ok) {
-    if (ctx.error === "sin_sesion") return NextResponse.redirect(new URL("/auth", request.url));
+    if (ctx.error === "sin_sesion") return NextResponse.redirect(new URL("/ingresar", request.url));
     return volverACobros(request, ctx.error === "modulo_apagado" ? "modulo_apagado" : "sin_permiso");
   }
 

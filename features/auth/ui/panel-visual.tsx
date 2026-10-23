@@ -1,7 +1,7 @@
 import Image from "next/image";
 
 /**
- * Mitad derecha de las pantallas de entrada (/auth y /empezar).
+ * Mitad derecha de las pantallas de entrada (/ingresar y /empezar).
  *
  * Vive en un componente y no copiada en cada página a propósito: son dos
  * pantallas que tienen que verse como la misma cosa, y este repo ya pagó el

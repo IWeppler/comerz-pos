@@ -126,6 +126,42 @@ entra en promos por categoría ni listas de precios.
   comisión 17,25, neto 97,75. Para empatar 15% de comisión hay que cobrar 17,65%
   (lo muestra `rentabilidad_por_metodo`, ver [insights.md](insights.md)).
 
+## Recargo libre del ticket (venta de contado, 23/10/2026)
+
+La vendedora puede ponerle un porcentaje de recargo a UNA venta de contado
+("+ Recargo" bajo los descuentos, plegado por defecto): atajos `Sin recargo · 5% ·
+10% · 15%` y un campo numérico (0 a 100). Es opcional y de poco uso, por eso va
+escondido. En cuenta corriente NO aparece: ahí manda el recargo de fiar, que se
+modifica con "Modificar" (ver [cuenta-corriente.md](cuenta-corriente.md)). **Un
+ticket tiene UN solo recargo** (CHECK `ventas_un_solo_recargo`).
+- Solo viaja el PORCENTAJE (`recargo_libre_pct`). El server (`create-sale.ts`) calcula
+  el monto con `calcularRecargoLibre` (`shared/lib/recargo-ticket.ts`): porcentaje sobre
+  lo que queda después del descuento, al peso. Entra en `ventas.total` y se cobra con
+  los pagos, como el recargo de cuenta corriente.
+- Se guarda congelado en `ventas.recargo_libre_porcentaje` / `recargo_libre_monto` (null =
+  venta anterior, 0 = sin recargo). **No usa `recargo_cc_*`**: ese par es interés de fiar
+  y alimenta el movimiento de deuda del cliente y la prorrata de la devolución.
+- **Permiso `ventas.recargo_libre`**, asignado a los roles que ya tenían
+  `fiar_sin_recargo` (los 18 ADMIN). Lo exigen `create-sale.ts` y `registrar_venta`
+  (`SIN_PERMISO_RECARGO_LIBRE`). **`tiene_permiso` devuelve siempre true para ADMIN**: una
+  prueba del guard tiene que usar una vendedora real.
+- **Devolución parcial: el recargo SE QUEDA** (decidido). `registrar_devolucion` devuelve
+  solo Σ `precio_final × cantidad` de los renglones, igual que con el recargo por método;
+  no hizo falta tocarla. Una anulación completa devuelve todo (los pagos incluyen el
+  recargo).
+- Lo que lo lleva: factura (`create-sale.ts` y `facturar-venta.ts` suman el libre a
+  `recargos`; si faltara, el total de la factura no cerraría contra el de la venta y ARCA la
+  rechazaría), ticket impreso, PDF, WhatsApp, pantalla del ticket y el historial
+  (`recargoLibreMonto`, `etiquetaRecargoLibre`). La cola sin conexión y los pedidos a
+  caja lo llevan (`recargo_libre_pct` viaja en los campos del formulario).
+- **Reportes**: el recargo libre está dentro de `ventas.total`, así que cuenta como
+  ingreso y como ganancia (costo cero), igual que el recargo de cuenta corriente; no se
+  resta como el de método. La exportación al contador no tiene columna propia.
+- Lo que NO toca: `corregir_metodo_pago_venta` (recalcula el total por diferencia) ni
+  `composicion_ticket` (lee los renglones).
+- **Orden de despliegue**: aplicar `20261023160000` ANTES del deploy: `get-sales` ya
+  selecciona las columnas nuevas y el historial se cae si no existen.
+
 ## Promociones
 
 Condición (`tipo_regla`, null = sin condición) y visibilidad

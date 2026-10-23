@@ -1,4 +1,10 @@
 "use server";
+import {
+  calcularRecargoLibre,
+  esDesvioDelDefault,
+  normalizarPctRecargo,
+  pctRecargoEfectivo,
+} from "@/shared/lib/recargo-ticket";
 import { claveCantidad, precioPorCantidad, type TramoCantidad } from "@/shared/lib/precio-por-cantidad";
 
 import { createClient } from "@/shared/config/supabase/server";
@@ -131,11 +137,43 @@ export async function registrarVentaAction(
   // REGLAS DE NEGOCIO CRM Y CC
   const isCuentaCorriente = formData.get("is_cuenta_corriente") === "true";
   const recargoCC = Number(formData.get("recargo_cc") || 0);
-  // Exención del recargo CC decidida por la vendedora en el ticket. Es la
+  // Recargo CC elegido por la vendedora para ESTE ticket ("Modificar"). Es la
   // ÚNICA cosa del cálculo de plata que sí se toma del cliente, y a propósito:
   // es una decisión comercial puntual (cliente de confianza, arreglo previo)
-  // que no puede salir de la config, porque la config es global.
-  const ccSinRecargo = formData.get("cc_sin_recargo") === "true";
+  // que no puede salir de la config, porque la config es global. Lo que llega
+  // es solo el PORCENTAJE: el monto lo calcula el server. Vacío = rige el
+  // default del comercio; 0 = sin recargo (el "Anular" de antes); cualquier
+  // desvío del default pide permiso más abajo, antes de mover nada.
+  // `cc_sin_recargo` es el campo VIEJO: lo siguen mandando pedidos a caja y
+  // tickets guardados antes de este cambio, y vale como 0.
+  const ccRecargoPctCrudo = (formData.get("cc_recargo_pct") as string | null)?.trim();
+  let ccRecargoPctPedido: number | null = null;
+  if (ccRecargoPctCrudo) {
+    ccRecargoPctPedido = normalizarPctRecargo(ccRecargoPctCrudo);
+    if (ccRecargoPctPedido === null) {
+      return {
+        error: "El recargo de cuenta corriente no es válido (de 0 a 100).",
+        success: false,
+      };
+    }
+  } else if (formData.get("cc_sin_recargo") === "true") {
+    ccRecargoPctPedido = 0;
+  }
+  // Recargo LIBRE del ticket (20261023160000): porcentaje opcional para una
+  // venta de CONTADO. Como el de cuenta corriente, viaja solo el PORCENTAJE:
+  // el monto lo calcula el server. Vacío o 0 = sin recargo.
+  const recargoLibrePctCrudo = (formData.get("recargo_libre_pct") as string | null)?.trim();
+  let recargoLibrePctPedido = 0;
+  if (recargoLibrePctCrudo) {
+    const normal = normalizarPctRecargo(recargoLibrePctCrudo);
+    if (normal === null) {
+      return {
+        error: "El recargo del ticket no es válido (de 0 a 100).",
+        success: false,
+      };
+    }
+    recargoLibrePctPedido = normal;
+  }
   // Venta en cuotas (docs/cuenta-corriente.md): solo la CANTIDAD viaja del
   // POS. La tasa sale de la config, acá y otra vez en la base
   // (`cc_registrar_cuotas_venta`, fail-closed).
@@ -1318,50 +1356,85 @@ export async function registrarVentaAction(
       };
     }
   }
-  // Con plan, "fiar sin recargo" no aplica: la tasa la configuró el comercio.
-  const ccSinRecargoEfectivo = ccSinRecargo && !planCuotas;
+  // Con plan, el recargo elegido no aplica: la tasa la configuró el comercio.
+  // Sin cuenta corriente tampoco: no hay recargo de fiar que modificar.
+  const pctDefaultCC = Number(configVenta?.cc_recargo_default) || 0;
+  const ccRecargoPctElegido =
+    isCuentaCorriente && !planCuotas ? ccRecargoPctPedido : null;
 
   const pctRecargoCC = planCuotas
     ? planCuotas.pct
-    : Number(configVenta?.cc_recargo_default) || 0;
+    : pctRecargoEfectivo(ccRecargoPctElegido, pctDefaultCC);
   // La base del recargo excluye lo pagado con saldo a favor: es plata que la
   // clienta adelantó, no se le cobra por esperar (decidido el 28/9/2026).
   const recargoCCServer = planCuotas
     ? planCuotas.interes
-    : isCuentaCorriente && !ccSinRecargoEfectivo
+    : isCuentaCorriente
       ? (baseRecargoCuentaCorriente(subtotalConDescuento, saldoAFavorUsado) *
           pctRecargoCC) /
         100
       : 0;
 
   // El porcentaje que efectivamente rigió para ESTA venta, que es lo que se
-  // guarda en `ventas.recargo_cc_porcentaje`. Con el flag de la vendedora
-  // prendido es 0, y ese 0 es un dato: dice que se fió sin recargo, distinto
-  // de null, que dice que no se sabe.
-  const pctRecargoCCAplicado =
-    isCuentaCorriente && !ccSinRecargoEfectivo ? pctRecargoCC : 0;
+  // guarda en `ventas.recargo_cc_porcentaje`. Un 0 es un dato: dice que se
+  // fió sin recargo, distinto de null, que dice que no se sabe.
+  const pctRecargoCCAplicado = isCuentaCorriente ? pctRecargoCC : 0;
 
-  // El log sigue, pero ya no es el único rastro: desde 20260823180630 la
-  // venta guarda el porcentaje aplicado y el monto, así que fiar sin recargo
-  // se puede contar, no solo encontrar leyendo logs.
-  if (isCuentaCorriente && ccSinRecargoEfectivo && pctRecargoCC > 0) {
-    // Anular el recargo pide permiso (20261007230000). Se frena acá, antes de
-    // mover stock o pedir CAE; `registrar_venta` lo vuelve a exigir.
+  // Apartarse del default —anular, bajar o subir— pide permiso
+  // (20261007230000, ampliado el 23/10/2026: antes solo pedía el 0). Se frena
+  // acá, antes de mover stock o pedir CAE; `registrar_venta` lo vuelve a
+  // exigir. El log queda además del porcentaje guardado en la venta: se puede
+  // contar, no solo encontrar leyendo logs.
+  if (
+    ccRecargoPctElegido !== null &&
+    esDesvioDelDefault(ccRecargoPctElegido, pctDefaultCC)
+  ) {
     if (!(await tienePermiso(supabase, PERMISOS.VENTAS_FIAR_SIN_RECARGO))) {
       return {
         error:
-          "No tenés permiso para fiar sin recargo. Aplicá el recargo o pedíselo a una administradora.",
+          "No tenés permiso para modificar el recargo de cuenta corriente. Dejá el recargo del comercio o pedíselo a una administradora.",
         success: false,
       };
     }
-    console.error("[VENTA CC SIN RECARGO]", {
+    console.error("[VENTA CC RECARGO MODIFICADO]", {
       vendedorId: user.id,
       clienteId,
       subtotal: subtotalConDescuento,
-      pctRecargoCCOmitido: pctRecargoCC,
-      recargoOmitido: (subtotalConDescuento * pctRecargoCC) / 100,
+      pctDefault: pctDefaultCC,
+      pctAplicado: ccRecargoPctElegido,
     });
   }
+
+  // RECARGO LIBRE (contado). Un ticket tiene UN solo recargo: el de cuenta
+  // corriente (se modifica con "Modificar") o este, nunca los dos; la base lo
+  // exige con un CHECK, y acá se frena antes de mover stock o pedir CAE.
+  if (recargoLibrePctPedido > 0 && isCuentaCorriente) {
+    return {
+      error:
+        "El recargo libre es solo para ventas de contado. En cuenta corriente se modifica el recargo de fiar.",
+      success: false,
+    };
+  }
+  if (recargoLibrePctPedido > 0) {
+    if (!(await tienePermiso(supabase, PERMISOS.VENTAS_RECARGO_LIBRE))) {
+      return {
+        error:
+          "No tenés permiso para aplicar un recargo al ticket. Vendé sin recargo o pedíselo a una administradora.",
+        success: false,
+      };
+    }
+    console.error("[VENTA RECARGO LIBRE]", {
+      vendedorId: user.id,
+      subtotal: subtotalConDescuento,
+      pct: recargoLibrePctPedido,
+    });
+  }
+  // Sobre lo que queda después del descuento, al peso. Es plata de la venta
+  // (entra en `total`), no interés de fiar: no va al movimiento de deuda.
+  const recargoLibreServer = calcularRecargoLibre(
+    subtotalConDescuento,
+    recargoLibrePctPedido,
+  );
 
   const recargoCCCliente = isNaN(recargoCC) ? 0 : recargoCC;
   if (Math.abs(recargoCCCliente - recargoCCServer) > 0.05) {
@@ -1374,7 +1447,8 @@ export async function registrarVentaAction(
   }
 
   // Calculamos el Total Real del Ticket
-  const totalConDescuentoYRecargo = subtotalConDescuento + recargoCCServer;
+  const totalConDescuentoYRecargo =
+    subtotalConDescuento + recargoCCServer + recargoLibreServer;
 
   const totalConRecargoMetodo = totalConDescuentoYRecargo + recargoMetodoTotal;
   const montoCobradoReal = sumaPagos + recargoMetodoTotal;
@@ -1865,6 +1939,11 @@ export async function registrarVentaAction(
     // null en la columna significa "venta anterior a esto", no "sin recargo".
     recargo_cc_porcentaje: pctRecargoCCAplicado,
     recargo_cc_monto: recargoCCServer,
+    // Recargo libre del ticket, congelado. Va SIEMPRE, 0 incluido: null en la
+    // columna es "venta anterior a esto", no "sin recargo". Excluyente con el
+    // de arriba (CHECK en la base).
+    recargo_libre_porcentaje: recargoLibrePctPedido,
+    recargo_libre_monto: recargoLibreServer,
     // Parte del ticket pagada con saldo a favor. `registrar_venta` la valida
     // contra el saldo real y escribe el DÉBITO que la consume.
     saldo_a_favor_aplicado: saldoAFavorUsado,
@@ -1982,7 +2061,7 @@ export async function registrarVentaAction(
           cantidad: i.cantidad,
           tratamientoIva: i.tratamientoIva,
         })),
-        recargos: recargoCCServer + recargoMetodoTotal,
+        recargos: recargoCCServer + recargoLibreServer + recargoMetodoTotal,
         tratamientoRecargos: configVenta?.arca_recargos_iva,
         topeConsumidorFinal: configVenta?.arca_tope_consumidor_final
           ? Number(configVenta.arca_tope_consumidor_final)
@@ -2123,13 +2202,18 @@ export async function registrarVentaAction(
     const sinPermisoRecargo = ventaError?.message?.includes(
       "SIN_PERMISO_FIAR_SIN_RECARGO",
     );
+    const sinPermisoRecargoLibre = ventaError?.message?.includes(
+      "SIN_PERMISO_RECARGO_LIBRE",
+    );
     const rechazoPlan = mensajeRechazoPlanCuotas(ventaError);
     return {
       error: sinRenglones
         ? "No se pudo registrar el detalle de la venta. No se cobró nada ni se descontó stock: volvé a intentar."
         : sinPermisoRecargo
-          ? "No tenés permiso para fiar sin recargo. Aplicá el recargo o pedíselo a una administradora."
-          : (rechazoPlan ?? sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
+          ? "No tenés permiso para modificar el recargo de cuenta corriente. Dejá el recargo del comercio o pedíselo a una administradora."
+          : sinPermisoRecargoLibre
+            ? "No tenés permiso para aplicar un recargo al ticket. Vendé sin recargo o pedíselo a una administradora."
+            : (rechazoPlan ?? sinSaldoAFavor ?? `Fallo en BD: ${ventaError?.message}`),
       success: false,
     };
   }

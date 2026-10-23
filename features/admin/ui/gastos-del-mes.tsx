@@ -17,9 +17,11 @@ import {
   type GastoComerz,
 } from "@/features/admin/actions/gastos-comerz";
 import { ETIQUETA_CATEGORIA } from "@/features/admin/lib/categorias-gasto";
+import { formatearUsd, pesosAUsd } from "@/features/admin/lib/cotizacion-mep";
+import { montoEnPesos } from "@/features/admin/lib/finanzas-comerz";
 import { CLASE_PORTAL_OSCURO } from "@/features/admin/lib/tema-portal";
 import { formatearMoneda } from "@/shared/utils/formatters";
-import { FormularioGasto } from "./formulario-gasto";
+import { FormularioGasto, type OrigenesGasto } from "./formulario-gasto";
 
 const INICIAL: EstadoGasto = { error: null, success: false };
 
@@ -36,11 +38,21 @@ export function GastosDelMes({
   gastos,
   total,
   porComercio,
+  mep,
+  mesActual,
+  origenes,
 }: Readonly<{
   gastos: GastoComerz[];
   total: number;
   porComercio: number | null;
+  /** MEP de hoy. Null = no se pudo leer: solo pesos. */
+  mep: number | null;
+  /** "YYYY-MM" del mes en curso (el mismo con que se calculó `total`). */
+  mesActual: string;
+  origenes: OrigenesGasto;
 }>) {
+  const nombreComercio = new Map(origenes.comercios.map((c) => [c.id, c.nombre]));
+  const ctx = { mepActual: mep, mesActual };
   const [editando, setEditando] = useState<GastoComerz | null>(null);
   const [borrando, iniciarBorrado] = useTransition();
 
@@ -74,6 +86,11 @@ export function GastosDelMes({
       <div>
         <p className="text-sm font-semibold text-white/90">
           Gastos del mes: {formatearMoneda(total)}
+          {mep !== null && (
+            <span className="ml-2 text-xs font-normal text-white/40">
+              ≈ {formatearUsd(pesosAUsd(total, mep))}
+            </span>
+          )}
         </p>
         <p className="text-xs text-white/40">
           {porComercio !== null
@@ -104,13 +121,14 @@ export function GastosDelMes({
                       ? `Fijo · baja ${g.hasta.slice(0, 7)}`
                       : "Fijo · vigente"
                     : `Único · ${g.mes.slice(0, 7)}`}
+                  {g.negocioOrigenId &&
+                    nombreComercio.get(g.negocioOrigenId) &&
+                    ` · por ${nombreComercio.get(g.negocioOrigenId)}`}
                   {g.nota && ` · ${g.nota}`}
                 </p>
               </div>
 
-              <span className="shrink-0 font-mono text-sm tabular-nums text-white/80">
-                {formatearMoneda(g.monto)}
-              </span>
+              <MontoGasto gasto={g} pesos={montoEnPesos(g, mesActual, ctx)} mep={mep} />
 
               <div className="flex shrink-0 items-center">
                 <Button
@@ -153,6 +171,7 @@ export function GastosDelMes({
             <FormularioGasto
               key={editando.id}
               gasto={editando}
+              origenes={origenes}
               accion={accion}
               error={estado.error}
               guardando={guardando}
@@ -161,6 +180,36 @@ export function GastosDelMes({
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * El monto de un gasto en su moneda, con el equivalente al lado.
+ *
+ * Un gasto en dólares muestra primero los dólares (es lo que se paga) y los
+ * pesos de este mes debajo; uno en pesos, los pesos y los dólares al MEP de
+ * hoy si hay cotización.
+ */
+function MontoGasto({
+  gasto,
+  pesos,
+  mep,
+}: Readonly<{ gasto: GastoComerz; pesos: number; mep: number | null }>) {
+  const enDolares = gasto.moneda === "USD" && gasto.montoUsd !== null;
+  const principal = enDolares ? formatearUsd(gasto.montoUsd!) : formatearMoneda(pesos);
+  const secundario = enDolares
+    ? formatearMoneda(pesos)
+    : mep !== null
+      ? formatearUsd(pesosAUsd(pesos, mep))
+      : null;
+
+  return (
+    <div className="shrink-0 text-right">
+      <p className="font-mono text-sm tabular-nums text-white/80">{principal}</p>
+      {secundario && (
+        <p className="font-mono text-[11px] tabular-nums text-white/35">≈ {secundario}</p>
+      )}
     </div>
   );
 }

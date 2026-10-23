@@ -33,7 +33,7 @@ export function SesionDesdeHash({ children }: { children: React.ReactNode }) {
     // No hay sesión que rescatar; al login con el mismo aviso que /auth/confirm.
     if (window.location.hash.includes("error_code=")) {
       window.location.replace(
-        `/auth?error=${encodeURIComponent("Enlace expirado o inválido")}`,
+        `/ingresar?error=${encodeURIComponent("Enlace expirado o inválido")}`,
       );
       return;
     }

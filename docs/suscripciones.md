@@ -43,6 +43,66 @@ Notas de MP (documentación oficial, 12/10/2026): un cobro rechazado se reintent
 veces en 10 días; después de 3 cuotas rechazadas MP da de baja la suscripción. Las
 suscripciones se crean con el token de la cuenta de Comerz (no con OAuth).
 
+## Topes de uso y semestral (23/10/2026)
+
+**Fuente de verdad: `planes.reglas` en la base.** Lo que ve el comerciante (Perfil ›
+Suscripción), el aviso de la campana y la tabla de /admincomerz leen el MISMO valor
+(`reglas_negocio()`: plan + `reglas_override` del comercio) y el MISMO criterio
+(`nivelDeUso` en `shared/lib/suscripcion.ts`). Si se cambia un número, se cambia solo
+en la tabla `planes`.
+
+| | Emprendedor | Gestión | Empresa / Prueba |
+|---|---|---|---|
+| Precio de lista | $30.000 | $50.000 | $70.000 / $0 |
+| Semestral (20% off, de una vez cada 6 meses) | $24.000/mes | $40.000/mes | $56.000/mes |
+| Usuarios | 1 | 5 | 99 |
+| Productos (frena solo el alta) | 1.000 | **5.000** | sin tope |
+| Clientes con cuenta corriente | 50 | 250 | sin tope |
+| Ventas por mes (tope **blando**) | **500** | **5.000** | sin tope |
+| ARCA (`facturacion_electronica`) | **sí** | sí | sí |
+
+- **`max_ventas_mensuales`** cuenta las ventas NO anuladas del mes calendario comercial
+  argentino (`shared/lib/mes-comercial.ts`). **Blando a propósito**: sin trigger ni
+  chequeo en `registrar_venta` (una venta es plata real en el mostrador). Avisa AL
+  LLEGAR al tope, no antes (sin el "cerca" del 80%).
+- **Dónde se ve**, las tres cosas son lo mismo:
+  1. **Comerciante**: Perfil › Suscripción › "Ventas del mes" (barra, "Llegaste al tope
+     del plan", aclaración de que no corta nada). `getUsoDelPlanAction`.
+  2. **Campana** (Tu negocio): estado derivado `PLAN_TOPE_VENTAS`, clave
+     `tope_ventas:YYYY-MM` (leído vale para ese mes; el mes siguiente vuelve a avisar),
+     fecha = la venta que alcanzó el tope. Categoría PLAN: por default solo la dueña
+     (ADMIN), configurable en Configuración › Notificaciones. Se calcula en
+     `_estado_tope_ventas`, que suma `_estados_notificaciones`. No avisa a un comercio
+     en cortesía (precio acordado $0) ni fuera de prueba/activo (mismo criterio que los
+     avisos de vencimiento). Ver [notificaciones.md](notificaciones.md).
+  3. **/admincomerz**: columna "Ventas del mes" en la tabla de comercios ("N / tope",
+     "tope del plan" al llegar, "sin tope"), y /admincomerz/planes con los topes de
+     cada plan. `ventas_del_mes_por_comercio()` (solo super admin).
+- **Costo del aviso** (medido el 23/10/2026 en producción): `_estado_tope_ventas` tarda
+  ~7 ms en Librería Colores (2.854 ventas en el mes, el peor caso: lee hasta `tope`
+  filas por el índice `(negocio_id, fecha_venta)`), y se corre en cada navegación de un
+  ADMIN/ENCARGADO con tope declarado. Si se nota, el paso siguiente es guardarlo como
+  hecho (una fila al cruzar el tope) en vez de derivarlo.
+- **Migraciones aplicadas en producción el 23/10/2026** (el MCP las registra con la hora
+  de aplicación: `20261023135021 planes_tope_ventas_y_arca` y
+  `20261023135108 aviso_tope_ventas`; los archivos del repo son `...120000` y
+  `...130000`). Verificado después: los 4 planes con sus reglas, funciones DEFINER
+  cerradas a `authenticated` salvo la RPC de admin (que filtra por `is_super_admin()`),
+  ningún comercio dispara el aviso hoy, y `supabase/tests/aviso_tope_ventas.sql` corrido
+  en seco (`DRY_RUN_OK`). Reversiones en `supabase/reversals/`.
+- **Falta (pata 2 y 3)**: commit + deploy del código (sin el deploy, la columna "Ventas
+  del mes" de /admincomerz llama a una RPC que ya existe pero el código nuevo no está
+  publicado) y el smoke test en producción.
+- **Fotos de uso al aplicar** (ventas del mes al 23/10): Librería Colores 2.854 (tope
+  5.000), El Nono Cacho 1.463, Evens 503, Estilo Bonito 118. Productos: Colores 2.071,
+  Evens 1.657; ninguno supera el nuevo tope de 5.000 de Gestión.
+- **ARCA en todos los planes**: `facturacion_electronica` se suma a Emprendedor.
+- **Semestral = 20%** (`DESCUENTO_SEMESTRAL`): el comentario de `planes.ts` y el de
+  `negocios.modalidad` decían 15%; ahora los tres dicen 20%.
+- Los comercios con `reglas_override` (ej. los que venían sin tope de productos)
+  conservan el suyo.
+- **Pendiente**: aviso por mail al llegar al tope.
+
 ## S1: precio acordado (12/10/2026)
 
 - `negocios.precio_acordado` (null = lista; 0 = cortesía total) y `precios_acordados`

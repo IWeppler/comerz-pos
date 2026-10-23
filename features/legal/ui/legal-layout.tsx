@@ -24,7 +24,7 @@ export function LegalLayout({
     <div className="min-h-svh bg-background">
       <header className="sticky top-0 z-10 border-b border-border/50 bg-card/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-3xl items-center justify-between gap-4 px-6 py-4">
-          <Link href="/auth" className="flex items-center gap-2.5">
+          <Link href="/ingresar" className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm">
               <Image
                 src="/logow.png"
@@ -40,7 +40,7 @@ export function LegalLayout({
           </Link>
 
           <Link
-            href="/auth"
+            href="/ingresar"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeft className="h-4 w-4" />

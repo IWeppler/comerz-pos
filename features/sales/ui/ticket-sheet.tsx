@@ -24,6 +24,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { TicketData } from "@/entities/ventas/types";
+import { etiquetaRecargoLibre } from "@/features/sales/lib/recargo-libre-ticket";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import { TicketPrintable } from "./ticket-printable";
 import { useEntregaComprobante } from "./use-entrega-comprobante";
@@ -394,6 +395,17 @@ export function TicketSheet({
                           </span>
                           <span>
                             +{formatTicketMoney(ticket?.recargoMetodoMonto)}
+                          </span>
+                        </div>
+                      ) : null}
+
+                      {(ticket?.recargoLibreMonto ?? 0) > 0 ? (
+                        <div className="flex justify-between font-mono text-xs text-warning font-bold">
+                          <span className="uppercase">
+                            {etiquetaRecargoLibre(ticket!)}
+                          </span>
+                          <span>
+                            +{formatTicketMoney(ticket?.recargoLibreMonto)}
                           </span>
                         </div>
                       ) : null}

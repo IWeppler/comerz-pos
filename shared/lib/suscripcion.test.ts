@@ -129,6 +129,13 @@ describe("nivelDeUso / porcentajeDeUso", () => {
     expect(porcentajeDeUso(uso(null, 10))).toBeNull();
   });
 
+  it("un tope blando avisa recién al llegar, sin 'cerca' a las 80%", () => {
+    const blando = (usado: number) => ({ ...uso(usado, 5000), blando: true });
+    expect(nivelDeUso(blando(4500))).toBe("ok");
+    expect(nivelDeUso(blando(5000))).toBe("lleno");
+    expect(nivelDeUso(blando(5200))).toBe("lleno");
+  });
+
   it("marca lleno al alcanzar el límite", () => {
     expect(nivelDeUso(uso(5, 5))).toBe("lleno");
     expect(porcentajeDeUso(uso(5, 5))).toBe(100);

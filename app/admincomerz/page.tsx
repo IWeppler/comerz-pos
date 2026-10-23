@@ -4,16 +4,19 @@ import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import { getPanelComerzAction } from "@/features/admin/actions/metricas-comerz";
 import { getComerciosConUsoAction } from "@/features/admin/actions/comercios-con-uso";
-import { getFeedComerzAction } from "@/features/admin/actions/feed-comerz";
+import { getCotizacionMepAction } from "@/features/admin/actions/cotizacion-mep";
 import { getPlanesCompletosAction } from "@/features/admin/actions/planes-actions";
-import {
-  construirSerieMrr,
-  variacionMensual,
-} from "@/features/admin/lib/serie-mrr";
-import { MrrChart } from "@/features/admin/ui/mrr-chart";
+import { construirSerieMrr } from "@/features/admin/lib/serie-mrr";
 import { ComerciosTabla } from "@/features/admin/ui/comercios-tabla";
-import { NotificacionesTabla } from "@/features/admin/ui/notificaciones-tabla";
-import { formatearMoneda } from "@/shared/utils/formatters";
+import { diaComercial } from "@/entities/caja/lib/turno-de-otro-dia";
+import {
+  montoEnPesos,
+  type ContextoCotizacion,
+  type NegocioParaPrevision,
+  type PagoFinanciero,
+} from "@/features/admin/lib/finanzas-comerz";
+import { armarVistaFinanzas } from "@/features/admin/lib/vista-finanzas";
+import { PanelFinanzas } from "@/features/admin/ui/panel-finanzas";
 import { getGastosAction } from "@/features/admin/actions/gastos-comerz";
 import { AnotarGastoBoton } from "@/features/admin/ui/anotar-gasto-boton";
 import { GastosDelMes } from "@/features/admin/ui/gastos-del-mes";
@@ -33,10 +36,7 @@ import {
   resumirEmbudoAlta,
 } from "@/features/admin/lib/embudo-alta";
 import { EmbudoAltaPanel } from "@/features/admin/ui/embudo-alta-panel";
-import {
-  gastoAplicaEnMes,
-  gastosPorMes,
-} from "@/features/admin/lib/gastos-por-mes";
+import { gastoAplicaEnMes } from "@/features/admin/lib/gastos-por-mes";
 import {
   calcularArpu,
   calcularChurnMensual,
@@ -56,7 +56,7 @@ export default async function AdminComerzPage() {
   const [
     { negocios, metricas },
     comercios,
-    feed,
+    mep,
     planes,
     { data: pagos },
     gastos,
@@ -70,11 +70,11 @@ export default async function AdminComerzPage() {
   ] = await Promise.all([
     getPanelComerzAction(),
     getComerciosConUsoAction(),
-    getFeedComerzAction(),
+    getCotizacionMepAction(),
     getPlanesCompletosAction(),
     supabase
       .from("pagos_suscripcion")
-      .select("monto, fecha_pago")
+      .select("id, negocio_id, monto, fecha_pago")
       .order("fecha_pago", { ascending: true }),
     getGastosAction(),
     getFunnelAction(),
@@ -86,29 +86,64 @@ export default async function AdminComerzPage() {
     supabase.auth.getUser(),
   ]);
 
+  const ahora = new Date();
+  const mesActual = diaComercial(ahora).slice(0, 7);
+
+  // Lo cobrado de este mes, para el ARPU y el reparto por comercio. El número
+  // que manda arriba es lo GANADO (ingresos − egresos), que sale de
+  // `armarVistaFinanzas`.
   const serieCobrado = construirSerieMrr(
     (pagos ?? []).map((p) => ({
       monto: Number(p.monto ?? 0),
       fecha_pago: p.fecha_pago as string,
     })),
-    new Date(),
+    ahora,
   );
+  const cobradoEsteMes = serieCobrado[serieCobrado.length - 1]?.total ?? 0;
 
-  // Los gastos se pegan a la misma serie para que el gráfico los dibuje al
-  // lado de lo cobrado. Un FIJO no tiene una fila por mes —tiene una que
-  // aplica a un rango— así que cuánto pesa en cada mes es una cuenta, y vive
-  // en `gastos-por-mes.ts` con tests.
-  const totalesGasto = gastosPorMes(
-    gastos,
-    serieCobrado.map((p) => p.mes),
-  );
-  const serie = serieCobrado.map((punto, i) => ({
-    ...punto,
-    gastos: totalesGasto[i],
+  // Todo en pesos, con los gastos en dólares convertidos como corresponde a
+  // cada uno (ver `montoEnPesos`). Sin cotización cae a lo guardado en pesos.
+  const ctx: ContextoCotizacion = {
+    mepActual: mep?.venta ?? null,
+    mesActual,
+  };
+
+  const pagosFinancieros: PagoFinanciero[] = (pagos ?? []).map((p) => ({
+    id: p.id as string,
+    negocioId: p.negocio_id as string,
+    monto: Number(p.monto ?? 0),
+    fechaPago: String(p.fecha_pago),
   }));
 
-  const cobradoEsteMes = serie[serie.length - 1]?.total ?? 0;
-  const variacion = variacionMensual(serieCobrado);
+  const negociosParaPrevision: NegocioParaPrevision[] = comercios.map((c) => ({
+    id: c.id,
+    estado: c.estado,
+    planVencimiento: c.plan_vencimiento,
+    precioMensual: c.plan_precio,
+    modalidad: c.modalidad,
+    cuentaEnMrr: c.cuentaEnMrr,
+  }));
+
+  const vista = armarVistaFinanzas({
+    pagos: pagosFinancieros,
+    gastos,
+    negocios: negociosParaPrevision,
+    hoy: ahora,
+    ctx,
+  });
+
+  // Para el formulario de comisiones: a qué comercio y a qué cobro se ata.
+  const origenes = {
+    comercios: comercios
+      .filter((c) => c.estado !== "cancelado")
+      .map((c) => ({ id: c.id, nombre: c.nombre })),
+    pagos: pagosFinancieros.map((p) => ({
+      id: p.id,
+      negocioId: p.negocioId,
+      monto: p.monto,
+      fecha: p.fechaPago.slice(0, 10),
+    })),
+  };
 
   const comerciosFunnel = analizarFunnel(filasFunnel);
   const resumenFunnel = resumirFunnel(comerciosFunnel);
@@ -134,13 +169,11 @@ export default async function AdminComerzPage() {
   // Los del mes en curso, con la MISMA regla que usa el gráfico. Repetirla
   // acá a mano sería tener dos definiciones de "gasto de este mes" y que un
   // día digan cosas distintas.
-  const mesActual = serie[serie.length - 1]?.mes ?? "";
   const gastosDelMes = gastos.filter((g) => gastoAplicaEnMes(g, mesActual));
 
   // ARPU, churn y LTV se calculan sobre lo COBRADO y sobre las bajas reales.
   // Cada uno devuelve null cuando la muestra no alcanza, y el panel muestra el
   // motivo en vez del número: ver metricas-saas.ts.
-  const ahora = new Date();
   const arpu = calcularArpu(cobradoEsteMes, metricas.activos);
   const churn = calcularChurnMensual(
     negocios.map((n) => ({
@@ -152,7 +185,10 @@ export default async function AdminComerzPage() {
   );
   const ltv = calcularLtv(arpu, churn);
   const costos = resumirCostos(
-    gastosDelMes.map((g) => ({ concepto: g.concepto, monto: g.monto })),
+    gastosDelMes.map((g) => ({
+      concepto: g.concepto,
+      monto: montoEnPesos(g, mesActual, ctx),
+    })),
     cobradoEsteMes,
     metricas.activos,
   );
@@ -168,82 +204,33 @@ export default async function AdminComerzPage() {
         </div>
         {/* A la altura del título y no adentro del panel de métricas: anotar un
             gasto es una acción, y las métricas son para leer. */}
-        <AnotarGastoBoton />
+        <AnotarGastoBoton origenes={origenes} />
       </div>
 
-     
-      <div className="grid gap-4 xl:grid-cols-[1.7fr_1fr] xl:items-stretch">
-       
-        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider text-white/40">
-              Cobrado este mes
-            </p>
-            <p className="mt-1 text-4xl font-semibold tracking-tight text-white">
-              {formatearMoneda(cobradoEsteMes)}
-            </p>
-            {variacion !== null && (
-              <p
-                className={`mt-1 text-xs font-medium ${
-                  variacion >= 0 ? "text-emerald-400" : "text-rose-400"
-                }`}
-              >
-                {variacion >= 0 ? "▲" : "▼"} {Math.abs(variacion).toFixed(0)}%
-                vs. el mes pasado
-              </p>
-            )}
-          </div>
-
-          <div className="flex gap-6">
-            <Dato
-              titulo="MRR teórico"
-              valor={formatearMoneda(metricas.mrr)}
-              detalle="si todos pagaran"
-            />
-            <Dato
-              titulo="Activos"
-              valor={String(metricas.activos)}
-              detalle={
-                metricas.suspendidos > 0
-                  ? `${metricas.suspendidos} suspendidos`
-                  : "ninguno suspendido"
-              }
-            />
-            <Dato
-              titulo="En prueba"
-              valor={String(metricas.enPrueba)}
-              detalle="dentro de sus 14 días"
-            />
-            {/* Se muestra solo cuando hay alguno: una tarjeta en cero al lado
-                de las que miden el negocio ocupa lugar sin decir nada. */}
-            {metricas.demos > 0 && (
-              <Dato
-                titulo="Demo"
-                valor={String(metricas.demos)}
-                detalle="fuera de las métricas"
-              />
-            )}
-          </div>
-        </div>
-
-        <MrrChart serie={serie} />
-      </div>
-
-        <NotificacionesTabla notificaciones={feed} />
-      </div>
+      <PanelFinanzas
+        vista={vista}
+        mep={mep}
+        metricas={{
+          mrr: metricas.mrr,
+          activos: metricas.activos,
+          enPrueba: metricas.enPrueba,
+          suspendidos: metricas.suspendidos,
+        }}
+      />
 
       <MetricasSaasPanel
         arpu={arpu}
         churn={churn}
         ltv={ltv}
-        costos={costos}
       />
 
       <GastosDelMes
         gastos={gastosDelMes}
         total={costos.total}
         porComercio={costos.porComercio}
+        mep={mep?.venta ?? null}
+        mesActual={mesActual}
+        origenes={origenes}
       />
 
       <EmbudoAltaPanel
@@ -290,22 +277,6 @@ export default async function AdminComerzPage() {
           }))}
         />
       </div>
-    </div>
-  );
-}
-
-function Dato({
-  titulo,
-  valor,
-  detalle,
-}: Readonly<{ titulo: string; valor: string; detalle: string }>) {
-  return (
-    <div>
-      <p className="text-[10px] font-medium uppercase tracking-wider text-white/35">
-        {titulo}
-      </p>
-      <p className="mt-0.5 text-lg font-semibold text-white/90">{valor}</p>
-      <p className="text-[11px] text-white/30">{detalle}</p>
     </div>
   );
 }

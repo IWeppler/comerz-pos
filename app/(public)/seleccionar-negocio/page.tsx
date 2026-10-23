@@ -15,7 +15,7 @@ export default async function SeleccionarNegocioPage() {
   if (negocios.length === 1) redirect("/");
   // Sin ninguno no se ofrece crear uno acá: es un flujo aparte, y esta
   // pantalla es para elegir entre los que ya tenés.
-  if (negocios.length === 0) redirect("/auth?error=sin-negocio");
+  if (negocios.length === 0) redirect("/ingresar?error=sin-negocio");
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-background p-6">

@@ -105,6 +105,9 @@ export type UsoLimite = {
   limite: number | null;
   /** Aclaración opcional (ej. que las invitaciones pendientes ocupan lugar). */
   detalle?: string;
+  /** Tope blando: avisa al llegar, pero nunca frena nada. No tiene "cerca" (el
+   * aviso es recién al tope) y la UI lo dice con otras palabras. */
+  blando?: boolean;
 };
 
 export type NivelUso = "sin-limite" | "desconocido" | "ok" | "cerca" | "lleno";
@@ -116,6 +119,7 @@ export function nivelDeUso(uso: UsoLimite): NivelUso {
   if (uso.limite === null) return "sin-limite";
   if (uso.usado === null) return "desconocido";
   if (uso.usado >= uso.limite) return "lleno";
+  if (uso.blando) return "ok";
   if (uso.limite > 0 && uso.usado / uso.limite >= UMBRAL_CERCA_DEL_LIMITE) {
     return "cerca";
   }

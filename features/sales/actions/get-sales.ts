@@ -77,6 +77,8 @@ export async function getVentasAction(opts?: {
         estado_pago,
         recargo_cc_monto,
         recargo_cc_porcentaje,
+        recargo_libre_monto,
+        recargo_libre_porcentaje,
         fecha_vencimiento,
         lista_precio_id,
         lista_precio_nombre,

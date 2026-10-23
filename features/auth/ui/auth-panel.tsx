@@ -6,7 +6,7 @@ import Link from "next/link";
 import { LoginForm } from "./login-form";
 
 /**
- * Panel de /auth: SOLO login.
+ * Panel de /ingresar: SOLO login.
  *
  * Antes alternaba entre entrar y un formulario de "dejanos tus datos" que
  * escribía en `solicitudes_comercio` y esperaba un WhatsApp de Comerz. Ese
@@ -14,7 +14,7 @@ import { LoginForm } from "./login-form";
  * ruta propia porque es el paso más largo del producto y no puede quedar
  * escondido detrás de un toggle en la pantalla de login.
  *
- * Acá quedó "Crear cuenta" como link, no como cambio de modo: /auth es para el
+ * Acá quedó "Crear cuenta" como link, no como cambio de modo: /ingresar es para el
  * que ya tiene cuenta, y mezclar las dos cosas obligaba a decidir "¿entro o me
  * registro?" antes de saber de qué se trata.
  */

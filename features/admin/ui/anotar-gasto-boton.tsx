@@ -15,7 +15,7 @@ import {
   type EstadoGasto,
 } from "@/features/admin/actions/gastos-comerz";
 import { CLASE_PORTAL_OSCURO } from "@/features/admin/lib/tema-portal";
-import { FormularioGasto } from "./formulario-gasto";
+import { FormularioGasto, type OrigenesGasto } from "./formulario-gasto";
 
 const INICIAL: EstadoGasto = { error: null, success: false };
 
@@ -26,7 +26,9 @@ const INICIAL: EstadoGasto = { error: null, success: false };
  * es donde se los ve: un gasto se arregla donde aparece mal, no volviendo al
  * formulario con el que se cargó.
  */
-export function AnotarGastoBoton() {
+export function AnotarGastoBoton({
+  origenes,
+}: Readonly<{ origenes: OrigenesGasto }>) {
   const [abierto, setAbierto] = useState(false);
   const [estado, accion, guardando] = useActionState(
     registrarGastoAction,
@@ -67,6 +69,7 @@ export function AnotarGastoBoton() {
           </DialogDescription>
 
           <FormularioGasto
+            origenes={origenes}
             accion={accion}
             error={estado.error}
             guardando={guardando}

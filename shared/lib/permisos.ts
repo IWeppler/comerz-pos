@@ -40,6 +40,7 @@ export const PERMISOS = {
   VENTAS_ELEGIR_COMPROBANTE: "ventas.elegir_comprobante",
   VENTAS_ANULAR: "ventas.anular",
   VENTAS_FIAR_SIN_RECARGO: "ventas.fiar_sin_recargo",
+  VENTAS_RECARGO_LIBRE: "ventas.recargo_libre",
   VENTAS_ELEGIR_MEDIO_DEVOLUCION: "ventas.elegir_medio_devolucion",
   VENTAS_COBRAR: "ventas.cobrar",
   CAJA_OPERAR: "caja.operar",

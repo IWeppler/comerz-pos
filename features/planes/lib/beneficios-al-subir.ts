@@ -148,6 +148,16 @@ export function beneficiosAlSubir(
   );
   if (productos) beneficios.push(productos);
 
+  const ventas = describirLimite(
+    reglasActuales.max_ventas_mensuales,
+    reglasDestino.max_ventas_mensuales,
+    reglasDestino,
+    "max_ventas_mensuales",
+    "venta por mes",
+    "ventas por mes",
+  );
+  if (ventas) beneficios.push(ventas);
+
   const sucursales = describirLimite(
     reglasActuales.max_sucursales,
     reglasDestino.max_sucursales,

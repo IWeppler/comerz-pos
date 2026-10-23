@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
+import { rangoMesComercial } from "@/shared/lib/mes-comercial";
 
 /**
  * Uso real de los límites del plan, para la sección "Uso de tu plan".
@@ -30,6 +31,9 @@ export interface UsoDelPlan {
    * así que este número puede quedar POR ENCIMA del límite sin que sea un
    * error: pasa con quien venía de un plan sin tope. */
   productos: number;
+  /** Ventas del mes comercial argentino, sin anuladas. Es el uso de
+   * `max_ventas_mensuales`, un tope BLANDO: pasarlo avisa y no frena. */
+  ventasDelMes: number;
 }
 
 export async function getUsoDelPlanAction(): Promise<UsoDelPlan | null> {
@@ -39,7 +43,9 @@ export async function getUsoDelPlanAction(): Promise<UsoDelPlan | null> {
   const { data: negocioId } = await supabase.rpc("negocio_actual");
   if (!negocioId) return null;
 
-  const [usuarios, invitaciones, clientesCc, productos] = await Promise.all([
+  const mes = rangoMesComercial();
+
+  const [usuarios, invitaciones, clientesCc, productos, ventasMes] = await Promise.all([
     supabase
       .from("usuarios_negocios")
       .select("id", { count: "exact", head: true })
@@ -58,6 +64,14 @@ export async function getUsoDelPlanAction(): Promise<UsoDelPlan | null> {
       .from("productos")
       .select("id", { count: "exact", head: true })
       .eq("negocio_id", negocioId),
+    // Índice (negocio_id, fecha_venta). Mismo filtro de anuladas que reportes.
+    supabase
+      .from("ventas")
+      .select("id", { count: "exact", head: true })
+      .eq("negocio_id", negocioId)
+      .neq("estado_operacion", "ANULADA")
+      .gte("fecha_venta", mes.desde)
+      .lt("fecha_venta", mes.hasta),
   ]);
 
   return {
@@ -65,5 +79,6 @@ export async function getUsoDelPlanAction(): Promise<UsoDelPlan | null> {
     invitacionesPendientes: invitaciones.count ?? 0,
     clientesConCuentaCorriente: clientesCc.count ?? 0,
     productos: productos.count ?? 0,
+    ventasDelMes: ventasMes.count ?? 0,
   };
 }

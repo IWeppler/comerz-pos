@@ -1,4 +1,5 @@
 import { TicketData } from "@/entities/ventas/types";
+import { etiquetaRecargoLibre } from "@/features/sales/lib/recargo-libre-ticket";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import {
   formatTicketMoney,
@@ -203,6 +204,15 @@ export function TicketPrintable({
                 {etiquetaRecargoCuentaCorriente(ticket!)}
               </span>
               <span>+{formatTicketMoney(ticket?.recargoCcMonto)}</span>
+            </div>
+          )}
+
+          {(ticket?.recargoLibreMonto ?? 0) > 0 && (
+            <div className="flex justify-between items-center text-gray-700">
+              <span className="truncate pr-2">
+                {etiquetaRecargoLibre(ticket!)}
+              </span>
+              <span>+{formatTicketMoney(ticket?.recargoLibreMonto)}</span>
             </div>
           )}
 

@@ -6,5 +6,5 @@ import { redirect } from "next/navigation";
  * saber de quién es sería mostrarle a un comercio los productos de otro.
  */
 export default function StoreSinNegocio() {
-  redirect("/auth");
+  redirect("/ingresar");
 }

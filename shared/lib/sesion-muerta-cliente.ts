@@ -1,4 +1,4 @@
-import { RUTA_SALIR, esSalidaDeSesion } from "./salir-sesion";
+import { RUTA_LOGIN, RUTA_SALIR, esSalidaDeSesion } from "./salir-sesion";
 
 /**
  * Detección, EN EL NAVEGADOR, de una sesión que el servidor ya no reconoce.
@@ -94,6 +94,7 @@ export function salirPorSesionMuerta(
   if (yaSaliendo) return false;
   // En el login la sesión muerta es lo esperado; rebotar acá sería un loop.
   if (ubicacion.pathname.startsWith("/auth")) return false;
+  if (ubicacion.pathname.startsWith(RUTA_LOGIN)) return false;
   if (esSalidaDeSesion(ubicacion.pathname, ubicacion.search)) return false;
 
   yaSaliendo = true;

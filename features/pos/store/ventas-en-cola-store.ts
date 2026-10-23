@@ -22,7 +22,15 @@ export interface VentaEnCola {
   pagos: CreateSalePaymentInput[];
   modoMixto: boolean;
   cuentaCorriente: boolean;
-  ccSinRecargo: boolean;
+  /** Recargo CC elegido para el ticket (null = rige el del comercio, 0 = sin
+   * recargo). Las ventas guardadas antes de que existiera "Modificar" no lo
+   * traen: ahí manda `ccSinRecargo`. */
+  ccRecargoPct?: number | null;
+  /** Campo viejo (booleano). Se sigue LEYENDO para no perder una venta
+   * guardada, pero ya no se escribe. */
+  ccSinRecargo?: boolean;
+  /** Recargo libre del ticket (contado), en %. Ausente o 0 = sin recargo. */
+  recargoLibrePct?: number;
   /** Venta en cuotas elegida (null o ausente = fiado común). Opcional: las
    * ventas guardadas antes de que existiera no lo traen. */
   cuotasCc?: number | null;
@@ -177,7 +185,8 @@ export function crearVentaEnColaVacia(
     pagos: [],
     modoMixto: false,
     cuentaCorriente: false,
-    ccSinRecargo: false,
+    ccRecargoPct: null,
+    recargoLibrePct: 0,
     reserva: false,
     promocionId: "ninguna",
     facturarElegido: null,

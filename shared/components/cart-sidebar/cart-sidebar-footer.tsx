@@ -11,6 +11,11 @@ import { MetodoPagoPOS } from "./types";
 import { CreateSalePaymentInput } from "@/entities/ventas/types";
 import type { TasaFinanciacion } from "@/shared/lib/cuotas";
 import type { PlanCuotasCc } from "@/features/clients/lib/plan-cuotas-cc";
+import {
+  formatearPct,
+  pctRecargoEfectivo,
+} from "@/shared/lib/recargo-ticket";
+import { EditorRecargo } from "./editor-recargo";
 
 /** "2026-11-19" → "19/11". */
 const diaMes = (iso: string) => {
@@ -27,13 +32,26 @@ interface CartSidebarFooterProps {
   isPOSMode: boolean;
   isPending: boolean;
   totalCarrito: number;
-  /** Recargo CC efectivamente aplicado: 0 si la vendedora lo anuló. */
+  /** Recargo CC efectivamente aplicado (con el porcentaje que rige para el
+   * ticket): 0 si la vendedora lo dejó sin recargo. */
   recargoCuentaCorriente: number;
-  /** Lo que el recargo CC sería si se aplicara. Se usa para poder mostrar la
-   * línea (y el botón de restaurar) cuando está anulado. */
+  /** Lo que el recargo CC sería con el porcentaje del COMERCIO. Se usa para
+   * poder mostrar la línea (tachada) cuando está en 0. */
   recargoCuentaCorrientePotencial?: number;
-  ccSinRecargo?: boolean;
-  onCcSinRecargoChange?: (value: boolean) => void;
+  /** Porcentaje que la vendedora eligió para ESTE ticket. Null = rige el del
+   * comercio; 0 = sin recargo. */
+  ccRecargoPct?: number | null;
+  /** `cc_recargo_default` del comercio. */
+  ccRecargoPctDefault?: number;
+  /** Cambia el porcentaje del ticket (null = volver al del comercio). Sin
+   * esta función no se ofrece "Modificar": falta el permiso. */
+  onCcRecargoPctChange?: (pct: number | null) => void;
+  /** Recargo LIBRE de una venta de contado: el porcentaje que la vendedora
+   * eligió (0 = sin recargo) y su monto. Excluyente con el de cuenta
+   * corriente. Sin `onRecargoLibrePctChange` no se ofrece: falta el permiso. */
+  recargoLibrePct?: number;
+  recargoLibreMonto?: number;
+  onRecargoLibrePctChange?: (pct: number) => void;
   /** Recargo por método de pago. Ya NO está incluido en `totalFinal`. */
   recargoMetodoMonto?: number;
   recargoMetodoEtiqueta?: string;
@@ -101,8 +119,12 @@ export function CartSidebarFooter({
   sumaPagos,
   recargoCuentaCorriente,
   recargoCuentaCorrientePotencial = 0,
-  ccSinRecargo = false,
-  onCcSinRecargoChange,
+  ccRecargoPct = null,
+  ccRecargoPctDefault = 0,
+  onCcRecargoPctChange,
+  recargoLibrePct = 0,
+  recargoLibreMonto = 0,
+  onRecargoLibrePctChange,
   recargoMetodoMonto = 0,
   recargoMetodoEtiqueta = "",
   clienteSeleccionado,
@@ -128,6 +150,8 @@ export function CartSidebarFooter({
   planCuotasModal = null,
 }: Readonly<CartSidebarFooterProps>) {
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [editandoRecargoCc, setEditandoRecargoCc] = useState(false);
+  const [editandoRecargoLibre, setEditandoRecargoLibre] = useState(false);
 
   const isEfectivoOnly =
     !modoMixto &&
@@ -146,9 +170,11 @@ export function CartSidebarFooter({
         )
       : 0;
 
-  // La línea de recargo CC sigue visible cuando está anulado (tachada), para
-  // que la vendedora vea qué se le está perdonando al cliente y pueda
-  // deshacerlo. `recargoCuentaCorriente` ya viene en 0 en ese caso.
+  // La línea de recargo CC sigue visible cuando está en 0 (tachada), para que
+  // la vendedora vea qué se le está perdonando al cliente y pueda deshacerlo.
+  // `recargoCuentaCorriente` ya viene en 0 en ese caso.
+  const ccSinRecargo = ccRecargoPct === 0;
+  const pctCcAplicado = pctRecargoEfectivo(ccRecargoPct, ccRecargoPctDefault);
   const recargoCCMostrado = ccSinRecargo
     ? recargoCuentaCorrientePotencial
     : recargoCuentaCorriente;
@@ -225,6 +251,56 @@ export function CartSidebarFooter({
               </span>
             </div>
           ) : null}
+          {/* RECARGO LIBRE: opcional, plegado, debajo de los descuentos. Solo en
+              una venta de contado (en cuenta corriente manda el recargo de
+              fiar, más abajo) y solo con permiso. */}
+          {!isCuentaCorriente && onRecargoLibrePctChange ? (
+            recargoLibrePct > 0 || editandoRecargoLibre ? (
+              <>
+                {recargoLibrePct > 0 ? (
+                  <div className="flex items-center justify-between font-mono text-sm text-warning">
+                    <span className="flex items-center gap-2">
+                      <span>
+                        RECARGO{" "}
+                        <span className="text-[11px]">
+                          {formatearPct(recargoLibrePct)}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setEditandoRecargoLibre((v) => !v)}
+                        disabled={isPending}
+                        aria-expanded={editandoRecargoLibre}
+                        className="text-[11px] uppercase tracking-wide underline underline-offset-2 hover:text-foreground disabled:opacity-50 cursor-pointer"
+                      >
+                        Modificar
+                      </button>
+                    </span>
+                    <span>+{formatCurrency(recargoLibreMonto)}</span>
+                  </div>
+                ) : null}
+                {editandoRecargoLibre ? (
+                  <EditorRecargo
+                    pctActual={recargoLibrePct}
+                    pctDefault={0}
+                    hayEleccion={false}
+                    onElegir={(pct) => onRecargoLibrePctChange(pct ?? 0)}
+                    onCerrar={() => setEditandoRecargoLibre(false)}
+                    deshabilitado={isPending}
+                  />
+                ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setEditandoRecargoLibre(true)}
+                disabled={isPending}
+                className="text-left text-[11px] uppercase tracking-wide text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50 cursor-pointer"
+              >
+                + Recargo
+              </button>
+            )
+          ) : null}
           {mostrarLineaCC ? (
             <div
               className={`flex items-center justify-between font-mono text-sm ${
@@ -234,15 +310,23 @@ export function CartSidebarFooter({
               }`}
             >
               <span className="flex items-center gap-2">
-                <span>RECARGO CC</span>
-                {onCcSinRecargoChange ? (
+                <span>
+                  RECARGO CC{" "}
+                  <span className="text-[11px]">
+                    {formatearPct(
+                      ccSinRecargo ? ccRecargoPctDefault : pctCcAplicado,
+                    )}
+                  </span>
+                </span>
+                {onCcRecargoPctChange ? (
                   <button
                     type="button"
-                    onClick={() => onCcSinRecargoChange(!ccSinRecargo)}
+                    onClick={() => setEditandoRecargoCc((v) => !v)}
                     disabled={isPending}
+                    aria-expanded={editandoRecargoCc}
                     className="text-[11px] uppercase tracking-wide underline underline-offset-2 hover:text-foreground disabled:opacity-50 cursor-pointer"
                   >
-                    {ccSinRecargo ? "Aplicar" : "Anular"}
+                    Modificar
                   </button>
                 ) : null}
               </span>
@@ -250,6 +334,16 @@ export function CartSidebarFooter({
                 +{formatCurrency(recargoCCMostrado)}
               </span>
             </div>
+          ) : null}
+          {mostrarLineaCC && onCcRecargoPctChange && editandoRecargoCc ? (
+            <EditorRecargo
+              pctActual={pctCcAplicado}
+              pctDefault={ccRecargoPctDefault}
+              hayEleccion={ccRecargoPct !== null}
+              onElegir={onCcRecargoPctChange}
+              onCerrar={() => setEditandoRecargoCc(false)}
+              deshabilitado={isPending}
+            />
           ) : null}
           {planCuotas && planCuotas.interes > 0 ? (
             <div className="flex items-center justify-between font-mono text-sm text-warning">

@@ -13,6 +13,7 @@
 export const CATEGORIAS_GASTO = [
   { valor: "infra", etiqueta: "Infraestructura" },
   { valor: "sueldo", etiqueta: "Sueldos" },
+  { valor: "comision", etiqueta: "Comisión por cliente" },
   { valor: "marketing", etiqueta: "Marketing" },
   { valor: "impuestos", etiqueta: "Impuestos" },
   { valor: "servicios", etiqueta: "Servicios" },
@@ -26,6 +27,7 @@ export type TipoGasto = "FIJO" | "UNICO";
 export const ETIQUETA_CATEGORIA: Record<string, string> = {
   infra: "Infra",
   sueldo: "Sueldos",
+  comision: "Comisión",
   marketing: "Marketing",
   impuestos: "Impuestos",
   servicios: "Servicios",

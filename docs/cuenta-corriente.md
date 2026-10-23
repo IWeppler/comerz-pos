@@ -544,8 +544,25 @@ persona toca Enviar y se abre WhatsApp. Sin API de Meta.
 "no se sabe", 0 = "se fió sin recargo") y `cuenta_corriente_movimientos.monto_recargo`.
 El default del negocio es `configuracion_pos.cc_recargo_default`, recalculado en el
 server.
-- Anularlo en el ticket ("Anular" en RECARGO CC) pide `ventas.fiar_sin_recargo`;
-  cargar deuda a mano pide `clientes.cargar_saldo`; corregir el medio de un cobro
+- **"Modificar" el recargo en el ticket** (23/10/2026, antes solo "Anular"): en
+  RECARGO CC, "Modificar" abre los atajos `Sin recargo · 5% · 10% · 15%` y un campo
+  numérico (0 a 100, coma o punto), más "Restaurar" al del comercio. Solo viaja el
+  PORCENTAJE (`cc_recargo_pct`); el monto lo recalcula el server, y se guarda en las
+  mismas `recargo_cc_porcentaje` / `recargo_cc_monto`: anular, devolver, el ticket y la
+  factura ya funcionaban con un porcentaje cualquiera. Con plan de cuotas manda la
+  tasa del plan. Solo aparece si el comercio tiene recargo de fiar > 0.
+  - **Apartarse del default —anular, bajar o subir— pide `ventas.fiar_sin_recargo`**
+    (antes solo pedía el 0, y la base no protegía un 5% donde rige 15%). Lo exige
+    `create-sale.ts` y, de nuevo, `registrar_venta` (`20261023150000`, guard sobre el
+    cuerpo vivo). **`tiene_permiso` devuelve siempre true para ADMIN**: una prueba del
+    guard tiene que usar una vendedora real, no el admin.
+  - Compat: `cc_sin_recargo=true` (lo mandan pedidos a caja y tickets guardados antes)
+    vale 0; `ventas-en-cola-store` y `PedidoContexto` leen el booleano viejo.
+  - **Fase 2 hecha (23/10/2026)**: recargo libre en venta común (contado), con columnas
+    propias y permiso `ventas.recargo_libre`. Ver [ventas.md](ventas.md#recargo-libre-del-ticket-venta-de-contado-23102026).
+    Un ticket tiene UN solo recargo: en cuenta corriente se modifica este, en contado
+    se usa el libre.
+- Cargar deuda a mano pide `clientes.cargar_saldo`; corregir el medio de un cobro
   (que cambia su recargo por método) quedó solo para ADMIN. Ver
   [seguridad.md](seguridad.md) (`20261007230000`).
 

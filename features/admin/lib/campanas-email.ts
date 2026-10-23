@@ -81,7 +81,7 @@ export const CAMPANAS: Record<EtapaAlta, Campana | null> = {
     intro: [
       "Creaste tu cuenta en Comerz y todavía no entraste. Si el mail de confirmación no te llegó o se te traspapeló, no hace falta buscarlo: entrá directo desde acá.",
     ],
-    cta: { texto: "Entrar a Comerz", ruta: "/auth" },
+    cta: { texto: "Entrar a Comerz", ruta: "/ingresar" },
     beneficios: BENEFICIOS_BASE,
     cierre: PRUEBA_Y_AYUDA,
   },
@@ -96,7 +96,7 @@ export const CAMPANAS: Record<EtapaAlta, Campana | null> = {
     intro: [
       "Confirmaste tu correo pero todavía no iniciaste sesión. Es un solo paso y quedás adentro.",
     ],
-    cta: { texto: "Entrar a Comerz", ruta: "/auth" },
+    cta: { texto: "Entrar a Comerz", ruta: "/ingresar" },
     beneficios: BENEFICIOS_BASE,
     cierre: PRUEBA_Y_AYUDA,
   },

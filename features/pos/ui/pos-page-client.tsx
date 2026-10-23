@@ -22,6 +22,9 @@ interface PosPageClientProps {
   /** Permiso `ventas.fiar_sin_recargo`: si el ticket ofrece anular el
    * recargo de cuenta corriente. */
   puedeFiarSinRecargo?: boolean;
+  /** Permiso `ventas.recargo_libre`: si el ticket de una venta de contado
+   * ofrece "+ Recargo". */
+  puedeRecargoLibre?: boolean;
   /** Permiso `stock.editar_producto`: si el POS ofrece la carga rápida. */
   puedeEditarProducto?: boolean;
   /**
@@ -41,6 +44,7 @@ export function PosPageClient({
   puedeElegirComprobante = false,
   puedeCobrar = true,
   puedeFiarSinRecargo = false,
+  puedeRecargoLibre = false,
   puedeEditarProducto = false,
   rubroInicial = RUBRO_DEFAULT,
 }: Readonly<PosPageClientProps> = {}) {
@@ -136,6 +140,7 @@ export function PosPageClient({
           puedeElegirComprobante={puedeElegirComprobante}
           puedeCobrar={puedeCobrar}
           puedeFiarSinRecargo={puedeFiarSinRecargo}
+          puedeRecargoLibre={puedeRecargoLibre}
         />
       </div>
       <PosInicio />

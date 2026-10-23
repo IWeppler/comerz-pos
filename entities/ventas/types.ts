@@ -145,6 +145,11 @@ export interface Venta {
   /** Recargo por fiar congelado en la venta (con plan, el interés). */
   recargo_cc_monto?: number | null;
   recargo_cc_porcentaje?: number | null;
+  /** Recargo libre del ticket (contado), congelado y ya incluido en `total`.
+   * Null en las ventas anteriores a 20261023160000. Excluyente con el de
+   * cuenta corriente. */
+  recargo_libre_monto?: number | null;
+  recargo_libre_porcentaje?: number | null;
   fecha_vencimiento?: string | null;
 
   perfiles?: {
@@ -227,6 +232,10 @@ export interface TicketData {
    * features/sales/lib/cuenta-corriente-ticket.ts. */
   recargoCcMonto?: number;
   recargoCcPorcentaje?: number | null;
+  /** Recargo libre del ticket (venta de contado). Ya está sumado en `total`:
+   * sin este renglón los ítems no cierran contra el total. */
+  recargoLibreMonto?: number;
+  recargoLibrePorcentaje?: number | null;
   /** Vencimiento de lo fiado, "YYYY-MM-DD". */
   venceEl?: string | null;
   /**

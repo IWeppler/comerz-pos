@@ -19,12 +19,12 @@ export const metadata = {
  * camino: uno pedía contacto y esperaba un WhatsApp, el otro exigía una cuenta
  * que no había forma de crear.
  *
- * Es ruta propia y no un modo de /auth a propósito: /auth es para el que YA
+ * Es ruta propia y no un modo de /ingresar a propósito: /ingresar es para el que YA
  * tiene cuenta. Meter el alta ahí obligaba a decidir "¿entro o me registro?"
  * antes de saber de qué se trata, y dejaba el paso más largo del producto
  * escondido detrás de un link chico.
  *
- * El layout es el MISMO que /auth (formulario a la izquierda, panel visual a la
+ * El layout es el MISMO que /ingresar (formulario a la izquierda, panel visual a la
  * derecha) y comparten el componente: entrar y registrarse son dos puertas de
  * la misma casa, y si se ven distinto parece que una de las dos no es del mismo
  * producto.
@@ -64,7 +64,7 @@ export default async function OnboardingPage() {
   return (
     <div className="min-h-svh grid grid-cols-1 lg:grid-cols-2 bg-background">
       {/* PANEL IZQUIERDO — FORMULARIO. `group` habilita el modo teclado igual
-          que en /auth: cuando algo toma foco en mobile, la marca se achica en
+          que en /ingresar: cuando algo toma foco en mobile, la marca se achica en
           vez de empujar el formulario abajo de la pantalla. */}
       <div className="group flex flex-col relative px-6 sm:px-16 py-10 lg:py-8 bg-card lg:border-r border-border/50">
         {/* Logo — desktop: arriba a la izquierda */}
@@ -84,7 +84,7 @@ export default async function OnboardingPage() {
         </div>
 
         <div className="flex-1 flex flex-col justify-center w-full max-w-sm mx-auto lg:mt-0">
-          {/* MARCA — solo mobile, mismo bloque que /auth. */}
+          {/* MARCA — solo mobile, mismo bloque que /ingresar. */}
           <div className="lg:hidden flex flex-col items-center text-center">
             <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center transition-all duration-300 ease-out group-focus-within:w-11 group-focus-within:h-11">
               <Image
@@ -114,7 +114,7 @@ export default async function OnboardingPage() {
           <p className="mt-8 text-center text-sm text-muted-foreground lg:text-left">
             ¿Ya tenés cuenta?{" "}
             <Link
-              href="/auth"
+              href="/ingresar"
               className="font-semibold text-primary underline-offset-4 hover:underline transition-colors"
             >
               Iniciar sesión
@@ -143,7 +143,7 @@ export default async function OnboardingPage() {
         </div>
       </div>
 
-      {/* Titular propio: en /auth le habla al que vuelve, acá al que todavía no
+      {/* Titular propio: en /ingresar le habla al que vuelve, acá al que todavía no
           decidió. El resto del panel es idéntico. */}
       <PanelVisualAuth titulo="Tu comercio ordenado, desde el primer día" />
     </div>

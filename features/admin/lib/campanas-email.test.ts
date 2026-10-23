@@ -18,7 +18,7 @@ describe("los dos casos que motivaron esto", () => {
     // El paso que le falta es entrar, no crear el negocio.
     const campana = campanaDeEtapa("REGISTRADO")!;
 
-    expect(campana.cta.ruta).toBe("/auth");
+    expect(campana.cta.ruta).toBe("/ingresar");
     expect(campana.asunto).not.toMatch(/configur/i);
   });
 
