@@ -27,9 +27,10 @@ const SECCIONES = [
  * fuera del borde no existe para quien no piensa en arrastrar, y cada sección
  * nueva empeoraba.
  *
- * En desktop no cambia nada: la misma columna de siempre, sin botón.
+ * En desktop es la columna de siempre, y con `colapsado` queda en solo
+ * íconos (el nombre pasa a ser el `title` de cada link).
  */
-export function AdminNav() {
+export function AdminNav({ colapsado = false }: Readonly<{ colapsado?: boolean }>) {
   const pathname = usePathname();
   const [abierto, setAbierto] = useState(false);
 
@@ -58,7 +59,9 @@ export function AdminNav() {
   const esActiva = (href: string) =>
     href === "/admincomerz" ? pathname === href : pathname.startsWith(href);
 
-  const links = (
+  // `compacto` solo aplica al desktop colapsado: el menú del celular siempre
+  // muestra los nombres.
+  const links = (compacto: boolean) => (
     <>
       {SECCIONES.map(({ href, nombre, icono: Icono }) => {
         const activa = esActiva(href);
@@ -66,15 +69,19 @@ export function AdminNav() {
           <Link
             key={href}
             href={href}
+            title={compacto ? nombre : undefined}
+            aria-label={compacto ? nombre : undefined}
             aria-current={activa ? "page" : undefined}
             className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors md:py-2 ${
+              compacto ? "justify-center" : ""
+            } ${
               activa
                 ? "bg-white/10 text-white"
                 : "text-white/70 hover:bg-white/5 hover:text-white"
             }`}
           >
             <Icono className="h-4 w-4 shrink-0" />
-            {nombre}
+            {!compacto && nombre}
           </Link>
         );
       })}
@@ -114,13 +121,13 @@ export function AdminNav() {
             id="admin-nav-mobile"
             className="absolute inset-x-0 top-full z-40 flex flex-col gap-1 border-b border-white/10 bg-zinc-900 p-3 shadow-xl md:hidden"
           >
-            {links}
+            {links(false)}
           </nav>
         </>
       )}
 
-      {/* DESKTOP: la columna de siempre */}
-      <nav className="hidden md:flex md:flex-col md:gap-1">{links}</nav>
+      {/* DESKTOP: la columna, completa o de solo íconos */}
+      <nav className="hidden md:flex md:flex-col md:gap-1">{links(colapsado)}</nav>
     </>
   );
 }

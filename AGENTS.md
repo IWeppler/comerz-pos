@@ -30,13 +30,14 @@ ventas, caja o stock es plata real.**
 | [docs/stock-y-catalogo.md](docs/stock-y-catalogo.md) | `productos`, `producto_variantes`, `productos_stock`, `movimientos_stock`, precios, remitos (`aprobar_orden_compra`, conciliación, `proveedores`, gasto del remito), importación, carga rápida, categorías, catálogo público, venta por peso, rubros |
 | [docs/facturacion.md](docs/facturacion.md) | ARCA, `comprobantes`, `emitir-comprobante.ts`, `determinar-comprobante.ts`, IVA del producto, cliente fiscal, exportaciones al contador |
 | [docs/seguridad.md](docs/seguridad.md) | Una tabla nueva, una policy, un GRANT, una función SECURITY DEFINER, un permiso, lo que lee `anon` |
-| [docs/alta-y-sesion.md](docs/alta-y-sesion.md) | `/auth`, callback, onboarding, middleware, token/claim, invitaciones, /admincomerz, embudo de alta, planes |
+| [docs/alta-y-sesion.md](docs/alta-y-sesion.md) | `/ingresar`, `/auth/*` callback, onboarding, middleware, token/claim, invitaciones, /admincomerz, embudo de alta, planes |
 | [docs/insights.md](docs/insights.md) | El panel (`/`), /reportes, cualquier señal o métrica nueva |
 | [docs/presupuestos.md](docs/presupuestos.md) | `features/presupuestos/`, cotizaciones, planes en cuotas, un `tipo_movimiento` nuevo en `venta_pagos` |
 | [docs/catalogo-marketing.md](docs/catalogo-marketing.md) | Plan de herramientas de venta del catálogo: carrito, envío gratis, cupones, sugeridos (épicas M1–M6, no empezadas) |
 | [docs/activacion-autonoma.md](docs/activacion-autonoma.md) | La guía de inicio (`features/onboarding/`), la barra de prueba, el wizard de primeros pasos, el festejo de la primera venta, `hitos_activacion`, el embudo de activación (plan V1 por tareas) |
 | [docs/notificaciones.md](docs/notificaciones.md) | La campana: `notificaciones` (hechos), avisos derivados, `novedades`, leídas, configuración por rol (épica N1–N6) |
 | [docs/suscripciones.md](docs/suscripciones.md) | El cobro de Comerz a sus comercios: planes, `precio_acordado`, `pagos_suscripcion`, MRR, suscripciones de Mercado Pago (épica S1–S5) |
+| [docs/finanzas-comerz.md](docs/finanzas-comerz.md) | Las finanzas PROPIAS de Comerz en /admincomerz: lo ganado, `gastos_comerz`, gastos en dólares y cotización MEP, comisiones por cliente, el gráfico de fijos/variables y la previsión |
 | [docs/asistente-ia.md](docs/asistente-ia.md) | Cualquier cosa con IA para el dueño: bandeja de tareas, venta libre → productos, cobranza armada, mercadería quieta, recompra, reposición (auditoría 21/10/2026 y plan A1–A7, no empezado) |
 | [docs/tienda-online.md](docs/tienda-online.md) | El carrito público (`features/store/`), pedidos u órdenes del catálogo, `registrar_pedido_catalogo`, notificación de venta, push, Mercado Pago. Pagos del checkout (`ordenes_tienda`, `eventos_pago`, `mercadopago_conexiones`): además [docs/pagos-auditoria.md](docs/pagos-auditoria.md) y [docs/pagos-stopgaps.md](docs/pagos-stopgaps.md) |
 
@@ -378,3 +379,13 @@ las ventas de cada cliente).
   (esas comparten stock en unidad base, para lo que se vende fraccionado).
 - **Presupuestos con listas de precios y promos**: hoy cotizan a precio base (ver
   docs/presupuestos.md). Pesa en rubros que cotizan a obras (pinturería, ferretería).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
