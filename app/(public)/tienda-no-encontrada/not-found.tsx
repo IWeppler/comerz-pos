@@ -20,7 +20,7 @@ export default function NoEncontrada() {
         </p>
         <p className="text-sm text-muted-foreground">
           Si es tu comercio,{" "}
-          <Link href={urlDelPanel("/auth")} className="underline">
+          <Link href={urlDelPanel("/ingresar")} className="underline">
             ingresá a tu panel
           </Link>{" "}
           para revisar la configuración.

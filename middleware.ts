@@ -12,7 +12,7 @@ import {
 import { decidirRuteo, RUTA_TIENDA_NO_ENCONTRADA } from "@/shared/lib/ruteo-host";
 import { resolverTienda } from "@/shared/lib/cache-tenants";
 import { MENSAJE_SESION_VENCIDA } from "@/shared/lib/sesion-vencida";
-import { RUTA_SALIR, esSalidaDeSesion } from "@/shared/lib/salir-sesion";
+import { RUTA_LOGIN, RUTA_SALIR, esSalidaDeSesion } from "@/shared/lib/salir-sesion";
 import { RUTA_SESION_INTERRUMPIDA } from "@/shared/lib/sesion-interrumpida";
 import {
   COOKIE_IMPERSONATE,
@@ -276,7 +276,8 @@ async function rutear(request: NextRequest): Promise<NextResponse> {
   const claims = verificado?.claims ?? null;
   const user = claims ? { id: claims.sub as string } : null;
 
-  const isAuthRoute = pathname.startsWith("/auth");
+  const isAuthRoute =
+    pathname.startsWith("/auth") || pathname.startsWith(RUTA_LOGIN);
   // Salida de una sesión que el servidor ya no reconoce. Se calcula acá arriba
   // porque el gate 5 tiene que consultarlo antes de rebotar a nadie al panel:
   // devolver al panel a quien viene a soltar un token muerto es justamente el
@@ -456,7 +457,7 @@ async function rutear(request: NextRequest): Promise<NextResponse> {
       }
 
       const url = request.nextUrl.clone();
-      url.pathname = "/auth";
+      url.pathname = RUTA_LOGIN;
       return NextResponse.redirect(url);
     };
 
@@ -543,7 +544,7 @@ async function rutear(request: NextRequest): Promise<NextResponse> {
     // ya contestaba la página del selector.
     if (count === 0 && (membresias ?? []).length > 0) {
       const url = request.nextUrl.clone();
-      url.pathname = "/auth";
+      url.pathname = RUTA_LOGIN;
       url.search = "?error=sin-negocio";
       return NextResponse.redirect(url);
     }

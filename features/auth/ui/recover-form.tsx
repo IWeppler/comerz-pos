@@ -32,7 +32,7 @@ export function RecoverForm() {
         </p>
         <div className="pt-4">
           <Button asChild variant="outline" className="w-full h-11 font-bold">
-            <Link href="/auth">Volver al inicio de sesión</Link>
+            <Link href="/ingresar">Volver al inicio de sesión</Link>
           </Button>
         </div>
       </div>
@@ -83,7 +83,7 @@ export function RecoverForm() {
 
       <div className="text-center pt-2">
         <Link
-          href="/auth"
+          href="/ingresar"
           className="inline-flex items-center text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4 mr-2" />

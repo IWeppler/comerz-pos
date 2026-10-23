@@ -48,8 +48,16 @@ export const RUTA_SALIR = "/auth/salir";
 export const PARAM_SESION = "sesion";
 export const VALOR_SESION_VENCIDA = "vencida";
 
+/**
+ * La pantalla de login. Se llamaba `/auth` hasta el 23/10/2026; `/auth` queda
+ * como redirect (next.config) y como prefijo de los handlers (`callback`,
+ * `confirm`, `salir`, `actualizar-password`), que están grabados en los
+ * templates de mail de Supabase y en las URLs de retorno de Google.
+ */
+export const RUTA_LOGIN = "/ingresar";
+
 export const DESTINO_LOGIN_SESION_VENCIDA =
-  `/auth?${PARAM_SESION}=${VALOR_SESION_VENCIDA}` as const;
+  `${RUTA_LOGIN}?${PARAM_SESION}=${VALOR_SESION_VENCIDA}` as const;
 
 /**
  * Rutas donde el middleware NO puede rebotar a un usuario "logueado" al panel,

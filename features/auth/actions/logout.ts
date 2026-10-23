@@ -45,5 +45,5 @@ export async function logoutAction() {
   cookieStore.delete(COOKIE_NEGOCIO_ACTIVO);
   cookieStore.delete(COOKIE_IMPERSONATE);
 
-  redirect('/auth');
+  redirect('/ingresar');
 }

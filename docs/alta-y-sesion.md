@@ -1,6 +1,6 @@
 # Alta de comercios, sesión y panel de Comerz
 
-Leé esto antes de tocar `/auth`, `/auth/callback`, `/empezar`, el middleware,
+Leé esto antes de tocar `/ingresar` (el login), `/auth/callback`, `/empezar`, el middleware,
 `crearNegocioAction`, `aceptarInvitacionAction`, el custom access token hook,
 `embudo_de_alta` / `funnel_comerz`, o /admincomerz.
 
@@ -14,7 +14,7 @@ que exista el negocio, y el claim queda viejo: `/` → "ningún negocio" →
   refrescan el token (los dos únicos momentos en que cambian las membresías), y el
   gate 4 del middleware, cuando el conteo desmiente al claim, le pregunta a la base.
 - El gate cuenta solo membresías HABILITADAS (igual que `listarMisNegociosAction`).
-  Cero habilitadas → `/auth?error=sin-negocio`; una sola la elige el middleware
+  Cero habilitadas → `/ingresar?error=sin-negocio`; una sola la elige el middleware
   seteando la cookie.
 - **Cada rebote infinito: buscar las dos fuentes que se contradicen antes que el
   redirect** (misma forma que `sesion-interrumpida.ts` y `salir-sesion.ts`).
@@ -64,13 +64,20 @@ prendido en producción (8 cuentas al 22/10/2026).
 - Recuperar la contraseña cierra las otras sesiones (`scope: 'others'`); cambiarla
   desde el perfil no, para no echar a la caja que está vendiendo.
 
-## Las dos puertas: `/auth` y `/empezar`
+## Las dos puertas: `/ingresar` y `/empezar`
 
-- `/auth` es SOLO para quien ya tiene cuenta; `/empezar` es el alta (cuenta →
+- `/ingresar` es SOLO para quien ya tiene cuenta; `/empezar` es el alta (cuenta →
   negocio), pública, y con sesión arranca en el paso 2. Para un CTA, Instagram o
   una landing: "Comenzar" → `app.comerz.app/empezar`, "Ingresar" →
-  `app.comerz.app/auth`. La raíz sin sesión sigue yendo al login: ahí vuelven las
+  `app.comerz.app/ingresar`. La raíz sin sesión sigue yendo al login: ahí vuelven las
   vendedoras y la PWA instalada.
+- **El login se llamaba `/auth` hasta el 23/10/2026.** `next.config.ts` redirige
+  la ruta EXACTA `/auth` → `/ingresar` (conserva `?error=`). Los handlers siguen
+  bajo `/auth/*` (`callback`, `confirm`, `salir`, `actualizar-password`): están
+  grabados en los templates de mail de Supabase y en la URL de retorno de Google,
+  así que moverlos exige tocar el dashboard de Supabase. La constante es
+  `RUTA_LOGIN` (`shared/lib/salir-sesion.ts`); el middleware trata `/ingresar`
+  como ruta de auth igual que `/auth*`.
 - Hasta el 23/10/2026 el alta se llamaba `/onboarding`: `next.config.ts` la
   redirige (mails ya enviados, links compartidos) conservando la query.
 - **Origen del alta** (`shared/lib/origen-alta.ts`, con tests): el middleware

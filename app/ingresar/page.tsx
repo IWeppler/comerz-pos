@@ -1,10 +1,10 @@
-// app/auth/page.tsx
+// app/ingresar/page.tsx
 import { AuthPanel } from "@/features/auth/ui/auth-panel";
 import Link from "next/link";
 import Image from "next/image";
 import { PanelVisualAuth } from "@/features/auth/ui/panel-visual";
 
-export default function AuthPage() {
+export default function IngresarPage() {
   return (
     <div className="min-h-svh grid grid-cols-1 lg:grid-cols-2 bg-background">
       {/* PANEL IZQUIERDO — FORMULARIO.

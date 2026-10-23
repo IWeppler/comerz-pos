@@ -87,7 +87,7 @@ export default function DashboardError({
             con estado que ya no vale, y lo único que lo limpia entero es
             cargar la app de nuevo. */}
         <Button asChild className="mt-6" size="sm">
-          <a href="/auth">
+          <a href="/ingresar">
             <LogIn className="h-4 w-4" />
             Volver a entrar
           </a>
