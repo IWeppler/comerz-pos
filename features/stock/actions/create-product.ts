@@ -23,6 +23,7 @@ import {
 } from "@/shared/lib/fiscal-producto";
 import { parsearCantidadDeEntrada } from "@/shared/lib/unidad-venta";
 import { normalizarImei } from "@/entities/ventas/imei";
+import { mensajePermisoStock } from "../lib/mensaje-permiso-stock";
 
 export async function crearProductoAction(
   prevState: { error: string | null; success: boolean },
@@ -237,7 +238,9 @@ export async function crearProductoAction(
   if (errorProducto || !nuevoProducto) {
     console.error(errorProducto);
     return {
-      error: "Hubo un error al crear el producto base.",
+      error:
+        mensajePermisoStock(errorProducto?.message) ??
+        "Hubo un error al crear el producto base.",
       success: false,
     };
   }

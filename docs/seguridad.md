@@ -25,7 +25,15 @@ AGENTS.md porque aplican a toda migración.
 - **`revoke ... from public` NO alcanza en funciones internas**: Supabase da EXECUTE
   a `anon` y `authenticated` por default privileges; hay que nombrarlos (guard con
   `has_function_privilege`). `cuenta_financiera_sistema` y `sembrar_*` revocaron solo
-  de public: deuda.
+  de public; saldado el 22/10/2026 (`20261022210000`) junto con `reglas_negocio` y
+  `cuenta_actual_venta_pago`: quedan solo para postgres y service_role. Las llaman
+  funciones DEFINER (corren como postgres), así que cerrarlas no rompe nada; una
+  función INVOKER o una policy que las llame sí se rompería (la migración lo
+  verifica).
+- **Storage**: `productos` y `logos` aceptan solo png, jpeg, webp y avif (los de
+  `shared/lib/formatos-imagen.ts`) y hasta 10 MB (el banner sube crudo desde el
+  celular). Un formato nuevo en la app pide sumarlo también al bucket, o la subida
+  falla con 400/415.
 
 ## Aislamiento entre ROLES (`20260905120000`)
 
@@ -34,7 +42,9 @@ AGENTS.md porque aplican a toda migración.
   VENDEDOR; `perfiles.rol` (texto legacy) se sincroniza, ENCARGADO → 'VENDEDOR'.
   Pertenencia y rol son POR NEGOCIO (`usuarios_negocios`).
 - Las policies de configuración y catálogo exigen permiso: `productos` pide
-  `stock.editar_producto` (borrar `stock.eliminar_producto`), `categorias`
+  `stock.editar_producto` (borrar `stock.eliminar_producto`) — **OJO: hasta el 23/10/2026
+  solo el borrado lo pedía; desde `20261023000000` el alta y el cambio de precio
+  o costo también (por trigger, ver "Catálogo y stock por permiso")** —, `categorias`
   `stock.cambiar_categoria`, y `configuracion_pos`, `metodos_pago` y alta/baja de
   promociones `is_admin()`. Sin eso, una vendedora cambiaba precios y comisiones
   desde la consola del navegador.
@@ -67,13 +77,64 @@ AGENTS.md porque aplican a toda migración.
   - `clientes.corregir_cobro_cc` se sacó de ENCARGADO y VENDEDOR (15 filas; en Evens
     lo tenían las 4 vendedoras).
   - Los dos nuevos se asignaron solo al ADMIN; cada comercio los da a otros roles
-    desde Empleados y permisos. Quedan abiertos, sin cambio: el UPDATE de
-    movimientos manuales (`editarMovimientoManualAction` chequea `is_admin` en
-    Node, la RLS no) y `ajustar_saldo_cliente` (INVOKER).
-- **Tres tablas quedan abiertas a propósito**: `producto_variantes`,
-  `productos_stock` y el UPDATE de `promociones`. La venta las escribe con la RLS de
-  quien vende (INVOKER) y la RLS es por fila, no por columna. Cerrarlas pide mover la
-  escritura angosta a una DEFINER que valide el negocio; toca el camino de la venta.
+    desde Empleados y permisos. El UPDATE de movimientos manuales y
+    `ajustar_saldo_cliente`, que quedaban abiertos, se cerraron el 22/10/2026 (ver
+    "Escritura DIRECTA vs. por RPC").
+- **Escritura DIRECTA vs. por RPC** (`20261022220000`, auditoría del 22/10/2026).
+  `clientes`, `cuenta_corriente_movimientos`, `promociones`, `producto_variantes`,
+  `producto_variante_valores` y `productos_stock` tenían "permitir todo" para
+  cualquier rol porque la venta (INVOKER) las escribe con la RLS de quien vende.
+  Ahora `security.es_escritura_directa()` mira `request.path` (lo setea PostgREST en
+  cada pedido): `'/clientes'` es directa, `'/rpc/…'` es dentro de una función, sin
+  path no viene de PostgREST. La escritura DIRECTA pide permiso:
+  - `clientes`: saldo (o alta con saldo ≠ 0) `clientes.cargar_saldo`; lista de
+    precios ADMIN; borrar ADMIN. Por trigger (`trg_proteger_campos_cliente`), porque
+    una policy no compara viejo con nuevo. service_role pasa.
+  - `cuenta_corriente_movimientos`: CRÉDITO manual `clientes.cargar_saldo` (el DÉBITO
+    ya lo pedía en todos los caminos); editar y borrar ADMIN.
+  - `promociones`: editar ADMIN. Variantes y valores: EDITAR y BORRAR directo
+    `stock.editar_producto`. El ALTA quedó abierta y `productos_stock` también
+    (`20261022221000`): cerrarlas rompió el alta de producto de las vendedoras de
+    Librería Colores, que no tienen ese permiso y crean productos a diario.
+  - `productos`: las policies de INSERT y UPDATE siguen `true`; lo que cierra el
+    alta y el precio es el trigger de `20261023000000` (ver abajo).
+  - `ajustar_saldo_cliente` pide `clientes.cargar_saldo` adentro.
+  - **Regla**: dentro de una RPC manda la RPC, así que **toda RPC que escribe estas
+    tablas tiene que validar su propio permiso**. Desde `20261022230000` lo hacen
+    `anular_venta` (`ventas.anular`), `registrar_cobro_cc` (`clientes.cobrar_cc`;
+    service_role pasa porque la llama `aplicar_pago_mp_cobro_cc` desde el webhook),
+    `importar_productos_planilla` (`stock.importar_planilla`) y
+    `fusionar_productos` (`stock.eliminar_producto`). Medido antes: 0 usos sin
+    permiso en 90 días.
+  - **Catálogo y stock por permiso** (`20261023000000`, 23/10/2026). Antes se le dio
+    `stock.editar_producto` al VENDEDOR de Librería Colores (único rol sin el
+    permiso que hacía catálogo, medido en todos los comercios). Ahora:
+    - `productos` por escritura directa: el ALTA y cambiar `precio` o
+      `precio_costo` piden `stock.editar_producto` (`trg_proteger_campos_producto`).
+      Fotos, publicación y categoría siguen abiertas: el 5/9/2026 cerrar
+      `productos` entero dejó 104 fotos de vendedoras sin llegar a la base.
+    - Alta directa de variantes y valores: `stock.editar_producto`;
+      `productos_stock`: eso o `stock.dar_baja`.
+    - `guardar_variantes_producto` (y `_impl`): `stock.editar_producto`.
+    - `ajustar_stock_*` (`security.puede_ajustar_stock`): bajar pide
+      `ventas.cobrar` / `stock.dar_baja` / `stock.editar_producto`; subir pide
+      `stock.editar_producto` / `ventas.anular` / `ventas.devolver` /
+      `stock.ingresar_remito`. Excepción: `REVERSO_VENTA` de una venta que no
+      existe, hasta lo que ESE usuario descontó con ESA referencia (lo hace
+      `create-sale.ts` cuando `registrar_venta` falla). service_role pasa.
+    - **`stock.editar_producto` no lo mira la UI**: la pantalla deja intentar y el
+      error llega traducido (`features/stock/lib/mensaje-permiso-stock.ts`).
+      Pendiente: esconder la edición a quien no lo tiene.
+    - Verificado en seco (15 casos) y en vivo después de aplicar: venta de una
+      vendedora de Evens, alta de producto de una vendedora de Librería Colores.
+  - **Antes de cerrar una escritura, medir quién la hace HOY** (movimientos_stock,
+    anulada_por, importado_por…): el 22/10 una policy de alta de variantes rompió
+    el alta de producto de Librería Colores por confiar en lo que decía este
+    documento sobre `productos` en vez de mirar la base.
+  - La lista de precios del cliente es una SUGERENCIA: en el POS la vendedora
+    elige cualquier lista en el ticket. Cerrar la ficha no cierra eso.
+  - Verificado en seco el 22/10 con la vendedora y la admin reales del Kiosco
+    Demo, simulando las dos rutas (17 casos + lista de precios).
 - El predicado va `(select public.tiene_permiso('...'))` CON subselect (misma razón
   que `current_negocio_id`).
 - **Antes de restringir una tabla, buscar quién la escribe siguiendo el CÓDIGO**, no
@@ -83,6 +144,22 @@ AGENTS.md porque aplican a toda migración.
   una de DELETE lo es `with_check`.
 - La pantalla de roles lee el catálogo `permisos` entero: un permiso nuevo aparece
   solo. `crear_negocio_con_owner` le da al ADMIN todas las filas de `permisos`.
+- **Un ADMIN no maneja cuentas ajenas** (`20261022190000`, auditoría del
+  22/10/2026). Hasta ahí, `alta_empleado_local` (DEFINER, llamable por PostgREST)
+  sumaba al negocio CUALQUIER cuenta sin membresías, y `editarEmpleadoAction` le
+  ponía contraseña con service_role: el admin de cualquier comercio podía
+  quedarse con la cuenta del super admin (sin membresías, con su UUID visible en
+  `movimientos_stock` de 4 comercios). Ahora:
+  - `alta_empleado_local` solo acepta la cuenta que la action acaba de crear
+    (< 10 min, sin login) y nunca al super admin (`USUARIO_NO_ELEGIBLE`).
+  - `editar_empleado` devuelve `gestiona_acceso`, que decide mail, contraseña y
+    cierre de sesiones: solo cuentas creadas en el mostrador y sin otro negocio.
+    Afuera: invitadas (ACEPTADA a su mail), dueños, Google, super admin. La action
+    falla cerrado si el dato no viene.
+  - Las invitaciones nunca suman al super admin a un negocio.
+  - **Regla**: una RPC que recibe un `usuario_id` y lo ata al negocio, o una action
+    que toca Auth con service_role, tiene que probar que la cuenta es DEL negocio,
+    no solo que quien llama es ADMIN.
 
 ## Acceso anónimo: cerrado por default (`20260811140000`)
 
@@ -158,4 +235,17 @@ La RPC pública sigue devolviendo únicamente IDs. Diseño y estado en
 ## Auth y sesión
 
 Ver [alta-y-sesion.md](alta-y-sesion.md): claim del token, callback de un solo uso,
-Google + confirmación de mail.
+Google + confirmación de mail (resuelto el 22/10/2026 anulando la clave previa).
+- Contraseña: mínimo 8 en TODOS los lugares (`shared/lib/password.ts`), y el mismo
+  número tiene que estar en Supabase (Email → Minimum password length). La
+  protección contra contraseñas filtradas (HaveIBeenPwned) va prendida.
+- **Límite de intentos propio** (`20261022200000`, auditoría del 22/10/2026): el
+  login corre en una server action y Supabase ve la IP de Vercel, así que su
+  límite por IP no frena a nadie. `intentos_auth` (solo service_role, claves
+  hasheadas) cuenta por IP real (`x-forwarded-for` de Vercel) y por mail. Topes
+  en `shared/lib/limites-auth.ts`: login 30 fallidos por IP / 10 por mail en 15
+  min (solo FALLIDOS: las vendedoras de un local comparten IP); recuperar 10/5 por
+  hora; registro 10 por IP por hora; reenviar verificación 20/5 por hora. Falla
+  ABIERTO si la base no contesta. Queda afuera quien pegue directo a la API de
+  Auth con la anon key: ahí rige el límite por IP de Supabase, que sí ve la IP
+  real.

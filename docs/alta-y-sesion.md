@@ -37,9 +37,32 @@ personas que confirmaban el mail y veían "El enlace venció".
 
 Juntos abren un agujero: con la confirmación apagada cualquiera registra un mail
 ajeno, y si después el dueño real entra con Google, Supabase vincula las identidades
-y cae en ESA cuenta. Está escrito en `shared/lib/auth-google.ts`. **Hay que elegir
-una salida antes de prender `GOOGLE_AUTH_HABILITADO`** (env var, solo el literal
-`"on"`).
+y cae en ESA cuenta. Está escrito en `shared/lib/auth-google.ts`. Google ya está
+prendido en producción (8 cuentas al 22/10/2026).
+- **Salida elegida el 22/10/2026**: en el login que VINCULA Google (identidad de
+  hace ≤ 10 min), si la identidad `email` tiene `identity_data.email_verified` en
+  false, `/auth/callback` reemplaza la contraseña por una aleatoria (service_role,
+  marca `app_metadata.credencial_previa_anulada_en`) y cierra las otras sesiones.
+  Lógica pura con tests en `features/auth/lib/credencial-previa.ts`.
+- **`email_confirmed_at` no dice si el mail se probó**: con la confirmación apagada
+  se llena en el alta. Hasta el 22/10/2026 el banner de verificación lo miraba y
+  no aparecía nunca, el alta no mandaba el mail de verificación y "Reenviar"
+  (`resend` signup) contestaba OK sin mandar nada. Ahora `mailVerificado`
+  (`features/auth/lib/verificacion-email.ts`) cuenta como probado: la marca
+  `app_metadata.email_verificado_en` (la escriben `/auth/callback` y
+  `/auth/confirm` cuando la sesión se abrió con un link del correo, por el claim
+  `amr`), `email_verified` de la identidad `email`, o una identidad de Google.
+  "Reenviar" manda un magic link.
+- **El banner de verificación es solo para la DUEÑA** (`es_owner`, sin Modo Dios):
+  10 de 14 empleados de mostrador tenían mails inventados por la dueña; las
+  invitadas ya probaron el mail al aceptar. Al 22/10 lo ven 8 dueñas.
+- El magic link viaja como PKCE a `/auth/callback`: si se abre en OTRO dispositivo
+  que el que pidió el reenvío, el canje falla y no se marca. La salida es el
+  template "Magic Link" de Supabase apuntando a `/auth/confirm` con
+  `token_hash` (como la invitación).
+- Las dos cuentas ya vinculadas antes del arreglo se revisaron a mano: legítimas.
+- Recuperar la contraseña cierra las otras sesiones (`scope: 'others'`); cambiarla
+  desde el perfil no, para no echar a la caja que está vendiendo.
 
 ## Embudo de alta (/admincomerz)
 
@@ -73,7 +96,8 @@ una salida antes de prender `GOOGLE_AUTH_HABILITADO`** (env var, solo el literal
   franja entre el navbar y el contenido, solo ADMIN y solo `estado = 'prueba'`
   con vencimiento. Antes de vender pide el próximo paso OBLIGATORIO de la guía;
   vendiendo muestra las ventas; a ≤3 días o vencida pide plan; con una
-  solicitud pendiente deja de apurar. Días por día comercial argentino
+  solicitud pendiente NO hay barra (el "Pediste el plan X, te escribimos para
+  activarlo" se sacó el 22/10/2026: no le servía a nadie verlo en cada pantalla). Días por día comercial argentino
   (`plan_vencimiento` es timestamptz y el server corre en UTC). Los datos del
   negocio viajan en `getContextoPlanAction` (sin viaje nuevo); activación,
   conteo de ventas y solicitud solo para negocios en prueba, en un Suspense.

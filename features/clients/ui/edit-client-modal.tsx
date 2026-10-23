@@ -33,12 +33,19 @@ interface EditClientModalProps {
   cliente: Cliente | null;
   onClose: () => void;
   entregaMinimaActiva?: boolean;
+  /**
+   * La lista de precios es un descuento permanente: solo la asigna un ADMIN
+   * (la base lo exige, `trg_proteger_campos_cliente`). Sin el selector el form
+   * no manda el centinela y la action no toca la lista.
+   */
+  puedeAsignarLista?: boolean;
 }
 
 export function EditClientModal({
   cliente,
   onClose,
   entregaMinimaActiva = false,
+  puedeAsignarLista = false,
 }: Readonly<EditClientModalProps>) {
   const [isPending, startTransition] = useTransition();
   const queryClient = useQueryClient();
@@ -280,7 +287,9 @@ export function EditClientModal({
                 />
               </div>
 
-              <SelectorListaCliente listaPrecioId={cliente.lista_precio_id} />
+              {puedeAsignarLista && (
+                <SelectorListaCliente listaPrecioId={cliente.lista_precio_id} />
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="edit-notas" className="text-sm font-medium">
