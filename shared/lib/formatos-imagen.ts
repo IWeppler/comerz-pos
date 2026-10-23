@@ -3,9 +3,10 @@
  *
  * Existe como constante porque la lista estaba copiada en cuatro pantallas
  * (banner, portada de categoría, logo del comercio y fotos de producto) y ya
- * había divergido de lo que la base acepta: los buckets `productos` y `logos`
- * tienen `allowed_mime_types` en NULL, o sea que Storage no rechaza ninguno —
- * el único filtro es este `accept`, y estaba desactualizado.
+ * había divergido. Desde el 22/10/2026 (`20261022210000`) los buckets
+ * `productos` y `logos` tienen `allowed_mime_types` con ESTOS cuatro tipos: un
+ * formato nuevo acá necesita sumarse también al bucket, o la subida falla con
+ * 415.
  *
  * AVIF entra porque es lo que exporta hoy cualquier herramienta de diseño y
  * cualquier celular moderno: dejarlo afuera no protege de nada, solo obliga a
