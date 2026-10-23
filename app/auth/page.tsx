@@ -42,34 +42,31 @@ export default function AuthPage() {
             esqueleto. Ver el comentario en `auth-panel.tsx`. */}
         <AuthPanel />
 
-       <div className="mt-8 text-center space-y-3">
-        <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground/80">
-          Al continuar, aceptás nuestros{" "}
+        {/* Una sola línea. La aceptación queda porque "Continuar con Google"
+            también crea cuentas; el copyright se fue (23/10/2026): no
+            protege nada que la ley no proteja sola, y con las dos cosas el
+            login pasaba el alto de la pantalla del celular. */}
+        <p className="mt-6 text-center text-[11px] leading-snug text-muted-foreground/70">
+          Al continuar aceptás los{" "}
           <Link
             href="/terminos"
             className="underline underline-offset-2 hover:text-foreground transition-colors"
           >
-            Términos y Condiciones
+            Términos
           </Link>{" "}
-          y reconocés haber leído nuestra{" "}
+          y la{" "}
           <Link
             href="/privacidad"
             className="underline underline-offset-2 hover:text-foreground transition-colors"
           >
-            Política de Privacidad
+            Privacidad
           </Link>
           .
         </p>
-
-        <p className="text-[11px] text-muted-foreground/60">
-          © {new Date().getFullYear()} Comerz. Todos los derechos
-          reservados.
-        </p>
-      </div>
       </div>
 
       {/* Mitad derecha: vive en features/auth/ui/panel-visual.tsx porque la
-          comparte con /onboarding — son dos pantallas que tienen que verse
+          comparte con /empezar — son dos pantallas que tienen que verse
           como la misma cosa. */}
       <PanelVisualAuth />
     </div>
