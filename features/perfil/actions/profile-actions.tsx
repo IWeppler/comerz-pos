@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
+import { PASSWORD_MIN, mensajePasswordCorta } from "@/shared/lib/password";
 
 // --- 1. ACTUALIZAR PERFIL (Nombre y Correo) ---
 export async function updateProfileAction(formData: FormData) {
@@ -61,8 +62,8 @@ export async function updatePasswordAction(formData: FormData) {
     return { success: false, error: "Las contraseñas nuevas no coinciden." };
   }
 
-  if (newPassword.length < 6) {
-    return { success: false, error: "La nueva contraseña debe tener al menos 6 caracteres." };
+  if (newPassword.length < PASSWORD_MIN) {
+    return { success: false, error: mensajePasswordCorta };
   }
 
   const cookieStore = await cookies();

@@ -3,6 +3,8 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import { urlBaseDeLaRequest } from "@/shared/lib/url-base-request";
+import { hayCupoAuth } from "@/shared/lib/limite-auth";
+import { MENSAJE_DEMASIADOS_INTENTOS } from "@/shared/lib/limites-auth";
 
 export interface ResetPasswordState {
   error: string;
@@ -17,6 +19,11 @@ export async function resetPasswordAction(
 
   if (!email) {
     return { error: "Por favor, ingresá un correo válido.", success: false };
+  }
+
+  // Cada pedido manda un mail: tope por IP y por mail. Ver `limites-auth.ts`.
+  if (!(await hayCupoAuth("RECUPERAR", email, { registrar: true }))) {
+    return { error: MENSAJE_DEMASIADOS_INTENTOS, success: false };
   }
 
   const cookieStore = await cookies();

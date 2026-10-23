@@ -9,8 +9,11 @@ import type { ProgresoActivacion } from "@/features/onboarding/lib/pasos-activac
  * base.
  *
  * Las etapas, en orden de prioridad:
- *  1. Ya pidió un plan → no se lo apura más: se le confirma que está en curso.
- *     Insistir con "elegí un plan" a quien ya eligió es ruido que enoja.
+ *  1. Ya pidió un plan → no hay barra (null). Insistir con "elegí un plan" a
+ *     quien ya eligió es ruido que enoja, y confirmarle "te escribimos para
+ *     activarlo" en cada pantalla tampoco le servía de nada (sacado el
+ *     22/10/2026): en ese lugar queda a la vista el aviso de verificar el
+ *     correo, si falta.
  *  2. Prueba vencida → conversión, tono de error.
  *  3. Quedan pocos días → conversión: elegir plan.
  *  4. No vendió todavía → activación: el próximo paso de la guía, con nombre.
@@ -22,7 +25,7 @@ import type { ProgresoActivacion } from "@/features/onboarding/lib/pasos-activac
 /** A partir de acá la barra deja de pedir configuración y pide un plan. */
 export const DIAS_PRUEBA_CONVERSION = 3;
 
-export type TonoBarraPrueba = "neutral" | "aviso" | "error" | "exito";
+export type TonoBarraPrueba = "neutral" | "aviso" | "error";
 
 export interface BarraPrueba {
   /** La parte que se lee primero: los días. */
@@ -72,7 +75,7 @@ export function construirBarraPrueba(params: {
   ventas: number | null;
   /** Nombre del plan pedido y todavía no aplicado. */
   planSolicitado: string | null;
-}): BarraPrueba {
+}): BarraPrueba | null {
   const ahora = params.ahora ?? new Date();
   const dias = diasCalendario(ahora, params.vencimiento);
   const total = Math.max(1, diasCalendario(params.inicio, params.vencimiento));
@@ -81,15 +84,7 @@ export function construirBarraPrueba(params: {
     Math.max(0, Math.round((dias / total) * 100)),
   );
 
-  if (params.planSolicitado) {
-    return {
-      titulo: `Pediste el plan ${params.planSolicitado}`,
-      detalle: "Te escribimos para activarlo. Mientras tanto seguís usando Comerz.",
-      cta: { etiqueta: "Ver pedido", href: HREF_PLANES },
-      tono: "exito",
-      porcentajeRestante: null,
-    };
-  }
+  if (params.planSolicitado) return null;
 
   if (dias < 0) {
     return {

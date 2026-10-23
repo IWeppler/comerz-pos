@@ -22,6 +22,7 @@ import { ReenviarVerificacion } from "@/features/auth/ui/reenviar-verificacion";
 import { registrarPasoOnboardingAction } from "@/features/auth/actions/paso-onboarding";
 import { BotonGoogle, SeparadorAuth } from "@/features/auth/ui/boton-google";
 import { RUBROS, TAMANOS_EQUIPO } from "@/shared/lib/rubros";
+import { PASSWORD_MIN } from "@/shared/lib/password";
 
 const estadoRegistro: RegistroState = { error: "" };
 const estadoNegocio = { error: null as string | null, success: false };
@@ -181,9 +182,9 @@ export function OnboardingStepper({
               type="password"
               autoComplete="new-password"
               required
-              minLength={6}
+              minLength={PASSWORD_MIN}
               disabled={registrando}
-              ayuda="Mínimo 6 caracteres."
+              ayuda={`Mínimo ${PASSWORD_MIN} caracteres.`}
             />
             <Error mensaje={registro.error} />
             <Button

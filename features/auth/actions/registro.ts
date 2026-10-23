@@ -5,6 +5,10 @@ import { cookies } from "next/headers";
 import { COOKIE_NEGOCIO_ACTIVO } from "@/shared/lib/negocio-activo";
 import { urlBaseDeLaRequest } from "@/shared/lib/url-base-request";
 import { enviarVerificacionEmailAction } from "./verificacion-email";
+import { PASSWORD_MIN, mensajePasswordCorta } from "@/shared/lib/password";
+import { mailVerificado } from "../lib/verificacion-email";
+import { hayCupoAuth } from "@/shared/lib/limite-auth";
+import { MENSAJE_DEMASIADOS_INTENTOS } from "@/shared/lib/limites-auth";
 
 export interface RegistroState {
   error: string;
@@ -42,14 +46,20 @@ export async function registrarseAction(
     return { error: "Completá tu nombre, email y contraseña." };
   }
 
-  // Mismo piso que pide Supabase por defecto. Se valida acá para dar un
-  // mensaje en castellano en vez del error crudo del proveedor.
-  if (password.length < 6) {
-    return { error: "La contraseña necesita al menos 6 caracteres." };
+  // Mismo piso que se configura en Supabase (`PASSWORD_MIN`). Se valida acá
+  // para dar un mensaje en castellano en vez del error crudo del proveedor.
+  if (password.length < PASSWORD_MIN) {
+    return { error: mensajePasswordCorta };
   }
 
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return { error: "Revisá el email." };
+  }
+
+  // Tope por IP: frena el alta masiva de cuentas (y con ella, de mails
+  // pre-registrados). Ver `limites-auth.ts`.
+  if (!(await hayCupoAuth("REGISTRO", email, { registrar: true }))) {
+    return { error: MENSAJE_DEMASIADOS_INTENTOS };
   }
 
   const cookieStore = await cookies();
@@ -113,7 +123,11 @@ export async function registrarseAction(
   //
   // Un fallo del envío NO puede voltear un alta que ya está hecha: se loguea y
   // el usuario tiene el botón de reenviar en el banner.
-  if (!data.user?.email_confirmed_at) {
+  //
+  // `mailVerificado` y no `email_confirmed_at`: con la confirmación apagada
+  // Supabase lo llena en el alta, y por mirar ese campo este mail no salía
+  // nunca (auditoría del 22/10/2026).
+  if (data.user && !mailVerificado(data.user)) {
     const envio = await enviarVerificacionEmailAction(email);
     if (!envio.ok) {
       console.error("[REGISTRO] verificación no enviada", envio.mensaje);

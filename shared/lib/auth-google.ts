@@ -23,9 +23,15 @@
  * que nadie lo haya probado. Si después el dueño real del mail entra con
  * Google, cae en esa cuenta — y el que la creó ya tiene la contraseña.
  *
+ * RESUELTO el 22/10/2026 (auditoría de seguridad) con una tercera salida que
+ * no vuelve a poner el mail en el camino del alta: en el login que vincula
+ * Google, si el mail de la cuenta nunca se verificó por link, la contraseña
+ * previa se anula y se cierran las otras sesiones
+ * (`features/auth/lib/credencial-previa.ts`, lo corre `/auth/callback`). Las
+ * dos opciones de abajo quedan como registro de lo que se evaluó.
+ *
  * Las dos decisiones por separado son razonables; juntas abren esto. No es
- * teórico y no lo arregla este archivo: la salida es una de estas dos, y hay
- * que elegir antes de prender el flag en producción.
+ * teórico, y las salidas que se evaluaron antes eran estas dos:
  *
  *   a) Volver a exigir confirmación SOLO para el alta con password, dejando
  *      Google como el camino sin fricción. Es lo mejor de los dos mundos y

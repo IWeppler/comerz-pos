@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import { destinoSeguro } from "@/features/auth/lib/destino-callback";
+import { anularCredencialPreviaSiHaceFalta } from "@/features/auth/lib/anular-credencial-previa";
+import { marcarMailVerificadoSiLoProbo } from "@/features/auth/lib/marcar-mail-verificado";
 
 /**
  * Canje del `code` de PKCE por una sesión.
@@ -59,7 +61,16 @@ export async function GET(request: NextRequest) {
 
   if (code) {
     const supabase = createClient(await cookies());
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (!error && data.session) {
+      // El login con Google que se vincula a una cuenta con una contraseña de
+      // un mail nunca verificado: esa clave puede ser de otro. Ver
+      // `credencial-previa.ts`.
+      await anularCredencialPreviaSiHaceFalta(supabase, data.session.user);
+      // El link de "Reenviar" del banner de verificación llega acá.
+      await marcarMailVerificadoSiLoProbo(data.session);
+    }
 
     if (error) {
       // Se loguea con `haySesion` porque es el dato que distingue los dos
