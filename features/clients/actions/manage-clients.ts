@@ -832,6 +832,20 @@ export async function editClienteAction(clienteId: string, formData: FormData) {
         success: false,
       };
     }
+    // `trg_proteger_campos_cliente`: la base frena lo que la pantalla ya no
+    // ofrece a quien no tiene el permiso (por si llega por otro camino).
+    if (error.message?.includes("SIN_PERMISO_LISTA_PRECIO")) {
+      return {
+        error: "Solo un administrador puede cambiar la lista de precios del cliente.",
+        success: false,
+      };
+    }
+    if (error.message?.includes("SIN_PERMISO_SALDO_CLIENTE")) {
+      return {
+        error: "No tenés permiso para cambiar el saldo del cliente.",
+        success: false,
+      };
+    }
     return { error: "Error al actualizar el cliente.", success: false };
   }
 

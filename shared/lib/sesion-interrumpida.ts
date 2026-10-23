@@ -5,7 +5,7 @@
  * token y, cuando no está, preguntándole a la base (`contexto_sesion`). Esa
  * consulta puede FALLAR —red, la base saturada, un deploy a medias— y hasta
  * ahora un fallo se leía igual que un `null`: "no tiene negocio elegido". El
- * gate 4 mandaba entonces a `/seleccionar-negocio` o a `/onboarding`, y las
+ * gate 4 mandaba entonces a `/seleccionar-negocio` o a `/empezar`, y las
  * dos páginas, viendo que la persona SÍ tiene negocio, la devolvían a `/`:
  *
  *   /                     → middleware: no pude resolver → /seleccionar-negocio

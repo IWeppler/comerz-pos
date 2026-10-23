@@ -18,7 +18,7 @@ import { getGastosAction } from "@/features/admin/actions/gastos-comerz";
 import { AnotarGastoBoton } from "@/features/admin/ui/anotar-gasto-boton";
 import { GastosDelMes } from "@/features/admin/ui/gastos-del-mes";
 import { getFunnelAction } from "@/features/admin/actions/funnel-comerz";
-import { analizarFunnel, enRiesgo, resumirFunnel } from "@/features/admin/lib/funnel";
+import { analizarFunnel, enRiesgo, porOrigen, resumirFunnel } from "@/features/admin/lib/funnel";
 import { FunnelPanel } from "@/features/admin/ui/funnel-panel";
 import { getEmbudoAltaAction } from "@/features/admin/actions/embudo-alta";
 import { getUsuariosPruebaAction } from "@/features/admin/actions/usuarios-prueba";
@@ -270,7 +270,11 @@ export default async function AdminComerzPage() {
         emailPropio={sesion.user?.email ?? ""}
       />
 
-      <FunnelPanel resumen={resumenFunnel} riesgo={comerciosEnRiesgo} />
+      <FunnelPanel
+        resumen={resumenFunnel}
+        riesgo={comerciosEnRiesgo}
+        origenes={porOrigen(comerciosFunnel)}
+      />
       <Suspense fallback={<div className="h-40 animate-pulse rounded-xl bg-white/5" aria-label="Cargando activación" />}><ActivacionAutonomaPanel /></Suspense>
 
       {/* Comercios pasa a ancho completo: con las notificaciones arriba, la

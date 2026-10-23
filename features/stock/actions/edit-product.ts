@@ -22,6 +22,7 @@ import {
   normalizarUnidadMedida,
 } from "@/shared/lib/fiscal-producto";
 import { parsearCantidadDeEntrada } from "@/shared/lib/unidad-venta";
+import { mensajePermisoStock } from "../lib/mensaje-permiso-stock";
 import {
   MENSAJE_ERROR_PRESENTACION,
   normalizarReglaPrecio,
@@ -676,7 +677,9 @@ async function actualizarImagenesYCabecera(
     console.error("[EDIT PRODUCT ERROR]", errorProducto);
     return {
       success: false,
-      error: "Hubo un error al actualizar el producto base.",
+      error:
+        mensajePermisoStock(errorProducto.message) ??
+        "Hubo un error al actualizar el producto base.",
     };
   }
 
@@ -1002,6 +1005,9 @@ async function procesarVariantes(
 
     const pgError = error as { code?: string; message?: string };
     const mensaje = pgError?.message ?? "";
+
+    const sinPermiso = mensajePermisoStock(mensaje);
+    if (sinPermiso) return { success: false, error: sinPermiso };
 
     // Los dos frenos de la RPC (20261001140000). Antes el primero era un
     // CONTINUE que tiraba el stock de la fila repetida sin avisar, y el

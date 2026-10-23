@@ -26,8 +26,46 @@ import {
   leerClaimComerz,
   resolverContextoDesdeClaim,
 } from "@/shared/lib/contexto-desde-claims";
+import {
+  COOKIE_ORIGEN_ALTA,
+  COOKIE_ORIGEN_ALTA_MAX_AGE,
+  origenDesdeQuery,
+  serializarOrigen,
+} from "@/shared/lib/origen-alta";
 
 export async function middleware(request: NextRequest) {
+  return conOrigenAlta(request, await rutear(request));
+}
+
+/**
+ * Anota de dónde vino quien abre /empezar (`?ref=`, `utm_*`), para que llegue
+ * hasta el negocio aunque el alta cruce un mail, Google u otro día. Envuelve
+ * al ruteo en vez de ir adentro: el ruteo tiene una docena de salidas y esto
+ * tiene que valer para todas. Solo sobre una respuesta que muestra la página:
+ * en un redirect (el dominio desnudo mandando al panel) la cookie quedaría en
+ * el host equivocado, y el salto siguiente la escribe en el bueno.
+ * Ver `shared/lib/origen-alta.ts`.
+ */
+function conOrigenAlta(request: NextRequest, respuesta: NextResponse) {
+  if (request.nextUrl.pathname !== "/empezar") return respuesta;
+  if (respuesta.status >= 300) return respuesta;
+  // Gana el primer origen: no se pisa una cookie que ya estaba.
+  if (request.cookies.has(COOKIE_ORIGEN_ALTA)) return respuesta;
+
+  const origen = origenDesdeQuery(request.nextUrl.searchParams);
+  if (!origen) return respuesta;
+
+  respuesta.cookies.set(COOKIE_ORIGEN_ALTA, serializarOrigen(origen), {
+    path: "/",
+    maxAge: COOKIE_ORIGEN_ALTA_MAX_AGE,
+    sameSite: "lax",
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+  });
+  return respuesta;
+}
+
+async function rutear(request: NextRequest): Promise<NextResponse> {
   const pathname = request.nextUrl.pathname;
   const host = request.headers.get("host");
 
@@ -259,16 +297,16 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith("/recuperar") ||
     pathname.startsWith("/terminos") ||
     pathname.startsWith("/privacidad") ||
-    // /onboarding es donde se CREA la cuenta: exigir sesión para entrar sería
+    // /empezar es donde se CREA la cuenta: exigir sesión para entrar sería
     // pedirle la llave a quien viene a que se la demos. Va también en
     // `isRutaSinNegocio` de abajo, porque el que ya se registró y volvió
     // todavía no tiene negocio y no debe rebotar al selector.
-    pathname.startsWith("/onboarding")
+    pathname.startsWith("/empezar")
   // Rutas donde todavía no hay negocio elegido: son justamente las que sirven
   // para elegirlo o crear el primero.
   const isRutaSinNegocio =
     pathname.startsWith("/seleccionar-negocio") ||
-    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/empezar") ||
     pathname.startsWith("/invitacion");
 
   // 1. Rol del usuario EN EL NEGOCIO ACTIVO (ya no es un dato del perfil: el
@@ -482,7 +520,7 @@ export async function middleware(request: NextRequest) {
       .eq("usuario_id", user.id);
 
     // Si la consulta falló, `membresias` viene null y "no pude contar" se
-    // leería como "no tiene ninguno" — o sea /onboarding, que al ver que sí
+    // leería como "no tiene ninguno" — o sea /empezar, que al ver que sí
     // tiene negocios devuelve a `/` y arranca el rebote.
     if (error) {
       console.error("[NEGOCIOS] conteo de membresías falló:", error.message);
@@ -499,7 +537,7 @@ export async function middleware(request: NextRequest) {
     const count = habilitados.length;
 
     // Tiene membresías pero NINGUNA sirve: todos cancelados o suspendidos.
-    // No es "todavía no creó el suyo" —mandarlo a /onboarding le haría abrir
+    // No es "todavía no creó el suyo" —mandarlo a /empezar le haría abrir
     // un comercio nuevo cuando lo que quiere es el que tenía— ni es algo que
     // pueda resolver eligiendo. Va al login con el motivo, que es lo mismo que
     // ya contestaba la página del selector.
@@ -589,7 +627,7 @@ export async function middleware(request: NextRequest) {
       }
     } else {
       const url = request.nextUrl.clone();
-      url.pathname = "/onboarding";
+      url.pathname = "/empezar";
       return NextResponse.redirect(url);
     }
   }

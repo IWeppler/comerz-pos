@@ -5,8 +5,8 @@ describe("urlDeRetornoGoogle", () => {
   it("vuelve al mismo callback que el mail", () => {
     // No hay un handler aparte para OAuth: el flujo también aterriza con un
     // `code` de PKCE, y ese callback ya es idempotente.
-    expect(urlDeRetornoGoogle("https://comerz.app", "/onboarding")).toBe(
-      "https://comerz.app/auth/callback?next=%2Fonboarding",
+    expect(urlDeRetornoGoogle("https://comerz.app", "/empezar")).toBe(
+      "https://comerz.app/auth/callback?next=%2Fempezar",
     );
   });
 

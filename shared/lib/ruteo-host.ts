@@ -29,6 +29,9 @@ export const PATHS_DE_PLATAFORMA = [
   "clientes",
   "compras",
   "configuracion",
+  "empezar",
+  // El nombre viejo de /empezar: next.config lo redirige, pero en un
+  // subdominio de tienda primero tiene que llegar al panel.
   "onboarding",
   "invitacion",
   "ordenes",

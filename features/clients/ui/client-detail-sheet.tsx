@@ -612,6 +612,7 @@ export function ClientDetailSheet({
         cliente={isEditOpen ? cliente : null}
         onClose={() => setIsEditOpen(false)}
         entregaMinimaActiva={entregaMinimaActiva}
+        puedeAsignarLista={isAdmin}
       />
       <PerdonarDeudaModal
         cliente={isPerdonOpen ? cliente : null}

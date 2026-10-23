@@ -4,14 +4,13 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { adminConfigurado, createAdminClient } from "@/shared/config/supabase/admin";
+import { PASSWORD_MIN } from "@/shared/lib/password";
 
 export interface EditarEmpleadoState {
   error: string | null;
   success: boolean;
   aviso?: string | null;
 }
-
-const PASSWORD_MIN = 8;
 
 function mensajeDeRpc(mensaje: string | undefined): string | null {
   const m = mensaje ?? "";
@@ -27,10 +26,13 @@ function mensajeDeRpc(mensaje: string | undefined): string | null {
  * Edita nombre, mail, rol y (opcional) contraseña de un empleado.
  *
  * El perfil y el rol los escribe `editar_empleado` (SECURITY DEFINER acotada
- * a admin + miembro). Mail y contraseña en Auth solo si la cuenta es de este
- * negocio nada más (`otras_membresias = 0`): una cuenta compartida con otro
- * comercio no se toca desde acá. Cambiar la clave cierra las sesiones
- * abiertas — es el caso del celular robado.
+ * a admin + miembro). Mail y contraseña en Auth solo si la base dice
+ * `gestiona_acceso`: cuentas que este negocio creó en el mostrador y no
+ * trabajan en otro. La que se sumó por invitación, la de un dueño, la que
+ * entra con Google o la del super admin es de la persona, y cambiarle la clave
+ * con service_role era quedarse con su cuenta (auditoría del 22/10/2026). Sin
+ * el dato no se toca Auth. Cambiar la clave cierra las sesiones abiertas — es
+ * el caso del celular robado.
  */
 export async function editarEmpleadoAction(
   _prev: EditarEmpleadoState,
@@ -78,17 +80,22 @@ export async function editarEmpleadoAction(
     return { error: mensajeDeRpc(error.message) ?? "No se pudo guardar.", success: false };
   }
 
-  const otras = Number((data as { otras_membresias?: number })?.otras_membresias ?? 0);
+  const resultado = data as { otras_membresias?: number; gestiona_acceso?: boolean } | null;
+  const otras = Number(resultado?.otras_membresias ?? 0);
+  // Fail-closed: solo `true` explícito de la base habilita tocar Auth.
+  const gestionaAcceso = resultado?.gestiona_acceso === true;
   const cambiaMail = perfilActual?.email?.toLowerCase() !== email;
   const quiereAuth = cambiaMail || Boolean(password);
 
-  if (quiereAuth && otras > 0) {
+  if (quiereAuth && !gestionaAcceso) {
     revalidatePath("/configuracion");
     return {
       error: null,
       success: true,
       aviso:
-        "Nombre y rol guardados. El mail y la contraseña no se cambiaron: esa cuenta también trabaja en otro negocio y solo la persona puede cambiarlos desde su perfil.",
+        otras > 0
+          ? "Nombre y rol guardados. El mail y la contraseña no se cambiaron: esa cuenta también trabaja en otro negocio y solo la persona puede cambiarlos desde su perfil."
+          : "Nombre y rol guardados. El mail y la contraseña no se cambiaron: esa cuenta es de la persona (entró con una invitación o con Google) y solo ella puede cambiarlos.",
     };
   }
 

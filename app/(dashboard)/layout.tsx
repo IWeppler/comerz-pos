@@ -22,6 +22,7 @@ import { BannerImpersonation } from "@/features/admin/ui/banner-impersonation";
 import { VigilanteSesion } from "@/shared/components/vigilante-sesion";
 import { NegocioActivoProvider } from "@/shared/components/negocio-activo-provider";
 import { BannerVerificacionEmail } from "@/features/auth/ui/banner-verificacion";
+import { mailVerificado } from "@/features/auth/lib/verificacion-email";
 import { BannerCertificadoArca } from "@/features/arca/ui/banner-certificado";
 import { puedeOperarCaja } from "@/features/caja/lib/puede-operar-caja";
 import { puedeRegistrarIngresoAction } from "@/features/caja/actions/permisos-caja";
@@ -193,12 +194,18 @@ export default async function DashboardLayout({
           {/* La verificación del correo dejó de frenar el alta: se entra
               derecho y la deuda queda a la vista acá, con el plazo corriendo y
               el botón para resolverla. Ver
-              features/auth/lib/verificacion-email.ts. */}
-          <BannerVerificacionEmail
-            email={user.email ?? ""}
-            emailConfirmado={Boolean(user.email_confirmed_at)}
-            creadoEn={user.created_at ?? null}
-          />
+              features/auth/lib/verificacion-email.ts.
+              Solo a la DUEÑA: es su forma de recuperar la cuenta del negocio.
+              Las empleadas de mostrador tienen mails que la dueña inventó
+              (no son casillas) y su clave la maneja ella; las invitadas ya
+              probaron el mail al aceptar. */}
+          {membresiaActiva?.es_owner && !impersonando && (
+            <BannerVerificacionEmail
+              email={user.email ?? ""}
+              emailConfirmado={mailVerificado(user)}
+              creadoEn={user.created_at ?? null}
+            />
+          )}
 
           {/* Certificado de ARCA por vencer o vencido. Solo lo puede resolver
               un ADMIN, así que solo a ese rol se le muestra. */}

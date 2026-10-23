@@ -8,6 +8,7 @@
  */
 
 import { esNegocioDemo } from "@/shared/lib/estado-negocio";
+import type { OrigenAlta } from "@/shared/lib/origen-alta";
 
 export interface FilaFunnel {
   id: string;
@@ -20,6 +21,12 @@ export interface FilaFunnel {
   ventasTotal: number;
   pagos: number;
   primerPago: string | null;
+  /** De dónde vino (`negocios.origen_alta`). `null` = no se sabe: los
+   * anteriores al 23/10/2026 y los que llegaron sin link con origen. */
+  origen: OrigenAlta | null;
+  /** A quién corresponde el `ref`: el nombre del comercio o del socio. `null`
+   * si no vino ref o el código no es de nadie. Lo resuelve la RPC. */
+  referidoPor: string | null;
 }
 
 export interface ComercioEnFunnel extends FilaFunnel {
@@ -153,4 +160,50 @@ export function enRiesgo(
       if (a.activado !== b.activado) return a.activado ? 1 : -1;
       return (b.diasSinVender ?? 0) - (a.diasSinVender ?? 0);
     });
+}
+
+export interface FilaPorOrigen {
+  etiqueta: string;
+  registrados: number;
+  activados: number;
+  pagaron: number;
+}
+
+export const SIN_ORIGEN = "Sin dato";
+
+/**
+ * De dónde vino cada comercio. El referido manda sobre la campaña: si llegó
+ * con `ref`, lo trajo alguien, aunque el link también dijera `utm_source`.
+ * Un `ref` que no es de nadie se muestra igual, con el código: esconderlo
+ * sería perder a quien llegó por un link mal copiado.
+ */
+export function etiquetaOrigen(c: Pick<FilaFunnel, "origen" | "referidoPor">): string {
+  const ref = c.origen?.ref;
+  if (ref) return `Referido: ${c.referidoPor ?? `${ref} (código sin dueño)`}`;
+  const fuente = c.origen?.utm_source;
+  if (fuente) return c.origen?.utm_medium ? `${fuente} / ${c.origen.utm_medium}` : fuente;
+  return SIN_ORIGEN;
+}
+
+/**
+ * Registrados, activados y pagos por origen, del que más trae al que menos.
+ * "Sin dato" va último siempre: son los anteriores a medir y los que llegaron
+ * sin link, no un canal.
+ */
+export function porOrigen(comercios: ComercioEnFunnel[]): FilaPorOrigen[] {
+  const grupos = new Map<string, FilaPorOrigen>();
+  for (const c of comercios) {
+    const etiqueta = etiquetaOrigen(c);
+    const g = grupos.get(etiqueta) ?? { etiqueta, registrados: 0, activados: 0, pagaron: 0 };
+    g.registrados += 1;
+    if (c.activado) g.activados += 1;
+    if (c.pago) g.pagaron += 1;
+    grupos.set(etiqueta, g);
+  }
+  return [...grupos.values()].sort((a, b) => {
+    if ((a.etiqueta === SIN_ORIGEN) !== (b.etiqueta === SIN_ORIGEN)) {
+      return a.etiqueta === SIN_ORIGEN ? 1 : -1;
+    }
+    return b.registrados - a.registrados || a.etiqueta.localeCompare(b.etiqueta);
+  });
 }

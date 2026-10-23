@@ -56,9 +56,12 @@ function AvisoFotosPendientes({
 export function StockPageClient({
   userRole,
   uso,
+  puedeEditarProducto = false,
 }: {
   userRole: string;
   uso?: UsoDelPlan | null;
+  /** Permiso `stock.editar_producto` (ver `puede-editar-producto.ts`). */
+  puedeEditarProducto?: boolean;
 }) {
   // La MISMA entrada que usa /pos: una sola consulta para las dos pantallas.
   // Acá el catálogo se usa TAL CUAL viene —sin filtrar— porque Inventario
@@ -102,6 +105,7 @@ export function StockPageClient({
       <StockView
         productosIndice={data?.data?.productos ?? []}
         userRole={userRole}
+        puedeEditarProducto={puedeEditarProducto}
         nombreComercio={data?.data?.nombreComercio ?? "Tienda Online"}
         mostrarSinStock={data?.data?.mostrarSinStock ?? true}
         rubro={data?.data?.rubro ?? RUBRO_DEFAULT}

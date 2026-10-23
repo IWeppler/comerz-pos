@@ -7,7 +7,7 @@ import {
 
 describe("rutas internas: pasan", () => {
   it("el caso normal del mail de alta", () => {
-    expect(destinoSeguro("/onboarding")).toBe("/onboarding");
+    expect(destinoSeguro("/empezar")).toBe("/empezar");
   });
 
   it("conserva query y hash", () => {

@@ -18,6 +18,16 @@ export async function POST(request: Request) {
     const truncar = (valor: unknown, max: number) =>
       typeof valor === "string" ? valor.slice(0, max) : undefined;
 
+    // `detalle` es un objeto libre y el endpoint no tiene auth: sin tope,
+    // cualquiera llena el log de Vercel con un payload enorme.
+    let detalle: string | undefined;
+    try {
+      detalle =
+        evento.detalle === undefined ? undefined : JSON.stringify(evento.detalle).slice(0, 2000);
+    } catch {
+      detalle = "[detalle ilegible]";
+    }
+
     console.error("[CLIENT ERROR]", {
       tipo: truncar(evento.tipo, 40) ?? "desconocido",
       mensaje: truncar(evento.mensaje, 500),
@@ -27,7 +37,7 @@ export async function POST(request: Request) {
       userAgent: truncar(evento.userAgent, 300),
       memoriaGb:
         typeof evento.memoriaGb === "number" ? evento.memoriaGb : undefined,
-      detalle: evento.detalle,
+      detalle,
     });
   } catch {
     console.error("[CLIENT ERROR] payload ilegible");

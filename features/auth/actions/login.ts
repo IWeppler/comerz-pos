@@ -8,6 +8,8 @@ import {
 } from "@/shared/lib/negocio-activo";
 import { destinoSinNegocio } from "./registro";
 import { refrescarClaimDeMembresias } from "../lib/refrescar-claim";
+import { anotarIntentoFallido, hayCupoAuth } from "@/shared/lib/limite-auth";
+import { MENSAJE_DEMASIADOS_INTENTOS } from "@/shared/lib/limites-auth";
 
 export interface LoginState {
   error: string;
@@ -27,6 +29,12 @@ export async function loginAction(
     return { error: "El email y la contraseña son obligatorios." };
   }
 
+  // Supabase ve la IP de Vercel, no la de quien prueba claves: el límite real
+  // es este (por IP y por mail, solo intentos fallidos). Ver `limites-auth.ts`.
+  if (!(await hayCupoAuth("LOGIN", email, { registrar: false }))) {
+    return { error: MENSAJE_DEMASIADOS_INTENTOS };
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
@@ -36,6 +44,7 @@ export async function loginAction(
   });
 
   if (error) {
+    await anotarIntentoFallido("LOGIN", email);
     return { error: "Credenciales inválidas. Intenta de nuevo." };
   }
 

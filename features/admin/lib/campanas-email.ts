@@ -112,7 +112,7 @@ export const CAMPANAS: Record<EtapaAlta, Campana | null> = {
     intro: [
       "Creaste tu cuenta en Comerz pero todavía no configuraste tu negocio. Te faltan menos de dos minutos para empezar a usarlo.",
     ],
-    cta: { texto: "Crear mi negocio", ruta: "/onboarding" },
+    cta: { texto: "Crear mi negocio", ruta: "/empezar" },
     beneficios: BENEFICIOS_BASE,
     cierre: PRUEBA_Y_AYUDA,
   },
@@ -129,7 +129,7 @@ export const CAMPANAS: Record<EtapaAlta, Campana | null> = {
       "Abriste el formulario para crear tu negocio y no llegaste a terminarlo. Son tres datos —nombre, rubro y ubicación— y ya podés empezar a cargar tus productos.",
       "Si algo del formulario no te cerró, escribinos: saberlo nos sirve tanto como que lo completes.",
     ],
-    cta: { texto: "Terminar de crear mi negocio", ruta: "/onboarding" },
+    cta: { texto: "Terminar de crear mi negocio", ruta: "/empezar" },
     beneficios: BENEFICIOS_BASE,
     cierre: PRUEBA_Y_AYUDA,
   },

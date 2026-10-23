@@ -3,6 +3,8 @@
 import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import { urlBaseDeLaRequest } from "@/shared/lib/url-base-request";
+import { hayCupoAuth } from "@/shared/lib/limite-auth";
+import { MENSAJE_DEMASIADOS_INTENTOS } from "@/shared/lib/limites-auth";
 
 export interface EnvioVerificacionState {
   ok: boolean;
@@ -16,42 +18,42 @@ export interface EnvioVerificacionState {
  * que haber un botón para pedirla de nuevo — el mail se pierde, cae en spam, o
  * la persona se registra y recién a la semana se acuerda.
  *
- * Prueba DOS caminos y no uno, porque cuál funciona depende de una opción del
- * proyecto que no vive en el código:
+ * El camino principal es un MAGIC LINK. Al abrirlo, `/auth/callback` (o
+ * `/auth/confirm`, según el template) ve una sesión abierta por link del correo
+ * y deja la marca `email_verificado_en` (ver `marcar-mail-verificado.ts`), que
+ * es lo que apaga el banner.
  *
- *   1. `resend({ type: "signup" })` es el correcto mientras "Confirm email"
- *      esté PRENDIDO en Supabase: reenvía el mail de confirmación original.
- *   2. Con la confirmación APAGADA —que es como queda el alta directa— ese
- *      reenvío no aplica, y el equivalente es un magic link: al abrirlo,
- *      Supabase marca `email_confirmed_at`, que es exactamente lo que se
- *      quería confirmar.
+ * Hasta el 22/10/2026 se probaba primero `resend({ type: "signup" })`. Con
+ * "Confirm email" apagado, Supabase da a TODA cuenta por confirmada y ese
+ * reenvío contesta OK sin mandar nada: el botón decía "te lo mandamos" y no
+ * salía ningún mail. Queda como segundo intento para el día que se prenda la
+ * confirmación y el magic link de una cuenta sin confirmar falle.
  *
- * Intentar el primero y caer al segundo evita que este botón quede muerto el
- * día que se toque esa opción en el dashboard, en cualquiera de las dos
- * direcciones. Ese día nadie se va a acordar de este archivo.
+ * Con sesión, el destinatario es el mail de la SESIÓN, no el que manda el
+ * navegador: el botón es para verificar la cuenta propia, no para mandarle
+ * links a cualquier casilla registrada.
  */
 export async function enviarVerificacionEmailAction(
   email: string,
 ): Promise<EnvioVerificacionState> {
-  const destinatario = email?.trim().toLowerCase();
+  const cookieStore = await cookies();
+  const supabase = createClient(cookieStore);
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const destinatario = (user?.email ?? email)?.trim().toLowerCase();
 
   if (!destinatario) {
     return { ok: false, mensaje: "No sabemos a qué dirección mandarlo." };
   }
 
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const redirect = `${await urlBaseDeLaRequest()}/auth/callback?next=/`;
-
-  const { error: errorResend } = await supabase.auth.resend({
-    type: "signup",
-    email: destinatario,
-    options: { emailRedirectTo: redirect },
-  });
-
-  if (!errorResend) {
-    return { ok: true, mensaje: "Listo, te lo mandamos de nuevo." };
+  // Cada pedido manda un mail. Ver `limites-auth.ts`.
+  if (!(await hayCupoAuth("VERIFICACION", destinatario, { registrar: true }))) {
+    return { ok: false, mensaje: MENSAJE_DEMASIADOS_INTENTOS };
   }
+
+  const redirect = `${await urlBaseDeLaRequest()}/auth/callback?next=/`;
 
   const { error: errorOtp } = await supabase.auth.signInWithOtp({
     email: destinatario,
@@ -67,7 +69,17 @@ export async function enviarVerificacionEmailAction(
     return { ok: true, mensaje: "Listo, te mandamos el link de verificación." };
   }
 
-  console.error("[VERIFICACION EMAIL]", { errorResend, errorOtp });
+  const { error: errorResend } = await supabase.auth.resend({
+    type: "signup",
+    email: destinatario,
+    options: { emailRedirectTo: redirect },
+  });
+
+  if (!errorResend) {
+    return { ok: true, mensaje: "Listo, te lo mandamos de nuevo." };
+  }
+
+  console.error("[VERIFICACION EMAIL]", { errorOtp, errorResend });
 
   // El error más frecuente acá no es un bug sino el límite de envíos del SMTP
   // de Supabase, y decir "esperá un minuto" es accionable; "algo salió mal",

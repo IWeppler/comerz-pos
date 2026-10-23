@@ -5,6 +5,15 @@ import { cookies } from "next/headers";
 import { COOKIE_NEGOCIO_ACTIVO } from "@/shared/lib/negocio-activo";
 import { urlBaseDeLaRequest } from "@/shared/lib/url-base-request";
 import { enviarVerificacionEmailAction } from "./verificacion-email";
+import { PASSWORD_MIN, mensajePasswordCorta } from "@/shared/lib/password";
+import { mailVerificado } from "../lib/verificacion-email";
+import { hayCupoAuth } from "@/shared/lib/limite-auth";
+import { MENSAJE_DEMASIADOS_INTENTOS } from "@/shared/lib/limites-auth";
+import {
+  COOKIE_ORIGEN_ALTA,
+  METADATA_ORIGEN_ALTA,
+  leerOrigen,
+} from "@/shared/lib/origen-alta";
 
 export interface RegistroState {
   error: string;
@@ -28,7 +37,7 @@ export interface RegistroState {
  * stepper, y van separados porque la RPC de alta necesita una sesión — la
  * cuenta tiene que existir antes. Si alguien abandona en el medio queda con
  * cuenta y sin negocio, que es un estado válido: el login y el middleware lo
- * devuelven a /onboarding y retoma en el paso 2.
+ * devuelven a /empezar y retoma en el paso 2.
  */
 export async function registrarseAction(
   prevState: RegistroState,
@@ -42,24 +51,35 @@ export async function registrarseAction(
     return { error: "Completá tu nombre, email y contraseña." };
   }
 
-  // Mismo piso que pide Supabase por defecto. Se valida acá para dar un
-  // mensaje en castellano en vez del error crudo del proveedor.
-  if (password.length < 6) {
-    return { error: "La contraseña necesita al menos 6 caracteres." };
+  // Mismo piso que se configura en Supabase (`PASSWORD_MIN`). Se valida acá
+  // para dar un mensaje en castellano en vez del error crudo del proveedor.
+  if (password.length < PASSWORD_MIN) {
+    return { error: mensajePasswordCorta };
   }
 
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
     return { error: "Revisá el email." };
   }
 
+  // Tope por IP: frena el alta masiva de cuentas (y con ella, de mails
+  // pre-registrados). Ver `limites-auth.ts`.
+  if (!(await hayCupoAuth("REGISTRO", email, { registrar: true }))) {
+    return { error: MENSAJE_DEMASIADOS_INTENTOS };
+  }
+
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
+
+  // De dónde vino (`?ref=`, `utm_*` de /empezar). Va en el alta y no solo al
+  // crear el negocio: si confirma el mail desde el celular, la cookie quedó
+  // en la compu. Ver `shared/lib/origen-alta.ts`.
+  const origen = leerOrigen(cookieStore.get(COOKIE_ORIGEN_ALTA)?.value);
 
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
-      data: { nombre },
+      data: { nombre, ...(origen ? { [METADATA_ORIGEN_ALTA]: origen } : {}) },
       // A dónde vuelve después de confirmar. Sale del host REAL del request y
       // no de una constante de build: probando en localhost, el mail tiene que
       // volver a localhost, no a producción.
@@ -69,10 +89,10 @@ export async function registrarseAction(
       // lo que hacía que el mail llevara a localhost:3000 aunque acá se mandara
       // otra cosa. Las dos puntas tienen que estar permitidas allá.
       //
-      // Va a /auth/callback y no directo a /onboarding porque el link llega en
+      // Va a /auth/callback y no directo a /empezar porque el link llega en
       // formato PKCE: lo que aterriza es un `code`, no una sesión, y alguien
       // tiene que canjearlo.
-      emailRedirectTo: `${await urlBaseDeLaRequest()}/auth/callback?next=/onboarding`,
+      emailRedirectTo: `${await urlBaseDeLaRequest()}/auth/callback?next=/empezar`,
     },
   });
 
@@ -113,14 +133,18 @@ export async function registrarseAction(
   //
   // Un fallo del envío NO puede voltear un alta que ya está hecha: se loguea y
   // el usuario tiene el botón de reenviar en el banner.
-  if (!data.user?.email_confirmed_at) {
+  //
+  // `mailVerificado` y no `email_confirmed_at`: con la confirmación apagada
+  // Supabase lo llena en el alta, y por mirar ese campo este mail no salía
+  // nunca (auditoría del 22/10/2026).
+  if (data.user && !mailVerificado(data.user)) {
     const envio = await enviarVerificacionEmailAction(email);
     if (!envio.ok) {
       console.error("[REGISTRO] verificación no enviada", envio.mensaje);
     }
   }
 
-  return { error: "", success: true, destino: "/onboarding" };
+  return { error: "", success: true, destino: "/empezar" };
 }
 
 /**
@@ -131,7 +155,7 @@ export async function registrarseAction(
  * deja a una de las dos golpeando una puerta cerrada:
  *
  *   - Alguien que se registró para abrir SU comercio y todavía no lo creó
- *     (o abandonó a mitad). Tiene que poder seguir: /onboarding.
+ *     (o abandonó a mitad). Tiene que poder seguir: /empezar.
  *   - Un empleado invitado que entró antes de usar el link de la invitación.
  *     Crear un negocio propio sería exactamente lo que NO quiere hacer.
  *
@@ -142,7 +166,7 @@ export async function destinoSinNegocio(
   supabase: ReturnType<typeof createClient>,
   email: string | undefined,
 ): Promise<{ destino: string; error: string; negocioId: string | null }> {
-  if (!email) return { destino: "/onboarding", error: "", negocioId: null };
+  if (!email) return { destino: "/empezar", error: "", negocioId: null };
 
   // La invitación pendiente se ACEPTA acá mismo, no se le pide que vuelva al
   // mail. El link del mail estuvo roto hasta el 14/9/2026 (la sesión llegaba
@@ -168,5 +192,5 @@ export async function destinoSinNegocio(
     return { destino: "/", error: "", negocioId: negocioId as string };
   }
 
-  return { destino: "/onboarding", error: "", negocioId: null };
+  return { destino: "/empezar", error: "", negocioId: null };
 }

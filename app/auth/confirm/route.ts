@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/shared/config/supabase/server";
 import { cookies } from "next/headers";
 import { destinoSeguroDesdeRedirect } from "@/features/auth/lib/destino-callback";
+import { marcarMailVerificadoSiLoProbo } from "@/features/auth/lib/marcar-mail-verificado";
 
 /**
  * Canje SERVER-SIDE de un link de mail (`token_hash` + `type`): invitación,
@@ -15,7 +16,7 @@ import { destinoSeguroDesdeRedirect } from "@/features/auth/lib/destino-callback
  * `/auth/actualizar-password` no monta ningún cliente de Supabase de
  * navegador que lo lea — así que la sesión no llegaba a las cookies,
  * `updateUser` fallaba y el invitado terminaba registrándose solo en
- * /onboarding. Acá `verifyOtp` escribe las cookies en la respuesta, y la
+ * /empezar. Acá `verifyOtp` escribe las cookies en la respuesta, y la
  * página siguiente ya tiene sesión de verdad.
  *
  * El template de mail tiene que apuntar acá:
@@ -41,9 +42,11 @@ export async function GET(request: NextRequest) {
 
   if (token_hash && type) {
     const supabase = createClient(await cookies());
-    const { error } = await supabase.auth.verifyOtp({ type, token_hash });
+    const { data, error } = await supabase.auth.verifyOtp({ type, token_hash });
 
     if (!error) {
+      // Invitación, recuperación o cambio de mail: el link llegó a la casilla.
+      if (data.session) await marcarMailVerificadoSiLoProbo(data.session);
       return NextResponse.redirect(`${origin}${destino}`);
     }
 

@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/shared/config/supabase/server";
 import { adminConfigurado, createAdminClient } from "@/shared/config/supabase/admin";
+import { PASSWORD_MIN } from "@/shared/lib/password";
 
 export interface CrearEmpleadoLocalState {
   error: string | null;
@@ -11,8 +12,6 @@ export interface CrearEmpleadoLocalState {
   /** Distinto en cada alta exitosa: el form lo usa como key para vaciarse. */
   nonce?: number;
 }
-
-const PASSWORD_MIN = 8;
 
 /**
  * Da de alta a un empleado con contraseña, sin mail ni invitación.
@@ -105,6 +104,11 @@ export async function crearEmpleadoLocalAction(
         error: `${errorAlta.message} Para sumar gente hay que pasar a un plan mayor.`,
         success: false,
       };
+    }
+    if (errorAlta.message?.includes("USUARIO_NO_ELEGIBLE")) {
+      // La RPC solo acepta la cuenta recién creada acá (sin login, < 10 min):
+      // si saltó esto, algo tardó o se reusó una cuenta. Se reintenta de cero.
+      return { error: "No se pudo dar de alta al empleado. Probá de nuevo.", success: false };
     }
     if (errorAlta.message?.includes("ROL_INVALIDO")) {
       return { error: "El rol elegido no es de este negocio.", success: false };

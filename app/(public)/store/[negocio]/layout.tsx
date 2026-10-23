@@ -8,6 +8,7 @@ import { resolveTenant } from "@/shared/lib/tenant";
 import { ModoCatalogoProvider } from "@/shared/components/modo-catalogo-provider";
 import { HEADER_MODO_CATALOGO } from "@/shared/lib/host-comerz";
 import { urlDelPanel } from "@/shared/lib/ruteo-host";
+import { queryAltaDesdeTienda } from "@/shared/lib/origen-alta";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { leerConfigPublica } from "@/entities/config/lib/leer-config-publica";
@@ -118,7 +119,7 @@ export default async function PublicLayout({
                 </p>
               </div>
               <Link
-                href={urlDelPanel("/onboarding")}
+                href={urlDelPanel("/empezar", queryAltaDesdeTienda(negocio, "boton"))}
                 className="shrink-0 inline-flex items-center justify-center rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-neutral-900 transition-colors hover:bg-neutral-200"
               >
                 Crear mi tienda
@@ -134,11 +135,12 @@ export default async function PublicLayout({
             {/* Antes acá había un link "Ingresar" al panel. Se sacó: apuntaba a
                 una pantalla de login que al visitante no le sirve, y era el
                 camino por el que se terminaba instalando la PWA del POS desde
-                el catálogo. Instalar la app es cosa de /auth. */}
+                el catálogo. Instalar la app es cosa de /auth. La firma lleva
+                al alta, con el slug de la tienda como código de referido. */}
             <p className="text-neutral-500">
               Hecho con{" "}
               <Link
-                href={urlDelPanel("/auth")}
+                href={urlDelPanel("/empezar", queryAltaDesdeTienda(negocio, "firma"))}
                 className="font-medium text-neutral-300 underline-offset-4 hover:underline"
               >
                 Comerz

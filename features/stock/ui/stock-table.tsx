@@ -70,6 +70,9 @@ import type { SeleccionProductos } from "../hooks/use-seleccion-productos";
 interface StockTableProps {
   productos: ProductoIndice[];
   userRole: string;
+  /** Permiso `stock.editar_producto`: "Editar producto" del menú de la fila.
+   * Baja, combinar y eliminar siguen siendo de admin. */
+  puedeEditarProducto?: boolean;
   nombreComercio: string;
   mostrarSinStock: boolean;
   /** Ya viene ordenado por el padre (stock-view.tsx) — el sort corre sobre
@@ -162,6 +165,7 @@ function precioEfectivoVariante(
 export function StockTable({
   productos,
   userRole,
+  puedeEditarProducto = false,
   nombreComercio,
   mostrarSinStock,
   orden,
@@ -678,7 +682,7 @@ export function StockTable({
                           size="icon"
                           className="text-muted-foreground hover:text-foreground shrink-0"
                         />
-                        {isAdmin && (
+                        {(isAdmin || puedeEditarProducto) && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -693,12 +697,16 @@ export function StockTable({
                             {/* Íconos neutros: el color queda para lo que
                                 significa algo (rojo = eliminar). */}
                             <DropdownMenuContent align="end" className="w-52 z-40">
-                              <DropdownMenuItem
-                                onSelect={() => setProductoEnEdicion(producto)}
-                              >
-                                <Edit2 className="text-muted-foreground" />
-                                Editar producto
-                              </DropdownMenuItem>
+                              {puedeEditarProducto && (
+                                <DropdownMenuItem
+                                  onSelect={() => setProductoEnEdicion(producto)}
+                                >
+                                  <Edit2 className="text-muted-foreground" />
+                                  Editar producto
+                                </DropdownMenuItem>
+                              )}
+                              {isAdmin && (
+                              <>
                               <DropdownMenuItem
                                 onSelect={() =>
                                   setAccionFila({ tipo: "baja", producto })
@@ -729,6 +737,8 @@ export function StockTable({
                                 <Trash2 />
                                 Eliminar producto
                               </DropdownMenuItem>
+                              </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         )}

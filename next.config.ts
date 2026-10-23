@@ -189,6 +189,15 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // El alta se llamaba /onboarding hasta el 23/10/2026. La dirección vieja
+  // sigue viva porque está en mails ya enviados (campañas, confirmaciones con
+  // `next=/onboarding` todavía sin abrir) y en links compartidos. Next copia
+  // la query sola, así que `?ref=` y `utm_*` llegan intactos.
+  async redirects() {
+    return [
+      { source: "/onboarding", destination: "/empezar", permanent: true },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);

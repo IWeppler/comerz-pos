@@ -7,6 +7,7 @@ import {
   COOKIE_NEGOCIO_MAX_AGE,
 } from "@/shared/lib/negocio-activo";
 import { refrescarClaimDeMembresias } from "../lib/refrescar-claim";
+import { PASSWORD_MIN, mensajePasswordCorta } from "@/shared/lib/password";
 
 export interface UpdatePasswordState {
   error: string;
@@ -33,11 +34,8 @@ export async function resetPasswordFinalAction(
     return { error: "Las contraseñas no coinciden.", success: false };
   }
 
-  if (password.length < 6) {
-    return {
-      error: "La contraseña debe tener al menos 6 caracteres.",
-      success: false,
-    };
+  if (password.length < PASSWORD_MIN) {
+    return { error: mensajePasswordCorta, success: false };
   }
 
   const cookieStore = await cookies();
@@ -55,13 +53,21 @@ export async function resetPasswordFinalAction(
     };
   }
 
+  // Recuperar la cuenta tiene que echar a quien tenía la clave vieja (o a
+  // quien registró este mail antes que su dueño): sin esto sigue adentro con
+  // su refresh token. Esta sesión queda; un fallo acá no voltea el cambio.
+  const { error: errorOtras } = await supabase.auth.signOut({ scope: "others" });
+  if (errorOtras) {
+    console.error("[RESET PASSWORD] cerrar otras sesiones", errorOtras);
+  }
+
   // La invitación se acepta por dos vías, y la segunda es la que importa:
   //
   //  1. Por token, si vino `?invitacion=` en la URL (el link del mail).
   //  2. Por EMAIL: toda invitación PENDIENTE del mail de esta sesión. Cubre al
   //     que llegó sin el parámetro —link viejo con la sesión en el hash,
   //     template sin `next`, un "olvidé mi contraseña" en el medio— y es lo
-  //     que hace que el invitado no termine en /onboarding creando un negocio
+  //     que hace que el invitado no termine en /empezar creando un negocio
   //     propio. El mail verificado por Auth es la credencial; el token nunca
   //     lo fue (`aceptar_invitacion` ya exigía que coincidieran).
   let negocioId: string | null = null;

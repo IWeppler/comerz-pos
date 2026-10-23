@@ -17,6 +17,57 @@
 
 export const DIAS_PARA_VERIFICAR = 7;
 
+/**
+ * Marca propia en `app_metadata` (solo la escribe service_role): cuándo la
+ * persona abrió un link que le llegó al correo. La escribe `/auth/callback` o
+ * `/auth/confirm` según el método con que se abrió la sesión.
+ */
+export const MARCA_MAIL_VERIFICADO = "email_verificado_en";
+
+/**
+ * Métodos de sesión (claim `amr` del token) que solo se pueden completar
+ * abriendo un link o un código que llegó a la casilla. `password` y `oauth` no
+ * prueban nada del correo de ESTA cuenta.
+ */
+const METODOS_QUE_PRUEBAN_EL_MAIL = new Set([
+  "otp",
+  "magiclink",
+  "recovery",
+  "invite",
+  "signup",
+  "email/signup",
+  "email_change",
+]);
+
+export function metodoPruebaElMail(metodos: readonly string[]): boolean {
+  return metodos.some((m) => METODOS_QUE_PRUEBAN_EL_MAIL.has(m));
+}
+
+interface UsuarioParaVerificar {
+  identities?: { provider: string; identity_data?: Record<string, unknown> | null }[] | null;
+  app_metadata?: Record<string, unknown> | null;
+}
+
+/**
+ * ¿El correo de esta cuenta está probado?
+ *
+ * NO es `email_confirmed_at`: con "Confirm email" apagado (desde el 9/9/2026)
+ * Supabase lo llena en el mismo alta, y el banner que lo miraba no aparecía
+ * nunca (auditoría del 22/10/2026). Cuenta como probado cualquiera de:
+ *  - nuestra marca, que se escribe al abrir un link del correo;
+ *  - `email_verified` de la identidad `email` (las altas de cuando la
+ *    confirmación estaba prendida y los invitados lo tienen en true);
+ *  - una identidad de Google: Google ya verificó ese correo.
+ */
+export function mailVerificado(usuario: UsuarioParaVerificar): boolean {
+  if (usuario.app_metadata?.[MARCA_MAIL_VERIFICADO]) return true;
+  return (usuario.identities ?? []).some((i) => {
+    if (i.provider === "google") return true;
+    const v = i.identity_data?.email_verified;
+    return i.provider === "email" && (v === true || v === "true");
+  });
+}
+
 export type EstadoVerificacion =
   /** Ya verificó: no se muestra nada. */
   | { estado: "verificado" }

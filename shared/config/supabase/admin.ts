@@ -1,3 +1,6 @@
+// Si un componente de cliente llega a importar esto, el build falla en vez de
+// mandar la service_role key al navegador.
+import "server-only";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 /**

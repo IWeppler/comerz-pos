@@ -56,6 +56,9 @@ export async function BarraPrueba({
     planSolicitado: solicitud?.plan_solicitado_nombre ?? null,
   });
 
+  // Ya pidió un plan: no hay nada que apurar ni que confirmar en cada pantalla.
+  if (!barra) return null;
+
   const estilo = ESTILOS[barra.tono];
 
   return (
@@ -119,10 +122,5 @@ const ESTILOS: Record<
     caja: "border-danger/20 bg-danger/10 text-foreground",
     cta: "bg-danger text-white hover:bg-danger/90",
     relleno: "bg-danger",
-  },
-  exito: {
-    caja: "border-success/20 bg-success/10 text-foreground",
-    cta: "border border-success/30 text-success hover:bg-success/10",
-    relleno: "bg-success",
   },
 };

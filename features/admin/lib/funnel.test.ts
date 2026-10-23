@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   analizarFunnel,
   enRiesgo,
+  porOrigen,
   resumirFunnel,
   type FilaFunnel,
 } from "./funnel";
@@ -17,6 +18,8 @@ const fila = (p: Partial<FilaFunnel> & { nombre: string }): FilaFunnel => ({
   ventasTotal: 0,
   pagos: 0,
   primerPago: null,
+  origen: null,
+  referidoPor: null,
   ...p,
 });
 
@@ -188,5 +191,39 @@ describe("enRiesgo", () => {
     );
 
     expect(enRiesgo(comercios)).toHaveLength(0);
+  });
+});
+
+describe("porOrigen", () => {
+  it("agrupa por referido o campaña, y 'Sin dato' va último", () => {
+    const comercios = analizarFunnel(
+      [
+        fila({ nombre: "viejo1" }),
+        fila({ nombre: "viejo2" }),
+        fila({ nombre: "viejo3" }),
+        fila({
+          nombre: "ref1",
+          origen: { ref: "evens-indumentaria", utm_source: "tienda" },
+          referidoPor: "Evens Indumentaria",
+          primeraVenta: "2026-08-02T00:00:00Z",
+          pagos: 1,
+        }),
+        fila({
+          nombre: "ref2",
+          origen: { ref: "evens-indumentaria" },
+          referidoPor: "Evens Indumentaria",
+        }),
+        fila({ nombre: "ig", origen: { utm_source: "instagram", utm_medium: "bio" } }),
+        fila({ nombre: "roto", origen: { ref: "nadie" } }),
+      ],
+      AHORA,
+    );
+
+    expect(porOrigen(comercios)).toEqual([
+      { etiqueta: "Referido: Evens Indumentaria", registrados: 2, activados: 1, pagaron: 1 },
+      { etiqueta: "instagram / bio", registrados: 1, activados: 0, pagaron: 0 },
+      { etiqueta: "Referido: nadie (código sin dueño)", registrados: 1, activados: 0, pagaron: 0 },
+      { etiqueta: "Sin dato", registrados: 3, activados: 0, pagaron: 0 },
+    ]);
   });
 });
