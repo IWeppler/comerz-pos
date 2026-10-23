@@ -16,7 +16,7 @@ import { marcarMailVerificadoSiLoProbo } from "@/features/auth/lib/marcar-mail-v
  * `/auth/actualizar-password` no monta ningún cliente de Supabase de
  * navegador que lo lea — así que la sesión no llegaba a las cookies,
  * `updateUser` fallaba y el invitado terminaba registrándose solo en
- * /onboarding. Acá `verifyOtp` escribe las cookies en la respuesta, y la
+ * /empezar. Acá `verifyOtp` escribe las cookies en la respuesta, y la
  * página siguiente ya tiene sesión de verdad.
  *
  * El template de mail tiene que apuntar acá:

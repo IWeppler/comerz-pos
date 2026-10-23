@@ -61,7 +61,7 @@ export const GOOGLE_AUTH_HABILITADO =
  * con un `code` de PKCE que hay que canjear, y ese handler ya es idempotente
  * —lo aprendió a los golpes el 9/9/2026, ver el comentario de su archivo—.
  *
- * `next` decide dónde sigue. Desde el alta va a `/onboarding`, que detecta la
+ * `next` decide dónde sigue. Desde el alta va a `/empezar`, que detecta la
  * sesión y arranca en el paso 2; desde el login va a `/`, y de ahí lo acomoda
  * el middleware según tenga negocio o no.
  */

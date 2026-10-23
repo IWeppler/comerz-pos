@@ -17,6 +17,12 @@ import {
 } from "@/shared/lib/rubros";
 import { errorDeCuit, normalizarCuit } from "@/shared/lib/cuit";
 import { refrescarClaimDeMembresias } from "../lib/refrescar-claim";
+import {
+  COOKIE_ORIGEN_ALTA,
+  METADATA_ORIGEN_ALTA,
+  leerOrigen,
+  type OrigenAlta,
+} from "@/shared/lib/origen-alta";
 
 export interface MembresiaNegocio {
   negocio_id: string;
@@ -188,6 +194,11 @@ export async function crearNegocioAction(
   const cookieStore = await cookies();
   const supabase = createClient(cookieStore);
 
+  // Antes de la RPC: el trigger `trg_negocios_origen_alta` copia el origen
+  // de la cuenta al negocio en el INSERT, así que tiene que estar ya escrito.
+  const origen = leerOrigen(cookieStore.get(COOKIE_ORIGEN_ALTA)?.value);
+  if (origen) await completarOrigenAlta(supabase, origen);
+
   const { data: negocioId, error } = await supabase.rpc(
     "crear_negocio_con_owner",
     {
@@ -229,10 +240,37 @@ export async function crearNegocioAction(
     httpOnly: false,
   });
 
+  // Ya cumplió: un segundo negocio de la misma persona no es otro referido.
+  if (origen) cookieStore.delete(COOKIE_ORIGEN_ALTA);
+
   await refrescarClaimDeMembresias(supabase, "crear negocio");
 
   revalidatePath("/", "layout");
   return { error: null, success: true };
+}
+
+/**
+ * Completa el origen del alta (`?ref=`, `utm_*`) en `user_metadata` si el
+ * `signUp` no lo guardó: es el caso de Google, que no pasa por ahí. Gana el
+ * que ya estaba (first touch). De ahí lo copia al negocio el trigger
+ * `trg_negocios_origen_alta` (20261023100000), solo en el primer negocio.
+ *
+ * Es un dato de atribución: si falla se loguea y el alta sigue. Ver
+ * `shared/lib/origen-alta.ts`.
+ */
+async function completarOrigenAlta(
+  supabase: ReturnType<typeof createClient>,
+  origen: OrigenAlta,
+) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user || user.user_metadata?.[METADATA_ORIGEN_ALTA]) return;
+
+  const { error } = await supabase.auth.updateUser({
+    data: { [METADATA_ORIGEN_ALTA]: origen },
+  });
+  if (error) console.error("[ORIGEN ALTA]", error);
 }
 
 /** Invita a alguien al negocio activo. Solo ADMIN (lo exige la RLS). */

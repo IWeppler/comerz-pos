@@ -14,7 +14,7 @@
  */
 
 /** El default: el paso que le falta a quien acaba de confirmar su cuenta. */
-export const DESTINO_POR_DEFECTO = "/onboarding";
+export const DESTINO_POR_DEFECTO = "/empezar";
 
 export function destinoSeguro(next: string | null | undefined): string {
   if (!next) return DESTINO_POR_DEFECTO;

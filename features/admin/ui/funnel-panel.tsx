@@ -1,5 +1,10 @@
 import { AlertTriangle } from "lucide-react";
-import type { ComercioEnFunnel, ResumenFunnel } from "@/features/admin/lib/funnel";
+import {
+  SIN_ORIGEN,
+  type ComercioEnFunnel,
+  type FilaPorOrigen,
+  type ResumenFunnel,
+} from "@/features/admin/lib/funnel";
 
 /**
  * Registro → activación → pago, y quién se está yendo.
@@ -13,7 +18,12 @@ import type { ComercioEnFunnel, ResumenFunnel } from "@/features/admin/lib/funne
 export function FunnelPanel({
   resumen,
   riesgo,
-}: Readonly<{ resumen: ResumenFunnel; riesgo: ComercioEnFunnel[] }>) {
+  origenes,
+}: Readonly<{
+  resumen: ResumenFunnel;
+  riesgo: ComercioEnFunnel[];
+  origenes: FilaPorOrigen[];
+}>) {
   return (
     <div className="space-y-4">
       <div>
@@ -67,6 +77,33 @@ export function FunnelPanel({
           }
         />
       </div>
+
+      {/* Por origen: de dónde vienen y cuáles de esos canales terminan
+          pagando. Solo cuando hay algo medido: con todo en "Sin dato" la
+          tabla no dice nada. */}
+      {origenes.some((o) => o.etiqueta !== SIN_ORIGEN) && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <p className="text-sm font-semibold text-white/90">Por origen</p>
+          <ul className="mt-3 divide-y divide-white/[0.06]">
+            {origenes.map((o) => (
+              <li
+                key={o.etiqueta}
+                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
+              >
+                <span
+                  className={`text-sm ${o.etiqueta === SIN_ORIGEN ? "text-white/40" : "text-white/80"}`}
+                >
+                  {o.etiqueta}
+                </span>
+                <span className="text-xs tabular-nums text-white/50">
+                  {o.registrados} {o.registrados === 1 ? "alta" : "altas"} ·{" "}
+                  {o.activados} vendieron · {o.pagaron} pagaron
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* El indicador ADELANTADO. El churn avisa cuando ya perdiste al
           cliente; esto avisa mientras todavía se puede llamar. */}

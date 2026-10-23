@@ -10,7 +10,7 @@ import { LoginForm } from "./login-form";
  *
  * Antes alternaba entre entrar y un formulario de "dejanos tus datos" que
  * escribía en `solicitudes_comercio` y esperaba un WhatsApp de Comerz. Ese
- * camino se fue: el alta ahora es self-service y vive en /onboarding, que es
+ * camino se fue: el alta ahora es self-service y vive en /empezar, que es
  * ruta propia porque es el paso más largo del producto y no puede quedar
  * escondido detrás de un toggle en la pantalla de login.
  *
@@ -21,9 +21,9 @@ import { LoginForm } from "./login-form";
 export function AuthPanel() {
   return (
     <div className="flex-1 flex flex-col justify-center w-full max-w-sm mx-auto lg:mt-0">
-      {/* MARCA — solo mobile. Logo y slogan forman un bloque propio, separado
-          del formulario por una línea: arriba quién sos, abajo qué hacés. En
-          desktop la marca vive arriba a la izquierda de la página. */}
+      {/* MARCA — solo mobile. Logo y nombre forman un bloque propio, separado
+          del formulario por una línea. En desktop la marca vive arriba a la
+          izquierda de la página. */}
       <div className="lg:hidden flex flex-col items-center text-center">
         <div className="w-16 h-16 bg-white rounded-2xl shadow-sm flex items-center justify-center transition-all duration-300 ease-out group-focus-within:w-11 group-focus-within:h-11">
           <Image
@@ -37,11 +37,8 @@ export function AuthPanel() {
         <span className="mt-3 text-xl font-bold tracking-tight text-foreground transition-all duration-300 ease-out group-focus-within:mt-2 group-focus-within:text-lg">
           Comerz
         </span>
-        {/* Dos líneas a propósito, y colapsa con el teclado abierto. */}
-        <p className="mt-1.5 max-h-16 overflow-hidden text-sm leading-snug text-muted-foreground transition-all duration-300 ease-out group-focus-within:mt-0 group-focus-within:max-h-0 group-focus-within:opacity-0">
-          <span className="block">Todo tu negocio.</span>
-          <span className="block">En un solo lugar.</span>
-        </p>
+        {/* Sin slogan (23/10/2026): al que vuelve a entrar no le explica nada,
+            y en el celular empujaba el login más allá de la pantalla. */}
       </div>
 
       <div className="lg:hidden h-px w-full bg-border/60 my-7 transition-all duration-300 ease-out group-focus-within:my-5" />
@@ -80,7 +77,7 @@ export function AuthPanel() {
         <p className="text-sm text-muted-foreground">
           ¿Todavía no tenés un comercio?{" "}
           <Link
-            href="/onboarding"
+            href="/empezar"
             className="font-semibold text-primary underline-offset-4 hover:underline transition-colors"
           >
             Crear cuenta

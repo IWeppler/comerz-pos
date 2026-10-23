@@ -29,7 +29,7 @@ describe("los dos casos que motivaron esto", () => {
     expect(campana.asunto).toBe(
       "Te falta un paso para empezar a usar Comerz",
     );
-    expect(campana.cta.ruta).toBe("/onboarding");
+    expect(campana.cta.ruta).toBe("/empezar");
   });
 
   it("las dos campañas son distintas", () => {
@@ -109,8 +109,8 @@ describe("el render", () => {
 
   it("el CTA cuelga de la URL base que se le pasa", () => {
     // Absoluto en el archivo mandaría a producción probando en local.
-    expect(texto).toContain("https://app.comerz.app/onboarding");
-    expect(html).toContain('href="https://app.comerz.app/onboarding"');
+    expect(texto).toContain("https://app.comerz.app/empezar");
+    expect(html).toContain('href="https://app.comerz.app/empezar"');
   });
 
   it("el link de baja lleva el id del envío", () => {
@@ -134,8 +134,8 @@ describe("el render", () => {
       ...RENDER,
       urlBase: "https://app.comerz.app/",
     });
-    expect(t).not.toContain("comerz.app//onboarding");
-    expect(t).toContain("https://app.comerz.app/onboarding");
+    expect(t).not.toContain("comerz.app//empezar");
+    expect(t).toContain("https://app.comerz.app/empezar");
   });
 });
 

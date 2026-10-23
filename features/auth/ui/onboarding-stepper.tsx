@@ -153,7 +153,7 @@ export function OnboardingStepper({
               que clickear, así que desaparece el salto de dispositivo donde
               se perdieron 6 de las 10 cuentas medidas el 9/9/2026. Va antes
               del formulario porque es el camino más corto. */}
-          <BotonGoogle next="/onboarding" etiqueta="Registrarme con Google" />
+          <BotonGoogle next="/empezar" etiqueta="Registrarme con Google" />
           <SeparadorAuth />
 
           <form

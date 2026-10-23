@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createClient } from "@/shared/config/supabase/server";
 import type { FilaFunnel } from "@/features/admin/lib/funnel";
 import { esNegocioDemo } from "@/shared/lib/estado-negocio";
+import { origenDesdeObjeto } from "@/shared/lib/origen-alta";
 import type { EmbudoActivacion } from "../lib/activacion-autonoma";
 
 export async function getEmbudoActivacionAction(): Promise<EmbudoActivacion | null> {
@@ -49,5 +50,7 @@ export async function getFunnelAction(): Promise<FilaFunnel[]> {
       ventasTotal: Number(f.ventas_total ?? 0),
       pagos: Number(f.pagos ?? 0),
       primerPago: (f.primer_pago as string | null) ?? null,
+      origen: origenDesdeObjeto(f.origen_alta),
+      referidoPor: (f.referido_por as string | null) ?? null,
     }));
 }

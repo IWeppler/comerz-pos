@@ -1,6 +1,6 @@
 # Alta de comercios, sesión y panel de Comerz
 
-Leé esto antes de tocar `/auth`, `/auth/callback`, `/onboarding`, el middleware,
+Leé esto antes de tocar `/auth`, `/auth/callback`, `/empezar`, el middleware,
 `crearNegocioAction`, `aceptarInvitacionAction`, el custom access token hook,
 `embudo_de_alta` / `funnel_comerz`, o /admincomerz.
 
@@ -24,7 +24,7 @@ que exista el negocio, y el claim queda viejo: `/` → "ningún negocio" →
 El primer canje crea la sesión y el segundo falla siempre (404). Medido en prod; la
 causa (prefetch del navegador o del cliente de mail) no está identificada y no hace
 falta: **el callback termina siempre en `destino` y nunca en una pantalla de error**.
-`/onboarding` detecta la sesión (con sesión arranca en el paso 2). Esto explicaba a
+`/empezar` detecta la sesión (con sesión arranca en el paso 2). Esto explicaba a
 personas que confirmaban el mail y veían "El enlace venció".
 
 ## Pantallas
@@ -63,6 +63,28 @@ prendido en producción (8 cuentas al 22/10/2026).
 - Las dos cuentas ya vinculadas antes del arreglo se revisaron a mano: legítimas.
 - Recuperar la contraseña cierra las otras sesiones (`scope: 'others'`); cambiarla
   desde el perfil no, para no echar a la caja que está vendiendo.
+
+## Las dos puertas: `/auth` y `/empezar`
+
+- `/auth` es SOLO para quien ya tiene cuenta; `/empezar` es el alta (cuenta →
+  negocio), pública, y con sesión arranca en el paso 2. Para un CTA, Instagram o
+  una landing: "Comenzar" → `app.comerz.app/empezar`, "Ingresar" →
+  `app.comerz.app/auth`. La raíz sin sesión sigue yendo al login: ahí vuelven las
+  vendedoras y la PWA instalada.
+- Hasta el 23/10/2026 el alta se llamaba `/onboarding`: `next.config.ts` la
+  redirige (mails ya enviados, links compartidos) conservando la query.
+- **Origen del alta** (`shared/lib/origen-alta.ts`, con tests): el middleware
+  anota `?ref=` y `utm_source/medium/campaign` de `/empezar` en la cookie
+  `comerz_origen_alta` (60 días, gana el primer origen). Se guarda en
+  `user_metadata.origen_alta` en el `signUp` (cubre confirmar el mail en otro
+  dispositivo) y, si faltaba, al crear el negocio (cubre Google). Sin origen no
+  se guarda nada: `null` no es "orgánico". Se consulta con
+  `auth.users.raw_user_meta_data->'origen_alta'`.
+- Las tiendas reparten el alta con su slug como código de referido
+  (`?ref=<slug>&utm_source=tienda&utm_medium=boton|firma`).
+- **Pendiente (con migración)**: tabla de códigos de referido (comercios y
+  socios), copiar el origen a `negocios` al crearlo, corte por origen en el
+  embudo y el premio atado al primer pago (prueba → activo), nunca al alta.
 
 ## Embudo de alta (/admincomerz)
 

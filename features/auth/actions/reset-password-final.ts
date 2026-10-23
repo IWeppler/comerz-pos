@@ -67,7 +67,7 @@ export async function resetPasswordFinalAction(
   //  2. Por EMAIL: toda invitación PENDIENTE del mail de esta sesión. Cubre al
   //     que llegó sin el parámetro —link viejo con la sesión en el hash,
   //     template sin `next`, un "olvidé mi contraseña" en el medio— y es lo
-  //     que hace que el invitado no termine en /onboarding creando un negocio
+  //     que hace que el invitado no termine en /empezar creando un negocio
   //     propio. El mail verificado por Auth es la credencial; el token nunca
   //     lo fue (`aceptar_invitacion` ya exigía que coincidieran).
   let negocioId: string | null = null;
