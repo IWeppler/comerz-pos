@@ -1,6 +1,7 @@
 "use client";
 
 import { TicketData } from "@/entities/ventas/types";
+import { etiquetaRecargoLibre } from "@/features/sales/lib/recargo-libre-ticket";
 import { ConfiguracionPOS } from "@/entities/config/types";
 import {
   Document,
@@ -353,6 +354,17 @@ const ReceiptDocument = ({
               </Text>
               <Text style={styles.totalValue}>
                 +${Math.round(ticket.recargoCcMonto ?? 0).toLocaleString("es-AR")}
+              </Text>
+            </View>
+          )}
+
+          {(ticket.recargoLibreMonto ?? 0) > 0 && (
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>
+                {etiquetaRecargoLibre(ticket)}:
+              </Text>
+              <Text style={styles.totalValue}>
+                +${Math.round(ticket.recargoLibreMonto ?? 0).toLocaleString("es-AR")}
               </Text>
             </View>
           )}

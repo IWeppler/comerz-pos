@@ -56,7 +56,7 @@ export async function facturarVentaAction(ventaId: string): Promise<
       supabase
         .from("ventas")
         .select(
-          `id, estado_operacion, total, recargo_cc_monto, cliente_id,
+          `id, estado_operacion, total, recargo_cc_monto, recargo_libre_monto, cliente_id,
            ventas_items ( cantidad, precio_final, producto:productos(tratamiento_iva) ),
            venta_pagos ( recargo_monto, estado_pago_operacion ),
            comprobantes ( tipo, cae )`,
@@ -148,7 +148,14 @@ export async function facturarVentaAction(ventaId: string): Promise<
   const recargoMetodo = ((venta.venta_pagos ?? []) as { recargo_monto: number | null; estado_pago_operacion: string | null }[])
     .filter((p) => p.estado_pago_operacion !== "ANULADO")
     .reduce((acc, p) => acc + Number(p.recargo_monto ?? 0), 0);
-  const recargos = recargoMetodo + Number(venta.recargo_cc_monto ?? 0);
+  // Los tres recargos van al desglose: si falta uno, el total de la factura
+  // no cierra contra el de la venta y ARCA la rechaza. El libre (contado) y el
+  // de cuenta corriente son excluyentes, pero se suman igual: la suma no
+  // supone cuál de los dos hay.
+  const recargos =
+    recargoMetodo +
+    Number(venta.recargo_cc_monto ?? 0) +
+    Number(venta.recargo_libre_monto ?? 0);
 
   const renglones = ((venta.ventas_items ?? []) as {
     cantidad: number;
