@@ -31,6 +31,8 @@ import {
 interface StockViewProps {
   productosIndice: ProductoIndice[];
   userRole: string;
+  /** Permiso `stock.editar_producto`: alta, edición y carga rápida. */
+  puedeEditarProducto?: boolean;
   nombreComercio: string;
   mostrarSinStock: boolean;
   rubro: Rubro;
@@ -55,6 +57,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 export function StockView({
   productosIndice,
   userRole,
+  puedeEditarProducto = false,
   nombreComercio,
   mostrarSinStock,
   rubro,
@@ -469,6 +472,7 @@ export function StockView({
           onSoloDestacadosChange={handleSoloDestacadosChange}
           cantidadDestacados={cantidadDestacados}
           isAdmin={isAdmin}
+          puedeEditarProducto={puedeEditarProducto}
           onLimpiarFiltros={limpiarFiltros}
           slugCategoriaActiva={slugCategoriaActiva}
           nombreCategoriaActiva={nombreCategoriaActiva}
@@ -482,6 +486,7 @@ export function StockView({
         <StockTable
           productos={productosPagina}
           userRole={userRole}
+          puedeEditarProducto={puedeEditarProducto}
           nombreComercio={nombreComercio}
           mostrarSinStock={mostrarSinStock}
           orden={orden}

@@ -29,6 +29,7 @@ export async function tienePermiso(
 export const PERMISOS = {
   CAJA_CERRAR_AJENA: "caja.cerrar_ajena",
   CAJA_VER_GERENCIAL: "caja.ver_gerencial",
+  STOCK_EDITAR_PRODUCTO: "stock.editar_producto",
   STOCK_IMPORTAR_PLANILLA: "stock.importar_planilla",
   STOCK_INGRESAR_REMITO: "stock.ingresar_remito",
   CLIENTES_CREAR: "clientes.crear",

@@ -72,6 +72,10 @@ interface PosTerminalProps {
   /** Permiso `clientes.cobrar_cc`: decide si la barra ofrece "Cobrar deuda".
    * El modal vive montado en el layout; acá solo se lo abre. */
   puedeCobrarCuentaCorriente?: boolean;
+  /** Permiso `stock.editar_producto`: la carga rápida (botón, F8 y la card
+   * "Cargar X" de la búsqueda). Crea productos y suma stock, y la base lo
+   * frena igual sin el permiso (`20261023000000`). */
+  puedeEditarProducto?: boolean;
   /** Búsqueda con la que arranca la pantalla. Hoy la manda la paleta (Ctrl+K)
    * por `?q=` cuando se elige un producto desde otra pantalla. */
   busquedaInicial?: string;
@@ -115,6 +119,7 @@ export function PosTerminal({
   mostrarSinStock = true,
   rubro,
   puedeCobrarCuentaCorriente = false,
+  puedeEditarProducto = false,
   busquedaInicial = "",
   cargandoCatalogo = false,
 }: Readonly<PosTerminalProps>) {
@@ -571,7 +576,10 @@ export function PosTerminal({
   useAtajosTeclado([
     {
       teclas: "F8",
-      correr: () => setVista((v) => (v === "cargar" ? "vender" : "cargar")),
+      correr: () => {
+        if (!puedeEditarProducto) return;
+        setVista((v) => (v === "cargar" ? "vender" : "cargar"));
+      },
     },
     {
       // Confirmar la carga. Ctrl+Space y NO Ctrl+Enter: el ticket ya usa
@@ -649,6 +657,7 @@ export function PosTerminal({
   // `length === 0` de más abajo, que decide si mostrar "No se encontraron
   // productos".
   const ofrecerCarga =
+    puedeEditarProducto &&
     vista === "vender" &&
     searchQuery.trim().length > 0 &&
     productosOrdenados.length < RESULTADOS_PARA_OFRECER_CARGA;
@@ -676,6 +685,7 @@ export function PosTerminal({
           filtrosVariantes={filtrosVariantes}
           onFiltroVarianteChange={handleFiltroVarianteChange}
           isAdmin={false}
+          puedeEditarProducto={puedeEditarProducto}
           onLimpiarFiltros={limpiarFiltros}
           onCargaRapida={() =>
             setVista((v) => (v === "cargar" ? "vender" : "cargar"))

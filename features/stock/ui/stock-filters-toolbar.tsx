@@ -133,6 +133,10 @@ interface StockFiltersToolbarProps {
   onSoloDestacadosChange?: (valor: boolean) => void;
   cantidadDestacados?: number;
   isAdmin: boolean;
+  /** Permiso `stock.editar_producto`: "Nuevo producto" y la carga rápida.
+   * NO es `isAdmin`: un encargado con el permiso carga mercadería, y una
+   * vendedora sin él no (la base lo frena igual, `20261023000000`). */
+  puedeEditarProducto?: boolean;
   onLimpiarFiltros: () => void;
   slugCategoriaActiva?: string | null;
   nombreCategoriaActiva?: string;
@@ -192,6 +196,7 @@ export function StockFiltersToolbar({
   onSoloDestacadosChange,
   cantidadDestacados,
   isAdmin,
+  puedeEditarProducto = false,
   onLimpiarFiltros,
   slugCategoriaActiva,
   nombreCategoriaActiva,
@@ -286,7 +291,7 @@ export function StockFiltersToolbar({
           />
         )}
 
-        {isAdmin && isCrearProductoOpen && (
+        {puedeEditarProducto && isCrearProductoOpen && (
           <CrearProductoSheet
             open
             onOpenChange={setIsCrearProductoOpen}
@@ -468,13 +473,14 @@ export function StockFiltersToolbar({
 
         {/* Controles y Botonera Admin (No se encoge nunca en mobile) */}
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2 shrink-0">
-          {/* Carga rápida — visible para todos los roles, no solo Admin. En
-              mobile no vive acá sino dentro del dropdown de acciones: al lado
-              del buscador no entraba sin comerle ancho. */}
+          {/* Carga rápida — para quien tenga `stock.editar_producto`, no solo
+              Admin (antes no se le escondía a nadie: crea productos y suma
+              stock). En mobile no vive acá sino dentro del dropdown de
+              acciones: al lado del buscador no entraba sin comerle ancho. */}
           {/* Mismo botón de siempre; lo que cambia es el destino. Con
               onCargaRapida (POS) alterna la vista sin salir de la venta; sin
               él (Inventario) sigue navegando a su página. */}
-          {onCargaRapida ? (
+          {!puedeEditarProducto ? null : onCargaRapida ? (
             <Button
               variant={cargaRapidaActiva ? "default" : "outline"}
               size="sm"
@@ -526,16 +532,19 @@ export function StockFiltersToolbar({
           )}
 
           {/* Botonera de Acciones. El dropdown NO está gateado por isAdmin
-              porque en mobile es el único acceso a Carga rápida, que es para
-              todos los roles; para un vendedor el menú tiene solo esa entrada
-              y por eso se oculta en desktop (ahí ya tiene su botón propio). */}
-          {/* Sin admin, en desktop este bloque queda VACÍO (el trigger es
-              sm:hidden y el botón de crear no existe) pero seguía ocupando
-              margen + padding + borde: un hueco con una raya después de
-              "Cobrar deuda" en el POS. Se esconde entero. */}
+              porque en mobile es el único acceso a Carga rápida y a Cobrar
+              deuda; para quien no es admin el menú tiene solo esas entradas y
+              por eso se oculta en desktop (ahí tienen sus botones propios).
+              Sin ninguna entrada (vendedora sin `stock.editar_producto` en
+              Inventario) no se dibuja: sería un menú vacío. */}
+          {/* En desktop el bloque solo tiene contenido para admin (Acciones)
+              o para quien puede crear productos (Nuevo producto); si no,
+              seguía ocupando margen + padding + borde: un hueco con una raya
+              después de "Cobrar deuda" en el POS. Se esconde entero. */}
+          {(isAdmin || puedeEditarProducto || onCobrarCuentaCorriente) && (
           <div
             className={`flex items-center gap-1.5 sm:gap-2 sm:ml-2 sm:pl-4 sm:border-l sm:border-border shrink-0 ${
-              isAdmin ? "" : "sm:hidden"
+              isAdmin || puedeEditarProducto ? "" : "sm:hidden"
             }`}
           >
             <DropdownMenu>
@@ -560,7 +569,7 @@ export function StockFiltersToolbar({
               <DropdownMenuContent align="end" className="w-56 z-50">
                 {esMobile && (
                   <>
-                    {onCargaRapida ? (
+                    {!puedeEditarProducto ? null : onCargaRapida ? (
                       <DropdownMenuItem onSelect={onCargaRapida}>
                         <ScanBarcode className="text-muted-foreground" />
                         {cargaRapidaActiva ? "Volver a vender" : "Carga rápida"}
@@ -579,7 +588,7 @@ export function StockFiltersToolbar({
                         Cobrar deuda
                       </DropdownMenuItem>
                     )}
-                    {isAdmin && (
+                    {puedeEditarProducto && (
                       <DropdownMenuItem onSelect={abrirAltaProducto}>
                         {catalogoLleno ? (
                           <Lock className="text-muted-foreground" />
@@ -636,7 +645,7 @@ export function StockFiltersToolbar({
             </DropdownMenu>
 
             {/* Carga manual en desktop: mismo sheet, otro disparador. */}
-            {isAdmin && (
+            {puedeEditarProducto && (
               <Button
                 type="button"
                 variant="ghost"
@@ -652,6 +661,7 @@ export function StockFiltersToolbar({
               </Button>
             )}
           </div>
+          )}
         </div>
       </div>
 

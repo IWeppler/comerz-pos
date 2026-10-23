@@ -122,9 +122,14 @@ AGENTS.md porque aplican a toda migración.
       `stock.ingresar_remito`. Excepción: `REVERSO_VENTA` de una venta que no
       existe, hasta lo que ESE usuario descontó con ESA referencia (lo hace
       `create-sale.ts` cuando `registrar_venta` falla). service_role pasa.
-    - **`stock.editar_producto` no lo mira la UI**: la pantalla deja intentar y el
-      error llega traducido (`features/stock/lib/mensaje-permiso-stock.ts`).
-      Pendiente: esconder la edición a quien no lo tiene.
+    - La UI lo mira desde el 23/10/2026 (`features/stock/lib/puede-editar-producto.ts`,
+      resuelto en el server de /stock y /pos): "Nuevo producto", "Editar producto",
+      la carga rápida (botón, link, F8 y la card "Cargar X" del POS) y la página
+      `/stock/carga-rapida` (redirige a /stock). Antes miraba el ROL ADMIN —un
+      encargado con el permiso no veía la edición— y la carga rápida no se le
+      escondía a nadie. Si igual llega un error, va traducido
+      (`mensaje-permiso-stock.ts`). Baja, combinar, eliminar, precios masivos e
+      ingreso de mercadería siguen escondidos por ROL (no por su permiso).
     - Verificado en seco (15 casos) y en vivo después de aplicar: venta de una
       vendedora de Evens, alta de producto de una vendedora de Librería Colores.
   - **Antes de cerrar una escritura, medir quién la hace HOY** (movimientos_stock,

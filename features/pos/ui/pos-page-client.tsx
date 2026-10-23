@@ -22,6 +22,8 @@ interface PosPageClientProps {
   /** Permiso `ventas.fiar_sin_recargo`: si el ticket ofrece anular el
    * recargo de cuenta corriente. */
   puedeFiarSinRecargo?: boolean;
+  /** Permiso `stock.editar_producto`: si el POS ofrece la carga rápida. */
+  puedeEditarProducto?: boolean;
   /**
    * El rubro, resuelto en el SERVER y sin costo (ver la página: sale de
    * `leerConfigPos`, que los layouts de este mismo request ya cachearon).
@@ -39,6 +41,7 @@ export function PosPageClient({
   puedeElegirComprobante = false,
   puedeCobrar = true,
   puedeFiarSinRecargo = false,
+  puedeEditarProducto = false,
   rubroInicial = RUBRO_DEFAULT,
 }: Readonly<PosPageClientProps> = {}) {
   // `?q=` es cómo entra un producto elegido en la paleta (Ctrl+K): en vez de
@@ -121,6 +124,7 @@ export function PosPageClient({
           mostrarSinStock={data?.data?.mostrarSinStock}
           rubro={data?.data?.rubro ?? rubroInicial}
           puedeCobrarCuentaCorriente={puedeCobrarCuentaCorriente}
+          puedeEditarProducto={puedeEditarProducto}
           cargandoCatalogo={isLoading}
         />
         {/* El rubro del server, no `RUBRO_DEFAULT`: el ticket ya se dibuja
